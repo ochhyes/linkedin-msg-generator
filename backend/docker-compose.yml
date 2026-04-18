@@ -1,0 +1,16 @@
+version: "3.8"
+
+services:
+  linkedin-msg-api:
+    build: .
+    container_name: linkedin-msg-api
+    restart: unless-stopped
+    ports:
+      - "8321:8000"
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

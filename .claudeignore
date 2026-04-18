@@ -1,0 +1,7 @@
+# Nie czytaj tych folderów
+extension/node_modules/
+backend/__pycache__/
+backend/.pytest_cache/
+*.pyc
+.env
+```

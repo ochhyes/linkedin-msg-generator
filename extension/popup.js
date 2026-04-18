@@ -1,0 +1,265 @@
+/**
+ * Popup Controller
+ * 
+ * Handles UI state, communicates with content script (scrape)
+ * and background worker (API calls, settings).
+ */
+
+(() => {
+  "use strict";
+
+  // ── DOM refs ─────────────────────────────────────────────────────
+  const $ = (sel) => document.querySelector(sel);
+  const statusBar = $("#status-bar");
+  const statusText = $("#status-text");
+  const profilePreview = $("#profile-preview");
+  const profileName = $("#profile-name");
+  const profileHeadline = $("#profile-headline");
+  const profileMeta = $("#profile-meta");
+  const selectGoal = $("#select-goal");
+  const selectLang = $("#select-lang");
+  const inputTone = $("#input-tone");
+  const btnScrape = $("#btn-scrape");
+  const btnGenerate = $("#btn-generate");
+  const resultArea = $("#result-area");
+  const resultText = $("#result-text");
+  const resultMeta = $("#result-meta");
+  const btnCopy = $("#btn-copy");
+  const btnRegenerate = $("#btn-regenerate");
+  const errorArea = $("#error-area");
+  const errorText = $("#error-text");
+  const btnSettings = $("#btn-settings");
+  const viewMain = $("#view-main");
+  const viewSettings = $("#view-settings");
+  const setApiUrl = $("#set-api-url");
+  const setApiKey = $("#set-api-key");
+  const setSender = $("#set-sender");
+  const setMaxChars = $("#set-max-chars");
+  const btnSaveSettings = $("#btn-save-settings");
+  const btnBack = $("#btn-back");
+
+  // ── State ────────────────────────────────────────────────────────
+  let currentProfile = null;
+
+  // ── UI Helpers ───────────────────────────────────────────────────
+
+  function setStatus(text, type = "idle") {
+    statusText.textContent = text;
+    statusBar.className = `status-bar status-bar--${type}`;
+  }
+
+  function showError(msg) {
+    errorText.textContent = msg;
+    errorArea.classList.remove("hidden");
+    setStatus("Błąd", "error");
+  }
+
+  function hideError() {
+    errorArea.classList.add("hidden");
+  }
+
+  function setLoading(btn, loading) {
+    if (loading) {
+      btn.classList.add("btn--loading");
+      btn.disabled = true;
+    } else {
+      btn.classList.remove("btn--loading");
+      btn.disabled = false;
+    }
+  }
+
+  function showProfile(profile) {
+    profileName.textContent = profile.name || "—";
+    profileHeadline.textContent = profile.headline || "—";
+
+    const metaParts = [];
+    if (profile.company) metaParts.push(profile.company);
+    if (profile.location) metaParts.push(profile.location);
+    if (profile.experience?.length) metaParts.push(`${profile.experience.length} pozycje`);
+    if (profile.skills?.length) metaParts.push(`${profile.skills.length} umiejętności`);
+    profileMeta.textContent = metaParts.join(" · ") || "Minimalny profil";
+
+    profilePreview.classList.remove("hidden");
+  }
+
+  function showResult(message, timeSec) {
+    resultText.value = message;
+    resultText.readOnly = false; // Let user edit
+    resultMeta.textContent = `${timeSec}s · ${message.length} znaków`;
+    resultArea.classList.remove("hidden");
+  }
+
+  // ── Content Script Communication ─────────────────────────────────
+
+  async function scrapeCurrentTab() {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+    if (!tab?.url?.includes("linkedin.com/in/")) {
+      throw new Error("Otwórz profil na LinkedIn (linkedin.com/in/...)");
+    }
+
+    // Inject content script if not already there
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ["content.js"],
+      });
+    } catch (e) {
+      // Already injected or no permission — try sending anyway
+    }
+
+    return new Promise((resolve, reject) => {
+      chrome.tabs.sendMessage(tab.id, { action: "scrapeProfile" }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(
+            "Nie mogę połączyć się ze stroną. Odśwież stronę LinkedIn i spróbuj ponownie."
+          ));
+          return;
+        }
+        if (!response) {
+          reject(new Error("Brak odpowiedzi z content scriptu."));
+          return;
+        }
+        if (!response.success) {
+          reject(new Error(response.error || "Nie udało się pobrać profilu."));
+          return;
+        }
+        resolve(response.profile);
+      });
+    });
+  }
+
+  // ── Background Communication ─────────────────────────────────────
+
+  function sendToBackground(message) {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(message, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        if (response?.error) {
+          reject(new Error(response.error));
+          return;
+        }
+        resolve(response);
+      });
+    });
+  }
+
+  // ── Event Handlers ───────────────────────────────────────────────
+
+  // Scrape profile
+  btnScrape.addEventListener("click", async () => {
+    hideError();
+    setLoading(btnScrape, true);
+    setStatus("Pobieram dane profilu...", "loading");
+
+    try {
+      currentProfile = await scrapeCurrentTab();
+      showProfile(currentProfile);
+      setStatus("Profil pobrany", "success");
+      btnGenerate.disabled = false;
+    } catch (err) {
+      showError(err.message);
+      currentProfile = null;
+      btnGenerate.disabled = true;
+    } finally {
+      setLoading(btnScrape, false);
+    }
+  });
+
+  // Generate message
+  async function doGenerate() {
+    if (!currentProfile) return;
+
+    hideError();
+    setLoading(btnGenerate, true);
+    setStatus("Generuję wiadomość...", "loading");
+
+    try {
+      const result = await sendToBackground({
+        action: "generateMessage",
+        profile: currentProfile,
+        options: {
+          goal: selectGoal.value,
+          language: selectLang.value,
+          tone: inputTone.value || null,
+        },
+      });
+
+      showResult(result.message, result.generation_time_s);
+      setStatus("Wiadomość gotowa", "success");
+    } catch (err) {
+      showError(err.message);
+    } finally {
+      setLoading(btnGenerate, false);
+    }
+  }
+
+  btnGenerate.addEventListener("click", doGenerate);
+  btnRegenerate.addEventListener("click", doGenerate);
+
+  // Copy to clipboard
+  btnCopy.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(resultText.value);
+      btnCopy.querySelector("svg + *")?.remove();
+      const origHTML = btnCopy.innerHTML;
+      btnCopy.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg> Skopiowano!`;
+      setTimeout(() => { btnCopy.innerHTML = origHTML; }, 1500);
+    } catch {
+      // Fallback
+      resultText.select();
+      document.execCommand("copy");
+    }
+  });
+
+  // ── Settings ─────────────────────────────────────────────────────
+
+  btnSettings.addEventListener("click", async () => {
+    viewMain.classList.add("hidden");
+    viewSettings.classList.remove("hidden");
+
+    const settings = await sendToBackground({ action: "getSettings" });
+    setApiUrl.value = settings.apiUrl || "";
+    setApiKey.value = settings.apiKey || "";
+    setSender.value = settings.senderContext || "";
+    setMaxChars.value = settings.defaultMaxChars || 300;
+  });
+
+  btnBack.addEventListener("click", () => {
+    viewSettings.classList.add("hidden");
+    viewMain.classList.remove("hidden");
+  });
+
+  btnSaveSettings.addEventListener("click", async () => {
+    const settings = {
+      apiUrl: setApiUrl.value.trim(),
+      apiKey: setApiKey.value.trim(),
+      senderContext: setSender.value.trim(),
+      defaultMaxChars: parseInt(setMaxChars.value, 10) || 300,
+    };
+
+    try {
+      await sendToBackground({ action: "saveSettings", settings });
+      viewSettings.classList.add("hidden");
+      viewMain.classList.remove("hidden");
+      setStatus("Ustawienia zapisane", "success");
+    } catch (err) {
+      showError("Nie udało się zapisać ustawień: " + err.message);
+    }
+  });
+
+  // ── Init ─────────────────────────────────────────────────────────
+
+  (async () => {
+    try {
+      const settings = await sendToBackground({ action: "getSettings" });
+      if (settings.defaultGoal) selectGoal.value = settings.defaultGoal;
+      if (settings.defaultLanguage) selectLang.value = settings.defaultLanguage;
+    } catch {
+      // Fresh install, defaults are fine
+    }
+  })();
+})();
