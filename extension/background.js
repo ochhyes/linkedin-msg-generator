@@ -6,8 +6,8 @@
  */
 
 const DEFAULT_SETTINGS = {
-  apiUrl: "http://localhost:8321",
-  apiKey: "dev-test-key-123",
+  apiUrl: "https://linkedin-api.szmidtke.pl",
+  apiKey: "",
   defaultGoal: "networking",
   defaultLanguage: "pl",
   defaultMaxChars: 1000,
