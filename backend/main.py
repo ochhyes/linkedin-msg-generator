@@ -12,9 +12,16 @@ from models import (
     GenerateMessageRequest,
     GenerateMessageResponse,
     HealthResponse,
+    SettingsDefaultsResponse,
     TemplateInfo,
 )
-from services.ai_service import generate_message
+from services.ai_service import (
+    DEFAULT_ANTIPATTERNS,
+    DEFAULT_SYSTEM_PROMPT,
+    GOAL_PROMPTS,
+    TONE_DEFAULTS,
+    generate_message,
+)
 from services.rate_limiter import RateLimiter
 from services.auth import verify_api_key
 
@@ -90,6 +97,17 @@ TEMPLATES: list[TemplateInfo] = [
 @app.get("/api/templates", response_model=list[TemplateInfo])
 async def get_templates(api_key: str = Depends(verify_api_key)):
     return TEMPLATES
+
+
+# ── Personalization defaults (for options page pre-fill) ─────────────
+@app.get("/api/settings/defaults", response_model=SettingsDefaultsResponse)
+async def get_settings_defaults(api_key: str = Depends(verify_api_key)):
+    return SettingsDefaultsResponse(
+        goal_prompts=GOAL_PROMPTS,
+        default_antipatterns=DEFAULT_ANTIPATTERNS,
+        default_system_prompt=DEFAULT_SYSTEM_PROMPT,
+        tone_defaults=TONE_DEFAULTS,
+    )
 
 
 # ── Generate Message ──────────────────────────────────────────────────

@@ -40,6 +40,36 @@
 
   // ── State ────────────────────────────────────────────────────────
   let currentProfile = null;
+  let currentMessage = null;
+  let currentGenTime = null;
+
+  // ── Session persistence ──────────────────────────────────────────
+
+  async function saveSession() {
+    const lastSession = {
+      profile: currentProfile,
+      message: currentMessage,
+      genTime: currentGenTime,
+      goal: selectGoal.value,
+      language: selectLang.value,
+      tone: inputTone.value || "",
+      savedAt: Date.now(),
+    };
+    try {
+      await chrome.storage.local.set({ lastSession });
+    } catch (e) {
+      // Ignore storage errors — non-critical
+    }
+  }
+
+  async function loadSession() {
+    try {
+      const data = await chrome.storage.local.get("lastSession");
+      return data.lastSession || null;
+    } catch {
+      return null;
+    }
+  }
 
   // ── UI Helpers ───────────────────────────────────────────────────
 
@@ -180,6 +210,11 @@
       showProfile(currentProfile);
       setStatus("Profil pobrany", "success");
       btnGenerate.disabled = false;
+      // Reset previous message — new profile = new context
+      currentMessage = null;
+      currentGenTime = null;
+      resultArea.classList.add("hidden");
+      saveSession();
     } catch (err) {
       showError(err.message);
       currentProfile = null;
@@ -208,8 +243,11 @@
         },
       });
 
+      currentMessage = result.message;
+      currentGenTime = result.generation_time_s;
       showResult(result.message, result.generation_time_s);
       setStatus("Wiadomość gotowa", "success");
+      saveSession();
     } catch (err) {
       showError(err.message);
     } finally {
@@ -253,6 +291,13 @@
     viewMain.classList.remove("hidden");
   });
 
+  const btnOpenOptions = $("#btn-open-options");
+  if (btnOpenOptions) {
+    btnOpenOptions.addEventListener("click", () => {
+      chrome.runtime.openOptionsPage();
+    });
+  }
+
   btnSaveSettings.addEventListener("click", async () => {
     const settings = {
       apiUrl: setApiUrl.value.trim(),
@@ -271,15 +316,47 @@
     }
   });
 
+  // Persist user's selections as they change
+  selectGoal.addEventListener("change", saveSession);
+  selectLang.addEventListener("change", saveSession);
+  inputTone.addEventListener("input", saveSession);
+  // Persist edits to the generated message so they survive popup close
+  resultText.addEventListener("input", () => {
+    currentMessage = resultText.value;
+    saveSession();
+  });
+
   // ── Init ─────────────────────────────────────────────────────────
 
   (async () => {
+    // Apply user defaults first
     try {
       const settings = await sendToBackground({ action: "getSettings" });
       if (settings.defaultGoal) selectGoal.value = settings.defaultGoal;
       if (settings.defaultLanguage) selectLang.value = settings.defaultLanguage;
     } catch {
       // Fresh install, defaults are fine
+    }
+
+    // Then overlay last session state (takes precedence)
+    const last = await loadSession();
+    if (!last) return;
+
+    if (last.goal) selectGoal.value = last.goal;
+    if (last.language) selectLang.value = last.language;
+    if (typeof last.tone === "string") inputTone.value = last.tone;
+
+    if (last.profile) {
+      currentProfile = last.profile;
+      showProfile(currentProfile);
+      btnGenerate.disabled = false;
+      setStatus("Ostatnio pobrany profil", "success");
+    }
+
+    if (last.message) {
+      currentMessage = last.message;
+      currentGenTime = last.genTime;
+      showResult(last.message, last.genTime || 0);
     }
   })();
 })();

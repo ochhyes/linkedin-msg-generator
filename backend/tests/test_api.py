@@ -316,3 +316,171 @@ class TestPromptBuilder:
         assert "Doradca Finansowy" in prompt
         # No "O mnie" section since it's empty
         assert "O mnie:" not in prompt
+
+
+# ── Personalization (few-shot, sender style, custom overrides) ────────
+
+class TestPersonalization:
+    """Few-shot examples, sender style sample, custom antipatterns & system prompt."""
+
+    def _base_req(self, **overrides):
+        from models import GenerateMessageRequest, LinkedInProfile
+        payload = {
+            "profile": LinkedInProfile(**PROFILE_FULL_PL),
+            "goal": "recruitment",
+            "language": "pl",
+        }
+        payload.update(overrides)
+        return GenerateMessageRequest(**payload)
+
+    def test_build_prompt_uses_default_examples_when_no_custom(self):
+        """No custom_examples provided -> default OVB/IT examples should appear."""
+        from services.ai_service import build_prompt, GOAL_PROMPTS
+
+        req = self._base_req()
+        prompt = build_prompt(req)
+        default_good = GOAL_PROMPTS["recruitment"]["examples_good"]
+        # At least a distinctive fragment of each default good example should be in prompt
+        assert default_good[0]["message"][:30] in prompt
+        assert default_good[1]["message"][:30] in prompt
+        assert "PRZYKŁADY DOBRE" in prompt
+        assert "PRZYKŁAD ZŁY" in prompt
+
+    def test_build_prompt_overrides_examples_with_custom(self):
+        """custom_examples for a goal -> defaults for that goal are replaced."""
+        from services.ai_service import build_prompt, GOAL_PROMPTS
+
+        req = self._base_req(custom_examples={
+            "recruitment": {
+                "examples_good": [{
+                    "profile": "Unikalny profil CUSTOM_PROFILE_MARKER",
+                    "message": "Unikalna wiadomość CUSTOM_MESSAGE_MARKER",
+                }],
+                "example_bad": {
+                    "message": "Zła wiadomość CUSTOM_BAD_MARKER",
+                    "why": "Powód CUSTOM_WHY_MARKER",
+                },
+            }
+        })
+        prompt = build_prompt(req)
+        assert "CUSTOM_PROFILE_MARKER" in prompt
+        assert "CUSTOM_MESSAGE_MARKER" in prompt
+        assert "CUSTOM_BAD_MARKER" in prompt
+        assert "CUSTOM_WHY_MARKER" in prompt
+        # Default recruitment example messages should NOT appear
+        default_first_msg = GOAL_PROMPTS["recruitment"]["examples_good"][0]["message"][:40]
+        assert default_first_msg not in prompt
+
+    def test_build_prompt_includes_sender_style_sample_when_provided(self):
+        from services.ai_service import build_prompt
+
+        style = "Hej, lecę krótko. Bez ściemy. Mam jedno pytanie i znikam."
+        req = self._base_req(sender_style_sample=style)
+        prompt = build_prompt(req)
+        assert "PRÓBKA STYLU NADAWCY" in prompt
+        assert style in prompt
+
+    def test_build_prompt_skips_sender_style_block_when_missing(self):
+        from services.ai_service import build_prompt
+
+        req = self._base_req()  # no sender_style_sample
+        prompt = build_prompt(req)
+        assert "PRÓBKA STYLU NADAWCY" not in prompt
+
+    def test_custom_antipatterns_appended_not_replaced(self):
+        """custom_antipatterns -> default patterns must still be present."""
+        from services.ai_service import build_prompt, DEFAULT_ANTIPATTERNS
+
+        req = self._base_req(custom_antipatterns=[
+            "Nie używaj słowa 'synergy'",
+            "Zakaz słowa 'disruption'",
+        ])
+        prompt = build_prompt(req)
+        # Custom ones present
+        assert "synergy" in prompt
+        assert "disruption" in prompt
+        # A distinctive fragment from default antipatterns still present
+        assert "Twoje doświadczenie jest imponujące" in prompt
+        assert DEFAULT_ANTIPATTERNS[0] in prompt
+
+    def test_system_prompt_override_passed_to_api_call(self):
+        """custom_system_prompt must be forwarded to call_claude via generate_message."""
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+        from services.ai_service import generate_message
+
+        req = self._base_req(custom_system_prompt="Jesteś poetą-copywriterem XYZ_MARKER")
+
+        with patch("services.ai_service.call_claude", new_callable=AsyncMock) as mock:
+            mock.return_value = "Fake message"
+            asyncio.get_event_loop().run_until_complete(generate_message(req)) \
+                if False else asyncio.run(generate_message(req))
+            # First positional arg is prompt, system_prompt is kwarg
+            _, kwargs = mock.call_args
+            assert kwargs.get("system_prompt") == "Jesteś poetą-copywriterem XYZ_MARKER"
+
+    def test_request_validation_rejects_oversized_sender_sample(self):
+        """sender_style_sample > 1000 chars -> 422."""
+        too_long = "x" * 1500
+        resp = client.post(
+            "/api/generate-message",
+            headers=HEADERS,
+            json={
+                "profile": PROFILE_FULL_PL,
+                "goal": "recruitment",
+                "sender_style_sample": too_long,
+            },
+        )
+        assert resp.status_code == 422
+
+    def test_request_validation_rejects_unknown_goal_in_custom_examples(self):
+        """custom_examples with unknown goal key -> 422."""
+        resp = client.post(
+            "/api/generate-message",
+            headers=HEADERS,
+            json={
+                "profile": PROFILE_FULL_PL,
+                "goal": "recruitment",
+                "custom_examples": {
+                    "xxx_not_a_goal": {
+                        "examples_good": [{"profile": "a", "message": "b"}],
+                    }
+                },
+            },
+        )
+        assert resp.status_code == 422
+        assert "Nieznane" in resp.json()["detail"][0]["msg"] or \
+               "xxx_not_a_goal" in str(resp.json())
+
+
+class TestSettingsDefaultsEndpoint:
+    def test_requires_auth(self):
+        resp = client.get("/api/settings/defaults")
+        assert resp.status_code == 401
+
+    def test_returns_goal_prompts_structure(self):
+        resp = client.get("/api/settings/defaults", headers=HEADERS)
+        assert resp.status_code == 200
+        data = resp.json()
+
+        assert "goal_prompts" in data
+        assert "default_antipatterns" in data
+        assert "default_system_prompt" in data
+        assert "tone_defaults" in data
+
+        # All 4 goals present
+        for goal in ["recruitment", "networking", "sales", "followup"]:
+            assert goal in data["goal_prompts"]
+            gp = data["goal_prompts"][goal]
+            assert "do" in gp
+            assert "nie_rob" in gp
+            assert "examples_good" in gp
+            assert len(gp["examples_good"]) >= 1
+            assert "example_bad" in gp
+            assert "message" in gp["example_bad"]
+            assert "why" in gp["example_bad"]
+
+        # Sanity on defaults
+        assert len(data["default_antipatterns"]) >= 5
+        assert isinstance(data["default_system_prompt"], str)
+        assert len(data["default_system_prompt"]) > 50

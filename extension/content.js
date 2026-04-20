@@ -15,7 +15,7 @@
 
   const CONFIG = {
     // Max time to wait for primary elements (name, headline)
-    PRIMARY_TIMEOUT_MS: 8000,
+    PRIMARY_TIMEOUT_MS: 15000,
     // Extra wait for lazy sections (experience, skills, about)
     LAZY_TIMEOUT_MS: 4000,
     // Polling interval when MutationObserver doesn't fire
@@ -131,12 +131,20 @@
   // ── Profile Extractors ───────────────────────────────────────────
 
   const NAME_SELECTORS = [
+    // Known historical class names (LinkedIn rotates these)
     "h1.text-heading-xlarge",
     "h1.inline.t-24",
+    "h1.top-card-layout__title",
+    // Container-scoped
     ".pv-top-card h1",
     ".pv-text-details__left-panel h1",
     "section.pv-top-card h1",
     ".scaffold-layout__main h1",
+    ".ph5 h1",
+    "[data-view-name='profile-card'] h1",
+    // Generic fallback: any h1 under main content
+    "main h1",
+    "main section h1",
   ];
 
   const HEADLINE_SELECTORS = [
@@ -149,7 +157,29 @@
   ];
 
   function extractName() {
-    return queryText(NAME_SELECTORS);
+    const fromSelectors = queryText(NAME_SELECTORS);
+    if (fromSelectors) return fromSelectors;
+    // Fallback — any h1 under main content with plausible name text
+    const h = findAnyLikelyNameHeading();
+    return h ? h.textContent.trim() : null;
+  }
+
+  /**
+   * Last-resort name finder: scans all h1 on the page, picks the first one
+   * whose text looks like a name (short, no typical UI labels, 2+ words).
+   * Used when brand-specific selectors all fail (LinkedIn DOM change).
+   */
+  function findAnyLikelyNameHeading() {
+    const UI_NOISE = /^(home|profil|wiadomo|messag|search|szukaj|notification|powiadom|menu|nav)/i;
+    const h1s = document.querySelectorAll("main h1, .scaffold-layout h1, h1");
+    for (const h of h1s) {
+      const t = (h.textContent || "").trim();
+      if (!t) continue;
+      if (t.length < 3 || t.length > 120) continue;
+      if (UI_NOISE.test(t)) continue;
+      return h;
+    }
+    return null;
   }
 
   function extractHeadline() {
@@ -392,14 +422,33 @@
     const nameEl = await waitForElement(NAME_SELECTORS, CONFIG.PRIMARY_TIMEOUT_MS);
 
     if (!nameEl) {
-      return {
-        success: false,
-        profile: null,
-        error: "Timeout: LinkedIn nie wyrenderował profilu w ciągu "
-             + (CONFIG.PRIMARY_TIMEOUT_MS / 1000) + "s. "
-             + "Odśwież stronę i spróbuj ponownie.",
-        timestamp: new Date().toISOString(),
-      };
+      // Last-resort fallback: any h1 on the page with plausible name-like text
+      const lastResort = findAnyLikelyNameHeading();
+      if (lastResort) {
+        console.warn("[LinkedIn MSG] Primary selectors failed; using fallback h1:", lastResort);
+      } else {
+        // Diagnostic dump for the user's DevTools console
+        console.warn("[LinkedIn MSG] Scrape timeout. Diagnostic:", {
+          url: window.location.href,
+          readyState: document.readyState,
+          title: document.title,
+          h1Count: document.querySelectorAll("h1").length,
+          h1Texts: Array.from(document.querySelectorAll("h1")).map(h => h.textContent.trim().slice(0, 80)),
+          hasTopCard: !!document.querySelector(".pv-top-card, section.pv-top-card, .ph5"),
+          hasMain: !!document.querySelector("main"),
+          hasExperience: !!document.querySelector("#experience"),
+          hasAbout: !!document.querySelector("#about"),
+        });
+        return {
+          success: false,
+          profile: null,
+          error: "Timeout: LinkedIn nie wyrenderował profilu w "
+               + (CONFIG.PRIMARY_TIMEOUT_MS / 1000) + "s. "
+               + "Sprawdź czy jesteś zalogowany i na stronie profilu (linkedin.com/in/...). "
+               + "Otwórz DevTools (F12) → Console i zobacz diagnostykę [LinkedIn MSG].",
+          timestamp: new Date().toISOString(),
+        };
+      }
     }
 
     // Small grace period — headline often renders 100-300ms after name

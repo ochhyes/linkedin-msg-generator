@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Personalizacja stylu AI — LinkedIn MSG</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="page">
+
+    <header class="hdr">
+      <h1>Personalizacja AI</h1>
+      <p class="lede">Im więcej powiesz, tym lepsze wiadomości. Wszystko jest opcjonalne. Puste pola = używane są ustawienia domyślne.</p>
+    </header>
+
+    <main>
+
+      <!-- 1. Sender style sample -->
+      <section class="block">
+        <h2>Próbka Twojego stylu</h2>
+        <p class="hint">Wklej 200–500 znaków swojego tekstu: email, post na LinkedIn, wiadomość którą wysłałeś. AI nauczy się rytmu i słownictwa. Puste = domyślny styl.</p>
+        <textarea id="sender-style-sample" rows="6" placeholder="Wklej tu kawałek swojego tekstu..."></textarea>
+        <div class="counter-row">
+          <span class="counter" id="style-counter">0 / 1000 znaków</span>
+          <span class="counter-warn hidden" id="style-warn">Przekroczyłeś limit 1000 znaków</span>
+        </div>
+      </section>
+
+      <!-- 2. Few-shot examples per goal -->
+      <section class="block">
+        <h2>Przykłady wiadomości (per cel)</h2>
+        <p class="hint">Defaultowe przykłady widzisz jako jasne pola (placeholder). Edytuj żeby je nadpisać dla tego celu. Możesz mieć 1–5 przykładów dobrych i jeden zły.</p>
+
+        <div class="tabs" role="tablist">
+          <button class="tab active" data-goal="recruitment" role="tab">Rekrutacja</button>
+          <button class="tab" data-goal="networking" role="tab">Networking</button>
+          <button class="tab" data-goal="sales" role="tab">Sprzedaż</button>
+          <button class="tab" data-goal="followup" role="tab">Follow-up</button>
+        </div>
+
+        <div class="tab-panel" id="examples-panel">
+          <!-- Rendered dynamically by options.js -->
+        </div>
+
+        <div class="panel-actions">
+          <button class="btn btn-ghost" id="btn-reset-goal">Przywróć domyślne dla tego celu</button>
+        </div>
+      </section>
+
+      <!-- 3. Anty-wzorce (collapsible) -->
+      <section class="block">
+        <h2 class="collapsible-head" data-target="antipatterns-body">
+          <span>Anty-wzorce</span>
+          <span class="chevron">▸</span>
+        </h2>
+        <div class="collapsible-body hidden" id="antipatterns-body">
+          <p class="hint">Wbudowane wzorce są zawsze aktywne, tylko pokazujemy je tu do wglądu. Możesz dodać własne (zostaną doklejone, nie zastąpią).</p>
+
+          <h3>Wbudowane (tylko do odczytu)</h3>
+          <ul class="antipatterns-list readonly" id="default-antipatterns">
+            <li class="muted">Wczytywanie...</li>
+          </ul>
+
+          <h3>Twoje dodatkowe</h3>
+          <ul class="antipatterns-list editable" id="custom-antipatterns"></ul>
+          <button class="btn btn-ghost" id="btn-add-antipattern">+ Dodaj anty-wzorzec</button>
+        </div>
+      </section>
+
+      <!-- 4. Advanced (collapsible) -->
+      <section class="block">
+        <h2 class="collapsible-head" data-target="advanced-body">
+          <span>Zaawansowane</span>
+          <span class="chevron">▸</span>
+        </h2>
+        <div class="collapsible-body hidden" id="advanced-body">
+          <p class="hint">Tylko jeśli masz naprawdę specyficzny głos. W 95% przypadków zostaw puste - domyślny system prompt jest dobrze wypieszczony.</p>
+
+          <label for="custom-system-prompt">Własny system prompt</label>
+          <textarea id="custom-system-prompt" rows="8" placeholder="Zostaw puste żeby użyć domyślnego..."></textarea>
+          <div class="counter-row">
+            <span class="counter" id="sysprompt-counter">0 / 2000 znaków</span>
+          </div>
+          <button class="btn btn-ghost" id="btn-show-default-sysprompt">Pokaż domyślny system prompt</button>
+          <pre class="default-preview hidden" id="default-sysprompt-preview"></pre>
+        </div>
+      </section>
+
+    </main>
+
+    <div class="sticky-actions">
+      <div class="actions-inner">
+        <button class="btn btn-primary" id="btn-save">Zapisz</button>
+        <button class="btn btn-danger-ghost" id="btn-reset-all">Przywróć wszystkie domyślne</button>
+      </div>
+    </div>
+
+    <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
+
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

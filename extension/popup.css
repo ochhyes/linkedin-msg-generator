@@ -132,6 +132,27 @@ body {
   font-style: italic;
 }
 
+.settings__footer {
+  margin-top: 12px;
+  padding: 12px 16px 0 16px;
+  border-top: 1px solid var(--border);
+  text-align: center;
+}
+.btn-link {
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  font-family: var(--font);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 6px 8px;
+  text-decoration: none;
+}
+.btn-link:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+
 /* ── Controls ───────────────────────────────────────────────────── */
 .controls {
   padding: 8px 16px;
