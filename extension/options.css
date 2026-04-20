@@ -60,6 +60,13 @@ body {
   padding: 20px;
   margin-bottom: 20px;
 }
+.block-primary {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-bg);
+}
+.block-primary h2 {
+  color: var(--accent);
+}
 .block h2 {
   font-size: 16px;
   font-weight: 600;

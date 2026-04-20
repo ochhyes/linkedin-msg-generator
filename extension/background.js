@@ -52,6 +52,10 @@ function personalizationToBody(us) {
   if (!us) return {};
   const out = {};
 
+  if (us.senderOffer && us.senderOffer.trim()) {
+    out.sender_offer = us.senderOffer.trim();
+  }
+
   if (us.senderStyleSample && us.senderStyleSample.trim()) {
     out.sender_style_sample = us.senderStyleSample.trim();
   }

@@ -26,6 +26,7 @@
 
   function emptySettings() {
     return {
+      senderOffer: "",
       senderStyleSample: "",
       customExamples: {},          // { goal: { examplesGood: [...], exampleBad: {...} } }
       customAntipatterns: [],
@@ -36,6 +37,8 @@
   // ── DOM refs ───────────────────────────────────────────────────────
   const $ = (s) => document.querySelector(s);
   const el = {
+    senderOffer: $("#sender-offer"),
+    offerCounter: $("#offer-counter"),
     styleSample: $("#sender-style-sample"),
     styleCounter: $("#style-counter"),
     styleWarn: $("#style-warn"),
@@ -320,6 +323,10 @@
 
   async function save() {
     // Validation
+    if (el.senderOffer.value.length > 300) {
+      toast("Pole 'Co oferujesz' przekracza 300 znaków.", "error");
+      return;
+    }
     if (el.styleSample.value.length > 1000) {
       toast("Próbka stylu przekracza 1000 znaków.", "error");
       return;
@@ -329,7 +336,18 @@
       return;
     }
 
+    // Warn if sender_offer empty — recommended, not required
+    if (!el.senderOffer.value.trim()) {
+      const proceed = confirm(
+        "Bez pola 'Co oferujesz' AI może generować wiadomości zbieżne z profilem "
+        + "odbiorcy zamiast z Twoją ofertą (np. do UX-a napisze 'szukam UX-a').\n\n"
+        + "Zapisać mimo to?"
+      );
+      if (!proceed) return;
+    }
+
     // Collect current UI state
+    userSettings.senderOffer = el.senderOffer.value.trim();
     userSettings.senderStyleSample = el.styleSample.value.trim();
     userSettings.customSystemPrompt = el.sysPrompt.value.trim();
     userSettings.customAntipatterns = userSettings.customAntipatterns
@@ -366,8 +384,10 @@
   }
 
   function applyToUI() {
+    el.senderOffer.value = userSettings.senderOffer || "";
     el.styleSample.value = userSettings.senderStyleSample || "";
     el.sysPrompt.value = userSettings.customSystemPrompt || "";
+    updateCounter(el.senderOffer, el.offerCounter, 300);
     updateCounter(el.styleSample, el.styleCounter, 1000, el.styleWarn);
     updateCounter(el.sysPrompt, el.sysPromptCounter, 2000);
     renderCustomAntipatterns();
@@ -423,6 +443,9 @@
     });
 
     // Counters
+    el.senderOffer.addEventListener("input", () =>
+      updateCounter(el.senderOffer, el.offerCounter, 300)
+    );
     el.styleSample.addEventListener("input", () =>
       updateCounter(el.styleSample, el.styleCounter, 1000, el.styleWarn)
     );

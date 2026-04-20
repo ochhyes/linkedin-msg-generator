@@ -86,6 +86,14 @@ class GenerateMessageRequest(BaseModel):
         None,
         description="Kontekst nadawcy (kim jestem, co robię), opcjonalny.",
     )
+    sender_offer: Optional[str] = Field(
+        None,
+        max_length=300,
+        description=(
+            "Jednozdaniowe streszczenie: co nadawca oferuje odbiorcy. "
+            "Cytowane dosłownie w prompcie."
+        ),
+    )
 
     # Personalization overrides (all optional, backward compatible)
     sender_style_sample: Optional[str] = Field(

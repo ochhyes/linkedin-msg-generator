@@ -433,6 +433,35 @@ class TestPersonalization:
         )
         assert resp.status_code == 422
 
+    def test_recruitment_prompt_includes_sender_offer_verbatim(self):
+        """Regression: sender_offer must appear verbatim in prompt with TWOJA OFERTA header."""
+        from services.ai_service import build_prompt
+
+        offer = "OVB, rekrutacja doradców finansowych w Krakowie, model prowizyjny"
+        req = self._base_req(goal="recruitment", sender_offer=offer)
+        prompt = build_prompt(req)
+        assert "TWOJA OFERTA" in prompt
+        assert offer in prompt
+
+    def test_bridge_rule_active_in_system_prompt(self):
+        """System prompt must carry the bridge-not-mirror rule (rule #6)."""
+        from services.ai_service import DEFAULT_SYSTEM_PROMPT
+        assert "MOST" in DEFAULT_SYSTEM_PROMPT
+        assert "LUSTRO" in DEFAULT_SYSTEM_PROMPT
+        assert "TWOJA OFERTA" in DEFAULT_SYSTEM_PROMPT
+
+    def test_prompt_skips_offer_block_when_missing(self):
+        """Without sender_offer the dedicated block must not appear in prompt.
+
+        Note: 'TWOJA OFERTA' alone shows up in the anti-pattern text (references
+        the block by name), so we check for the block-specific marker instead.
+        """
+        from services.ai_service import build_prompt
+
+        req = self._base_req()  # no sender_offer
+        prompt = build_prompt(req)
+        assert "to proponujesz odbiorcy" not in prompt
+
     def test_request_validation_rejects_unknown_goal_in_custom_examples(self):
         """custom_examples with unknown goal key -> 422."""
         resp = client.post(

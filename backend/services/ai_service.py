@@ -26,6 +26,11 @@ DEFAULT_ANTIPATTERNS = [
     '"W kontekście" / "w obliczu" / "w ramach" jako otwarcie zdania - język korporacyjny',
     "Emoji (zero) i wykrzykniki (maksymalnie jeden, najlepiej zero)",
     "Idealna struktura hook-oferta-CTA - każdy LinkedIn-owiec to czuje, użyj czegoś mniej schematycznego",
+    (
+        "Lustrzana oferta — proponowanie odbiorcy roli zbieżnej z jego obecnym profilem "
+        "(np. do UX-dizajnera: 'szukam UX-a'). To nie personalizacja, to odbicie. "
+        "Zawsze buduj most do TWOJA OFERTA, nawet jeśli wymaga to dłuższego wytłumaczenia."
+    ),
 ]
 
 
@@ -62,7 +67,12 @@ DEFAULT_SYSTEM_PROMPT = (
     "2. Nie zaczynaj od komplementu profilu.\n"
     "3. Jedno CTA, konkretne (data, godzina, pytanie zamknięte).\n"
     "4. Nigdy emoji, nigdy długi myślnik.\n"
-    "5. Jeśli nie masz konkretu z profilu, powiedz to wprost, nie wymyślaj.\n\n"
+    "5. Jeśli nie masz konkretu z profilu, powiedz to wprost, nie wymyślaj.\n"
+    "6. Buduj MOST, nie LUSTRO. Profil odbiorcy = punkt startu. TWOJA OFERTA = cel.\n"
+    "   Jeśli odbiorca pracuje w X albo interesuje się X, a Ty oferujesz Y — pokaż\n"
+    "   dlaczego X jest dobrym punktem startu do Y. Nie proponuj odbiorcy X.\n"
+    "   Nigdy nie sugeruj mu roli zbieżnej z jego obecnym profilem, chyba że to\n"
+    "   jest dokładnie to, co jest w TWOJA OFERTA.\n\n"
     "Odpowiadasz TYLKO treścią wiadomości."
 )
 
@@ -87,41 +97,37 @@ GOAL_PROMPTS = {
         "examples_good": [
             {
                 "profile": (
-                    "Przemek, były manager w BNP Paribas (10 lat), teraz freelance konsultant "
-                    "biznesowy. Warszawa, kilka ostatnich postów o finansach osobistych "
-                    "przedsiębiorców."
+                    "Doradca klienta w banku, w 'o mnie' pisze o zainteresowaniu UX i "
+                    "projektowaniem skoncentrowanym na użytkowniku."
                 ),
                 "message": (
-                    "Przemek, widzę że z BNP poszedłeś w stronę freelance'u z naciskiem na "
-                    "finanse osobiste przedsiębiorców. W OVB szukam ludzi właśnie z takim "
-                    "nastawieniem, zamiast sprzedaży produktu, długofalowa robota z klientem "
-                    "nad jego bilansem. Rekrutujemy do Warszawy, model prowizyjny z sensowną "
-                    "rampą. Pogadamy 20 minut w przyszłym tygodniu?"
+                    "Emilia, doradztwo klienta + ciągotki do UX to ciekawa kombinacja. "
+                    "W doradztwie finansowym dokładnie to robimy — każda rozmowa zaczyna się "
+                    "od mapowania potrzeb konkretnego człowieka, bez gotowego skryptu. "
+                    "Buduję zespół w OVB w Krakowie, szukam ludzi z myśleniem projektowym, "
+                    "nie sprzedażowym. 20 minut w tym tygodniu?"
                 ),
             },
             {
-                "profile": (
-                    "Senior Python Dev, ex-Allegro (4 lata), teraz w fintech B2B od roku. "
-                    "Wystąpienia konferencyjne o scoringu kredytowym."
-                ),
+                "profile": "Trener personalny, 5 lat własnej działalności, buduje społeczność na IG.",
                 "message": (
-                    "Cześć, przeszedłeś z Allegro do fintechu B2B i widzę że wystąpowałeś na "
-                    "PyCon o scoringu. Budujemy zespół, który robi silnik scoringowy od zera, "
-                    "stack Python + Polars, żadnego legacy. Jest sens pogadać? Mam 20 minut "
-                    "we wtorek lub czwartek."
+                    "Widzę że od pięciu lat prowadzisz własny biznes treningowy i budujesz "
+                    "społeczność. W doradztwie finansowym to te same kompetencje — relacja, "
+                    "zaufanie, długofalowa praca z klientem. Rekrutuję do OVB ludzi, którzy "
+                    "umieją pracować na swoim i chcą drugi filar przychodu. Pogadamy w środę?"
                 ),
             },
         ],
         "example_bad": {
             "message": (
-                "Cześć, Twój profil przykuł moją uwagę. Twoje doświadczenie jest imponujące. "
-                "W naszej firmie poszukujemy osoby z Twoim backgroundem. Czy byłbyś otwarty "
-                "na krótką rozmowę?"
+                "Cześć, widzę że interesujesz się UX. Szukam właśnie UX-dizajnera do "
+                "naszego zespołu. Czy byłbyś otwarty na krótką rozmowę?"
             ),
             "why": (
-                "Cztery puste frazy z rzędu, żadnego konkretu z profilu. "
-                "Taką wiadomość codziennie dostaje dwudziestu innych programistów z tym samym "
-                "headline. Zero sygnału że nadawca cokolwiek przeczytał."
+                "Lustro zamiast mostu. Profil mówi 'UX', wiadomość proponuje 'UX' - żadnej "
+                "wartości dodanej, żadnego powodu dlaczego akurat Ty. Jeśli nadawca NIE "
+                "rekrutuje UX-ów, to w ogóle fałszywa oferta. Personalizacja = pokaż "
+                "dlaczego profil odbiorcy pasuje do TWOJEJ oferty, nie odbijaj mu jego."
             ),
         },
     },
@@ -384,6 +390,13 @@ def build_prompt(req: GenerateMessageRequest) -> str:
 
     profile_block = _build_profile_block(req.profile)
 
+    offer_block = ""
+    if req.sender_offer:
+        offer_block = (
+            "\nTWOJA OFERTA (to proponujesz odbiorcy — cytat dosłowny):\n"
+            f"{req.sender_offer}\n"
+        )
+
     sender_block = ""
     if req.sender_context:
         sender_block = f"\nKONTEKST NADAWCY:\n{req.sender_context}\n"
@@ -432,7 +445,7 @@ LUDZKA NIEDOSKONAŁOŚĆ:
 
 PROFIL ODBIORCY:
 {profile_block}
-{sender_block}{style_sample_block}
+{offer_block}{sender_block}{style_sample_block}
 Odpowiedz TYLKO treścią wiadomości, bez komentarzy, cudzysłowów ani wyjaśnień."""
 
     return prompt
