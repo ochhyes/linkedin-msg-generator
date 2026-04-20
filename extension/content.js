@@ -427,25 +427,53 @@
       if (lastResort) {
         console.warn("[LinkedIn MSG] Primary selectors failed; using fallback h1:", lastResort);
       } else {
-        // Diagnostic dump for the user's DevTools console
-        console.warn("[LinkedIn MSG] Scrape timeout. Diagnostic:", {
+        // Build diagnostic snapshot
+        const h1Count = document.querySelectorAll("h1").length;
+        const hasTopCard = !!document.querySelector(".pv-top-card, section.pv-top-card, .ph5");
+        const hasExperience = !!document.querySelector("#experience");
+        const hasAbout = !!document.querySelector("#about");
+        const hasAuthGate = !!document.querySelector(
+          ".authwall, .auth-wall, [data-tracking-control-name*='public_profile'], " +
+          ".join-form, .sign-in-form, .cold-join-form"
+        );
+
+        const diagnostic = {
           url: window.location.href,
           readyState: document.readyState,
           title: document.title,
-          h1Count: document.querySelectorAll("h1").length,
+          h1Count,
           h1Texts: Array.from(document.querySelectorAll("h1")).map(h => h.textContent.trim().slice(0, 80)),
-          hasTopCard: !!document.querySelector(".pv-top-card, section.pv-top-card, .ph5"),
+          hasTopCard,
           hasMain: !!document.querySelector("main"),
-          hasExperience: !!document.querySelector("#experience"),
-          hasAbout: !!document.querySelector("#about"),
-        });
+          hasExperience,
+          hasAbout,
+          hasAuthGate,
+        };
+        console.warn("[LinkedIn MSG] Scrape timeout. Diagnostic:", diagnostic);
+
+        // Detect specific failure modes for a better user-facing message
+        const looksLikeAuthwall =
+          h1Count === 0 && !hasTopCard && !hasExperience && !hasAbout;
+
+        let message;
+        if (hasAuthGate || looksLikeAuthwall) {
+          message =
+            "LinkedIn nie pokazuje tego profilu. Najczęstsze przyczyny:\n"
+            + "1) Nie jesteś zalogowany — wejdź na linkedin.com, zaloguj się i odśwież tę stronę.\n"
+            + "2) LinkedIn zablokował Cię tymczasowo (zbyt dużo wejść na profile). Poczekaj 15-30 min.\n"
+            + "3) Profil jest widoczny tylko dla kontaktów, z którymi masz koneksję.";
+        } else {
+          message =
+            "Timeout: LinkedIn nie wyrenderował profilu w "
+            + (CONFIG.PRIMARY_TIMEOUT_MS / 1000) + "s. "
+            + "Odśwież stronę i spróbuj ponownie. Jeśli dalej nie działa, "
+            + "otwórz DevTools (F12) → Console i zobacz diagnostykę [LinkedIn MSG].";
+        }
+
         return {
           success: false,
           profile: null,
-          error: "Timeout: LinkedIn nie wyrenderował profilu w "
-               + (CONFIG.PRIMARY_TIMEOUT_MS / 1000) + "s. "
-               + "Sprawdź czy jesteś zalogowany i na stronie profilu (linkedin.com/in/...). "
-               + "Otwórz DevTools (F12) → Console i zobacz diagnostykę [LinkedIn MSG].",
+          error: message,
           timestamp: new Date().toISOString(),
         };
       }
