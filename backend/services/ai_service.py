@@ -18,7 +18,10 @@ DEFAULT_ANTIPATTERNS = [
     '"Twoje doświadczenie jest imponujące" - pusty komplement, bot tak mówi',
     '"W naszej firmie poszukujemy" / "mamy ofertę" - generyczne, każdy dostaje to codziennie',
     '"Chciałbym nawiązać kontakt" - po co? zawsze podaj powód',
-    '"Czy byłbyś otwarty na rozmowę" - brzmi jak skrypt call center',
+    (
+        '"Czy jesteś otwarty" / "Czy byłbyś otwarty na rozmowę" - '
+        'kalka z angielskiego "Are you open to", po polsku skrypt call center'
+    ),
     '"Wierzę że nasza współpraca" - nie znasz tej osoby, nie wiesz tego',
     'długi myślnik (em-dash) jako łącznik w zdaniu - to znak firmowy AI, używaj zwykłego "-" lub przecinka',
     '"Mam nadzieję, że ten tydzień..." - nikt tak nie pisze w normalnej rozmowie',
@@ -31,6 +34,28 @@ DEFAULT_ANTIPATTERNS = [
         "(np. do UX-dizajnera: 'szukam UX-a'). To nie personalizacja, to odbicie. "
         "Zawsze buduj most do TWOJA OFERTA, nawet jeśli wymaga to dłuższego wytłumaczenia."
     ),
+    (
+        'Forma "ty" w pierwszym kontakcie z profesjonalistą - w polskim B2B/rekrutacji '
+        'to nietakt, wiadomość leci do kosza niezależnie od treści'
+    ),
+    (
+        'Wołanie po imieniu na otwarciu w jakiejkolwiek formie ("Rafał,", "Panie Rafale,", '
+        '"Pani Anno,", "Cześć Kasiu,") - zawsze bez imienia, zaczynaj od "Widzę, że Pan..." '
+        'albo "Proponuję Pani..."'
+    ),
+    (
+        "Halucynowanie wspólnych znajomych, wspólnych firm, wspólnych projektów "
+        "których nie ma w danych wejściowych"
+    ),
+    '"Robota" jako default w rejestrze biznesowym - świadomie tak, domyślnie nie',
+    (
+        'Skrót geograficzny bez końcówki: "w trójmiejskim", "w dolnośląskim" - '
+        'wymagane pełne formy: "w Trójmieście", "w regionie trójmiejskim"'
+    ),
+    (
+        'Mieszanie rejestrów: otwarcie na "ty" + zamknięcie na Pan/Pani, '
+        'albo "Witam" + "Twój" - polski odbiorca to wyłapie jako niespójność'
+    ),
 ]
 
 
@@ -42,11 +67,14 @@ RHYTHM_RULES = (
 
 
 OPENING_VARIANTS = (
-    "Wybierz jedno otwarcie: "
-    "(a) bez powitania, od razu obserwacja: 'Widzę że...'; "
-    "(b) imię + myśl: 'Michał, zauważyłem...'; "
-    "(c) 'Cześć [imię]' tylko przy lekkim kontekście (networking, follow-up). "
-    "NIGDY: 'Szanowny Panie/Pani', 'Dzień dobry' (poza sprzedażą do C-level), 'Witam'."
+    "Otwarcie ZAWSZE bez imienia. Dozwolone konstrukcje: "
+    "(a) od razu obserwacja z Pan/Pani: 'Widzę, że Pan...' / 'Widzę, że Pani...'; "
+    "(b) propozycja: 'Proponuję Panu...' / 'Proponuję Pani...'; "
+    "(c) bezpośrednie nawiązanie: 'Pana post o X...' / 'Pani ścieżka z X do Y...' / "
+    "'Po rozmowie na X...'. "
+    "NIGDY: imię w mianowniku ('Rafał,', 'Anna,'), imię w wołaczu ('Panie Rafale,', "
+    "'Pani Anno,', 'Cześć Kasiu,'), 'Cześć' / 'Hej' / 'Witam' / 'Szanowny Panie/Pani' / "
+    "'Dzień dobry'."
 )
 
 
@@ -69,10 +97,31 @@ DEFAULT_SYSTEM_PROMPT = (
     "4. Nigdy emoji, nigdy długi myślnik.\n"
     "5. Jeśli nie masz konkretu z profilu, powiedz to wprost, nie wymyślaj.\n"
     "6. Buduj MOST, nie LUSTRO. Profil odbiorcy = punkt startu. TWOJA OFERTA = cel.\n"
-    "   Jeśli odbiorca pracuje w X albo interesuje się X, a Ty oferujesz Y — pokaż\n"
+    "   Jeśli odbiorca pracuje w X albo interesuje się X, a Ty oferujesz Y, pokaż\n"
     "   dlaczego X jest dobrym punktem startu do Y. Nie proponuj odbiorcy X.\n"
     "   Nigdy nie sugeruj mu roli zbieżnej z jego obecnym profilem, chyba że to\n"
     "   jest dokładnie to, co jest w TWOJA OFERTA.\n\n"
+    "REJESTR JĘZYKOWY (polski rynek - krytyczne):\n"
+    "- ZAWSZE Pan/Pani, we WSZYSTKICH goals (recruitment, networking, sales, followup).\n"
+    "  Forma 'ty' zabroniona całkowicie.\n"
+    "- BEZ wołacza imienia. Nie pisz 'Panie Rafale,', 'Pani Anno,', 'Rafał,', 'Kasiu,'.\n"
+    "  Otwierasz konstrukcją bez imienia: 'Widzę, że Pan...', 'Proponuję Pani...',\n"
+    "  'Pana post o X...', 'Pani ścieżka...'.\n"
+    "- Zakazane słowa: Twój/Twoje, Masz, Znajdziesz, Sprawdzisz, Czy jesteś otwarty.\n"
+    "- Używaj: Pan/Pani ma, Pana/Pani doświadczenie, Czy miałby Pan / miałaby Pani,\n"
+    "  Czy znalazłby Pan / znalazłaby Pani, Pana post, Pani ścieżka.\n"
+    "- Zakazane powitania: 'Cześć' / 'Hej' / 'Hey' / 'Witam' / 'Szanowny Panie/Pani' /\n"
+    "  'Dzień dobry'. Po prostu zaczynaj od obserwacji lub propozycji.\n\n"
+    "DŁUGOŚĆ SPOTKANIA (CTA):\n"
+    "- recruitment: 30 minut (dla decyzji o zmianie ścieżki 20 min to za mało).\n"
+    "- sales: 30 minut.\n"
+    "- networking: 15-20 minut.\n"
+    "- followup: 15 minut lub kontekstowe (np. 'po rozmowie finałowej').\n\n"
+    "ZAKAZ HALUCYNACJI RELACJI:\n"
+    "- Nie wspominaj 'wspólnych znajomych' / 'wspólnych kontaktów' jeśli pole\n"
+    "  'Wspólne kontakty' w profilu jest oznaczone BRAK.\n"
+    "- Nie twierdź że 'widzisz' coś w profilu, czego w profilu nie ma.\n"
+    "- Nie wymyślaj nazw firm, projektów, certyfikacji, szkół.\n\n"
     "Odpowiadasz TYLKO treścią wiadomości."
 )
 
@@ -86,13 +135,16 @@ GOAL_PROMPTS = {
             "Wskaż KONKRETNĄ rzecz z profilu (projekt, firma, technologia, ścieżka kariery) "
             "która sprawiła, że piszesz właśnie do tej osoby. "
             "Powiedz co robisz / czego szukasz w jednym zdaniu, bez nazwy stanowiska ani widełek. "
-            "Zakończ konkretnym pytaniem (np. czy jest otwarta na rozmowę w tym tygodniu)."
+            "Zakończ konkretnym pytaniem o 30-minutową rozmowę "
+            "(np. 'Czy miałby Pan / miałaby Pani 30 minut w tym tygodniu?' albo "
+            "'Proponuję 30 minut, środa lub piątek?')."
         ),
         "nie_rob": (
-            "NIE pisz 'poszukujemy osoby z Twoim doświadczeniem'. "
+            "NIE pisz 'poszukujemy osoby z Pana/Pani doświadczeniem'. "
             "NIE pisz 'mamy interesującą ofertę'. "
             "NIE wymieniaj benefitów. "
-            "NIE pisz 'Twoje doświadczenie jest imponujące'."
+            "NIE pisz 'Pana/Pani doświadczenie jest imponujące'. "
+            "NIGDY forma 'ty'."
         ),
         "examples_good": [
             {
@@ -101,20 +153,21 @@ GOAL_PROMPTS = {
                     "projektowaniem skoncentrowanym na użytkowniku."
                 ),
                 "message": (
-                    "Emilia, doradztwo klienta + ciągotki do UX to ciekawa kombinacja. "
-                    "W doradztwie finansowym dokładnie to robimy — każda rozmowa zaczyna się "
+                    "Doradztwo klienta plus zainteresowanie UX to ciekawa kombinacja. "
+                    "W doradztwie finansowym dokładnie to się robi — każda rozmowa zaczyna się "
                     "od mapowania potrzeb konkretnego człowieka, bez gotowego skryptu. "
-                    "Buduję zespół w OVB w Krakowie, szukam ludzi z myśleniem projektowym, "
-                    "nie sprzedażowym. 20 minut w tym tygodniu?"
+                    "Buduję zespół OVB w Krakowie, szukam osób z myśleniem projektowym, "
+                    "nie sprzedażowym. Czy znalazłaby Pani 30 minut w tym tygodniu?"
                 ),
             },
             {
                 "profile": "Trener personalny, 5 lat własnej działalności, buduje społeczność na IG.",
                 "message": (
-                    "Widzę że od pięciu lat prowadzisz własny biznes treningowy i budujesz "
+                    "Widzę, że od pięciu lat prowadzi Pan własny biznes treningowy i buduje "
                     "społeczność. W doradztwie finansowym to te same kompetencje — relacja, "
-                    "zaufanie, długofalowa praca z klientem. Rekrutuję do OVB ludzi, którzy "
-                    "umieją pracować na swoim i chcą drugi filar przychodu. Pogadamy w środę?"
+                    "zaufanie, długofalowa praca z klientem. Rekrutuję do OVB osoby, które "
+                    "umieją pracować na swoim i chcą drugi filar przychodu. Czy miałby Pan "
+                    "30 minut w środę?"
                 ),
             },
         ],
@@ -124,10 +177,12 @@ GOAL_PROMPTS = {
                 "naszego zespołu. Czy byłbyś otwarty na krótką rozmowę?"
             ),
             "why": (
-                "Lustro zamiast mostu. Profil mówi 'UX', wiadomość proponuje 'UX' - żadnej "
-                "wartości dodanej, żadnego powodu dlaczego akurat Ty. Jeśli nadawca NIE "
-                "rekrutuje UX-ów, to w ogóle fałszywa oferta. Personalizacja = pokaż "
-                "dlaczego profil odbiorcy pasuje do TWOJEJ oferty, nie odbijaj mu jego."
+                "Dwa grzechy naraz. Po pierwsze lustro zamiast mostu: profil mówi 'UX', "
+                "wiadomość proponuje 'UX', żadnej wartości dodanej. Jeśli nadawca NIE "
+                "rekrutuje UX-ów to fałszywa oferta; jeśli rekrutuje - mógł to powiedzieć "
+                "bez oglądania profilu. Po drugie forma 'ty' i 'Cześć' w pierwszym kontakcie "
+                "z profesjonalistą - w polskim B2B to nietakt, wiadomość leci do kosza "
+                "niezależnie od treści."
             ),
         },
     },
@@ -135,14 +190,15 @@ GOAL_PROMPTS = {
     "networking": {
         "do": (
             "Napisz wiadomość networkingową. "
-            "Nawiąż do czegoś konkretnego z profilu - wspólna branża, technologia, temat który cię zainteresował. "
-            "Powiedz krótko kim jesteś i co cię łączy z odbiorcą. "
-            "Zaproponuj konkretny powód kontaktu (wymiana doświadczeń, pytanie branżowe, wspólny temat)."
+            "Nawiąż do czegoś konkretnego z profilu - wspólna branża, technologia, temat który Cię zainteresował. "
+            "Powiedz krótko kim jesteś i co Cię łączy z odbiorcą. "
+            "Zaproponuj konkretny powód kontaktu (wymiana doświadczeń, pytanie branżowe, wspólny temat). "
+            "CTA: 15-20 minut."
         ),
         "nie_rob": (
             "NIE pisz 'chciałbym nawiązać kontakt' bez powodu. "
-            "NIE pisz 'Twój profil przykuł moją uwagę', to nic nie znaczy. "
-            "NIE bądź ogólnikowy."
+            "NIE pisz 'Pana/Pani profil przykuł moją uwagę', to nic nie znaczy. "
+            "NIE bądź ogólnikowy. NIGDY forma 'ty'."
         ),
         "examples_good": [
             {
@@ -151,10 +207,10 @@ GOAL_PROMPTS = {
                     "wyzwaniach integracji z systemami spedycyjnymi (TMS)."
                 ),
                 "message": (
-                    "Przeczytałem Twój post o integracjach z TMS-ami, u nas te same wojny "
+                    "Przeczytałem Pana post o integracjach z TMS-ami, u nas te same wojny "
                     "tylko w e-commerce. Ciekawi mnie jak ugryźliście autoryzację po stronie "
-                    "klienta, bo nam wychodzą koszmary z OAuth per każdy spedytor. Masz 15 "
-                    "minut w tym tygodniu?"
+                    "klienta, bo nam wychodzą koszmary z OAuth per każdy spedytor. Czy "
+                    "miałby Pan 15 minut w tym tygodniu?"
                 ),
             },
             {
@@ -163,10 +219,10 @@ GOAL_PROMPTS = {
                     "Warszawa."
                 ),
                 "message": (
-                    "Cześć Kasia, Twoja ścieżka z banków do productu mnie zainteresowała. "
-                    "Sam robię coś podobnego, przechodzę z corpo risku do produktu. Ciekawi "
-                    "mnie co z banku zabrałaś ze sobą, a czego musiałaś się oduczyć. Kawa "
-                    "kiedyś w Warszawie?"
+                    "Pani ścieżka z banków do product managementu zainteresowała mnie, bo "
+                    "sam robię coś podobnego, przechodzę z corpo risku do produktu. Ciekawi "
+                    "mnie co z banku zabrała Pani ze sobą, a czego musiała się oduczyć. "
+                    "Czy znalazłaby Pani 20 minut na kawę w Warszawie?"
                 ),
             },
         ],
@@ -176,9 +232,11 @@ GOAL_PROMPTS = {
                 "że nasza współpraca może przynieść obopólne korzyści."
             ),
             "why": (
-                "Zero konkretu, zero powodu do odpowiedzi. "
-                "'Obopólne korzyści' i 'nawiązać kontakt' to słowa-puste, pasują do każdego, "
-                "więc de facto do nikogo."
+                "Trzy grzechy. Po pierwsze zero konkretu - 'obopólne korzyści' i 'nawiązać "
+                "kontakt' to słowa-puste, pasują do każdego, więc de facto do nikogo. "
+                "Po drugie mieszanka rejestrów: 'Witam' (oficjalne) + 'Twój' (forma 'ty') - "
+                "niespójność którą polski odbiorca od razu wyłapuje. Po trzecie 'Witam' "
+                "jako powitanie samo w sobie brzmi ignorancko."
             ),
         },
     },
@@ -188,25 +246,27 @@ GOAL_PROMPTS = {
             "Napisz wiadomość sprzedażową / propozycję współpracy. "
             "Zacznij od obserwacji dotyczącej firmy lub roli odbiorcy - pokaż że wiesz z kim piszesz. "
             "Powiedz konkretnie co oferujesz i jaką wartość to daje (jedna rzecz, nie lista). "
-            "Zakończ pytaniem które otwiera rozmowę, nie zamyka sprzedaż."
+            "Zakończ pytaniem o 30-minutową rozmowę, które otwiera dialog, nie zamyka sprzedaż."
         ),
         "nie_rob": (
             "NIE pisz 'wierzę że nasza współpraca przyniesie obopólne korzyści'. "
             "NIE wymieniaj wszystkich funkcji produktu. "
-            "NIE pisz 'chciałem przedstawić naszą ofertę'."
+            "NIE pisz 'chciałem przedstawić naszą ofertę'. "
+            "NIGDY forma 'ty'."
         ),
         "examples_good": [
             {
                 "profile": (
-                    "Kasia, CFO średniej firmy produkcyjnej (150 osób, branża meblowa), "
+                    "CFO średniej firmy produkcyjnej (150 osób, branża meblowa), "
                     "niedawny post o sezonowości cashflow w produkcji."
                 ),
                 "message": (
-                    "Pani Kasio, widziałem post o sezonowości cashflow. Znam ten problem od "
-                    "klientów w produkcji meblowej, u nich Q1 potrafi zjeść 40 procent "
-                    "rezerw. W OVB Finance robimy dla firm Pani skali produkty z elastycznymi "
-                    "ratami i buforem bezpieczeństwa dla zarządu. 30 minut na pokazanie "
-                    "konkretnej kalkulacji, bez presji decyzji?"
+                    "Widziałem post o sezonowości cashflow. Znam ten problem od klientów "
+                    "w produkcji meblowej, u nich Q1 potrafi zjeść 40 procent rezerw. "
+                    "W OVB Finance robimy dla firm Pani skali produkty z elastycznymi "
+                    "ratami i buforem bezpieczeństwa dla zarządu. Proponuję 30 minut "
+                    "na pokazanie konkretnej kalkulacji, bez presji decyzji. Czy miałaby "
+                    "Pani środę lub piątek?"
                 ),
             },
             {
@@ -215,11 +275,11 @@ GOAL_PROMPTS = {
                     "szczególnie w segmencie SMB."
                 ),
                 "message": (
-                    "Twój post o Q1 churn w fintechu uderzył, widzimy ten sam pattern u "
-                    "klientów, szczególnie SMB. Nasze narzędzie robi behavior scoring na "
-                    "danych produktowych (bez prośby o dane finansowe klientów), daje 2-3 "
-                    "tygodnie forspotu przed odejściem. Pokażę demo na Waszych danych w 25 "
-                    "minut?"
+                    "Pana post o Q1 churn w fintechu uderzył, widzimy ten sam pattern "
+                    "u klientów, szczególnie SMB. Nasze narzędzie robi behavior scoring "
+                    "na danych produktowych (bez prośby o dane finansowe klientów), daje "
+                    "2-3 tygodnie forspotu przed odejściem. Proponuję 30 minut demo na "
+                    "Waszych danych. Czy miałby Pan środę lub piątek?"
                 ),
             },
         ],
@@ -230,8 +290,10 @@ GOAL_PROMPTS = {
                 "dopasowane do Państwa potrzeb biznesowych. Czy byłby Pan otwarty na rozmowę?"
             ),
             "why": (
-                "Formalna pustka. 'Dopasowane do potrzeb' - do jakich konkretnie? "
-                "Brak sygnału że nadawca wie do kogo pisze i po co. Do kosza w 2 sekundy."
+                "Formalna pustka. 'Dopasowane do potrzeb' - do jakich konkretnie? Brak "
+                "sygnału że nadawca wie do kogo pisze i po co. 'Szanowny Panie Dyrektorze' "
+                "to też bombastycznie, zostaw to na oficjalną korespondencję urzędową. "
+                "Do kosza w 2 sekundy."
             ),
         },
     },
@@ -241,37 +303,38 @@ GOAL_PROMPTS = {
             "Napisz wiadomość follow-up nawiązującą do wcześniejszego kontaktu. "
             "Przypomnij kontekst w jednym zdaniu (gdzie się spotkaliście / o czym rozmawialiście). "
             "Dodaj coś nowego - obserwację, link, pytanie - żeby był powód do odpowiedzi. "
-            "Zakończ konkretną propozycją następnego kroku."
+            "Zakończ konkretną propozycją następnego kroku (15 minut lub kontekstowo: 'po rozmowie finałowej')."
         ),
         "nie_rob": (
             "NIE pisz tylko 'chciałem przypomnieć o sobie'. "
             "NIE bądź przepraszający. "
-            "NIE pisz długiego podsumowania poprzedniej rozmowy."
+            "NIE pisz długiego podsumowania poprzedniej rozmowy. "
+            "NIGDY forma 'ty'."
         ),
         "examples_good": [
             {
                 "profile": (
-                    "Adam, CTO startupu edtech. Spotkany na InfoShare w zeszłym tygodniu, "
+                    "CTO startupu edtech. Spotkany na InfoShare w zeszłym tygodniu, "
                     "rozmowa o migracji z Firebase."
                 ),
                 "message": (
-                    "Hej Adam, dzień dobry po InfoShare. Wspominałeś że zastanawiacie się "
-                    "nad przejściem z Firebase do własnego stacku. Mamy case study klienta "
-                    "który zrobił dokładnie to w H1 zeszłego roku, z konkretnymi liczbami "
-                    "kosztów przed i po. Podrzucić, czy wolisz 15 minut rozmowy na "
-                    "konkretach?"
+                    "Wspominał Pan na InfoShare, że zastanawiacie się nad przejściem "
+                    "z Firebase do własnego stacku. Mamy case study klienta który zrobił "
+                    "dokładnie to w H1 zeszłego roku, z konkretnymi liczbami kosztów "
+                    "przed i po. Podrzucić mailem, czy woli Pan 15 minut rozmowy "
+                    "na konkretach?"
                 ),
             },
             {
                 "profile": (
-                    "Ania, Head of Engineering w średnim SaaS. Spotkanie rekrutacyjne we "
-                    "wtorek, poruszyła temat migracji na Kubernetes."
+                    "Head of Engineering w średnim SaaS. Spotkanie rekrutacyjne we wtorek, "
+                    "poruszyła temat migracji na Kubernetes."
                 ),
                 "message": (
-                    "Ania, po naszej rozmowie we wtorek wróciłem jeszcze do tematu migracji "
-                    "na Kubernetes który poruszałaś. Przeszukałem i znalazłem dwa podobne "
+                    "Po naszej rozmowie we wtorek wróciłem jeszcze do tematu migracji na "
+                    "Kubernetes, który Pani poruszyła. Przeszukałem i znalazłem dwa podobne "
                     "case'y w naszym portfelu, mogę je podesłać z linkami. Wrzucić mailem, "
-                    "czy wolisz zostawić to po rozmowie finałowej?"
+                    "czy woli Pani zostawić to po rozmowie finałowej?"
                 ),
             },
         ],
@@ -371,6 +434,10 @@ def _build_profile_block(profile) -> str:
         parts.append(f"- Ostatnia aktywność (posty): {'; '.join(profile.recent_activity[:3])}")
     if profile.mutual_connections:
         parts.append(f"- Wspólne kontakty: {profile.mutual_connections}")
+    else:
+        parts.append(
+            "- Wspólne kontakty: BRAK - NIE WOLNO wspominać o wspólnych znajomych w wiadomości"
+        )
     if profile.follower_count:
         parts.append(f"- Obserwujący: {profile.follower_count}")
     return "\n".join(parts)
