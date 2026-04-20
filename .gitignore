@@ -30,3 +30,6 @@ npm-debug.log*
 deploy/certbot/conf/
 deploy/certbot/www/
 deploy/nginx/logs/
+
+# Local test fixtures (may contain real LinkedIn user data)
+extension/dom_sample.txt

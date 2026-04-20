@@ -492,6 +492,168 @@
     };
   }
 
+  // ── Feed-layout extraction (LinkedIn 2025 SPA variant) ───────────
+  //
+  // On the new LinkedIn variant, /in/<slug> renders as a feed of the
+  // person's posts (not a classic top card). Classes are opaque hashes
+  // that rotate between deploys, so we navigate by stable anchors:
+  // the profile URL link and its author card.
+  //
+  // Author card structure (repeated per post):
+  //   <a href="https://linkedin.com/in/<slug>/">
+  //     <div aria-label="<Name> Zweryfikowano Profil <n>.">
+  //       <p>Name</p>
+  //       <p>• <n></p>                         (verification + connection)
+  //       <p>Tagline / headline...</p>
+  //     </div>
+  //   </a>
+  //
+  // Post body uses data-testid="expandable-text-box" — stable across deploys.
+
+  function extractSlugFromUrl() {
+    const m = window.location.pathname.match(/\/in\/([^/?#]+)/);
+    return m ? m[1] : null;
+  }
+
+  function extractFromFeedLayout() {
+    const slug = extractSlugFromUrl();
+    if (!slug) return null;
+
+    // Derive name fragments from the URL slug (handles Polish diacritics etc.)
+    // "anna-wo%C5%82osz-b34517386" → ["anna", "wołosz"]  (numeric suffix dropped)
+    let decodedSlug;
+    try { decodedSlug = decodeURIComponent(slug).toLowerCase(); }
+    catch { decodedSlug = slug.toLowerCase(); }
+    // LinkedIn slugs end with an alphanumeric id like "b34517386" or
+    // "315531199" — drop anything containing a digit, keep pure name parts.
+    const slugParts = decodedSlug.split(/[-_]/).filter((p) => !/\d/.test(p) && p.length >= 2);
+    if (slugParts.length === 0) return null;
+
+    const main = document.querySelector("main");
+    if (!main) return null;
+
+    // Primary: find the aria-label marker naming the profile owner. The marker
+    // looks like <div aria-label="Anna Wołosz Zweryfikowano Profil 2."> and is
+    // LinkedIn's stable handle for the author card; the div itself only wraps
+    // name + connection level — the headline and timestamp live in SIBLING
+    // divs, so we expand to the surrounding <a href="/in/slug"> which
+    // contains the full card.
+    let authorAnchor = null;
+    for (const el of main.querySelectorAll("[aria-label]")) {
+      const label = (el.getAttribute("aria-label") || "").toLowerCase();
+      if (!slugParts.every((p) => label.includes(p))) continue;
+      const anchor = el.closest("a[href*='/in/']");
+      if (anchor && anchor.querySelectorAll("p").length >= 2) {
+        authorAnchor = anchor;
+        break;
+      }
+    }
+
+    // Fallback: any <a href="/in/SLUG"> whose decoded href contains all name
+    // fragments AND whose first <p> looks like a two-word name. Filters out
+    // sponsored cards that happen to link to the profile.
+    if (!authorAnchor) {
+      for (const a of main.querySelectorAll("a[href*='/in/']")) {
+        const rawHref = a.getAttribute("href") || "";
+        let href;
+        try { href = decodeURIComponent(rawHref).toLowerCase(); }
+        catch { href = rawHref.toLowerCase(); }
+        if (!slugParts.every((p) => href.includes(p))) continue;
+        if (a.querySelectorAll("p").length < 2) continue;
+        const firstP = (a.querySelector("p")?.textContent || "").trim();
+        if (firstP.length > 0 && firstP.length < 80 && /^\S+\s+\S+/.test(firstP)) {
+          authorAnchor = a;
+          break;
+        }
+      }
+    }
+
+    if (!authorAnchor) return null;
+
+    const paragraphs = Array.from(authorAnchor.querySelectorAll("p"))
+      .map((p) => p.textContent.trim())
+      .filter(Boolean);
+    if (paragraphs.length === 0) return null;
+
+    const name = paragraphs[0];
+
+    // Sanity: the name we picked must actually contain a slug fragment, else
+    // we grabbed a promoted post card that slipped through the filter.
+    const nameLower = name.toLowerCase();
+    if (!slugParts.some((p) => nameLower.includes(p))) return null;
+
+    // Headline = first paragraph after the name that isn't:
+    //  - the verification / connection-level pill ("• 2", "1st")
+    //  - a relative-time stamp ("4 dni • Edytowano", "2 tyg. temu")
+    const headline = paragraphs.slice(1).find((t) =>
+      t.length > 10
+      && !/^[•·]\s*\d+$/.test(t)
+      && !/^\d+(st|nd|rd|\.)?$/i.test(t)
+      && !/\bEdytowano\b/i.test(t)
+      && !/^\d+\s*(dni|dzień|godz|tyg|mies|rok|lat|min|sek)\b/i.test(t)
+    ) || "";
+
+    if (!headline) return null;
+
+    // Collect recent posts — iterate over all expandable-text-box elements
+    // (each is one post body) and walk upward until we find the first
+    // <a href="/in/"> — that's the post's author. Keep only posts where the
+    // author is the profile owner (filters out promoted / reactor content).
+    const posts = [];
+    const seen = new Set();
+    const textEls = main.querySelectorAll('[data-testid="expandable-text-box"]');
+    const FOLLOWING = 0x04; // Node.DOCUMENT_POSITION_FOLLOWING
+    for (const textEl of textEls) {
+      // Walk up, at each level look for the NEAREST author link preceding
+      // textEl in DOM order (reversed iteration). The closest-before author
+      // is the post author — anyone further back is a reactor / commenter
+      // from a prior post in the feed.
+      let p = textEl.parentElement;
+      let depth = 0;
+      let nearestAuthorHref = null;
+      while (p && depth < 20 && !nearestAuthorHref) {
+        const authors = Array.from(p.querySelectorAll("a[href*='/in/']")).reverse();
+        for (const a of authors) {
+          // a precedes textEl iff textEl is positioned FOLLOWING a.
+          if (a.compareDocumentPosition(textEl) & FOLLOWING) {
+            nearestAuthorHref = a.getAttribute("href") || "";
+            break;
+          }
+        }
+        p = p.parentElement;
+        depth++;
+      }
+      if (!nearestAuthorHref) continue;
+      let fh;
+      try { fh = decodeURIComponent(nearestAuthorHref).toLowerCase(); }
+      catch { fh = nearestAuthorHref.toLowerCase(); }
+      if (!slugParts.every((sp) => fh.includes(sp))) continue;
+
+      const text = textEl.textContent.trim().replace(/\s+/g, " ").slice(0, 500);
+      if (text && !seen.has(text) && text.length > 40) {
+        seen.add(text);
+        posts.push(text);
+      }
+      if (posts.length >= 3) break;
+    }
+
+    return {
+      name,
+      headline,
+      company: "",
+      location: "",
+      about: "",
+      experience: [],
+      skills: [],
+      featured: [],
+      education: [],
+      mutual_connections: null,
+      follower_count: null,
+      recent_activity: posts,
+      profile_url: extractProfileUrl(),
+    };
+  }
+
   // ── JSON-LD extraction (secondary source) ────────────────────────
 
   function extractFromJsonLd() {
@@ -651,6 +813,16 @@
         merged._source = voyager ? "voyager+jsonld" : "jsonld";
         return { success: true, profile: merged, error: null, timestamp: new Date().toISOString() };
       }
+    }
+
+    // Priority 2.5: Feed-layout variant (LinkedIn 2025 SPA — no top card,
+    // profile page renders as author's post feed). Navigates via stable
+    // <a href="/in/slug"> anchors + aria-label-marked author cards.
+    const feed = extractFromFeedLayout();
+    if (feed && feed.name && feed.headline) {
+      console.log("[LinkedIn MSG] Extracted via feed layout");
+      feed._source = "feed";
+      return { success: true, profile: feed, error: null, timestamp: new Date().toISOString() };
     }
 
     // Priority 3: DOM scraping (legacy path, retained for the classic layout).
