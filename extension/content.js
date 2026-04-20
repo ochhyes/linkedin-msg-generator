@@ -11,11 +11,18 @@
 (() => {
   "use strict";
 
-  // Guard: content.js can be injected multiple times (manifest + popup's
-  // executeScript fallback + SPA navigations). Without this guard each
-  // injection registers another chrome.runtime.onMessage listener — every
-  // scrape request then gets N responses, and the late ones fire after the
-  // channel is closed, spamming "chrome-extension://invalid/ net::ERR_FAILED".
+  // Orphan guard: if chrome.runtime is gone (extension was reloaded while
+  // this content script was already injected), exit immediately. Avoids
+  // any work in an invalidated context.
+  if (typeof chrome === "undefined" || !chrome.runtime || !chrome.runtime.id) {
+    return;
+  }
+
+  // Re-injection guard: manifest content_scripts + popup's executeScript
+  // fallback + SPA navigations can all inject this file into the same
+  // isolated world. Without this guard each injection registers another
+  // chrome.runtime.onMessage listener, and a scrapeProfile request would
+  // get N responses — late ones firing into a closed channel.
   if (window.__LINKEDIN_MSG_LOADED__) {
     console.log("[LinkedIn MSG] Already loaded, skipping re-injection");
     return;
