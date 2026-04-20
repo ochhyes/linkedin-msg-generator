@@ -56,6 +56,9 @@ function extractFromFeedLayout() {
   const main = document.querySelector("main");
   if (!main) return null;
 
+  if (main.querySelector("h1")) return null;
+  if (!main.querySelector('[data-testid="expandable-text-box"]')) return null;
+
   let authorAnchor = null;
   for (const el of main.querySelectorAll("[aria-label]")) {
     const label = (el.getAttribute("aria-label") || "").toLowerCase();

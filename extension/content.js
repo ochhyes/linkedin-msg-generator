@@ -532,6 +532,16 @@
     const main = document.querySelector("main");
     if (!main) return null;
 
+    // Guard 1: classic top-card layout always includes <h1> with the person's
+    // name. If present, let the DOM path handle the scrape — it gets full
+    // experience / about / skills, which this extractor cannot reach.
+    if (main.querySelector("h1")) return null;
+
+    // Guard 2: real feed-layout pages render posts via data-testid=
+    // "expandable-text-box". Absence means this is neither classic nor feed
+    // — skip, let DOM path try and fall through to a diagnostic if it fails.
+    if (!main.querySelector('[data-testid="expandable-text-box"]')) return null;
+
     // Primary: find the aria-label marker naming the profile owner. The marker
     // looks like <div aria-label="Anna Wołosz Zweryfikowano Profil 2."> and is
     // LinkedIn's stable handle for the author card; the div itself only wraps
