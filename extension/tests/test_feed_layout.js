@@ -46,12 +46,7 @@ function extractProfileUrl() {
 function extractFromFeedLayout() {
   const slug = extractSlugFromUrl();
   if (!slug) return null;
-
-  let decodedSlug;
-  try { decodedSlug = decodeURIComponent(slug).toLowerCase(); }
-  catch { decodedSlug = slug.toLowerCase(); }
-  const slugParts = decodedSlug.split(/[-_]/).filter((p) => !/\d/.test(p) && p.length >= 2);
-  if (slugParts.length === 0) return null;
+  const slugLower = slug.toLowerCase();
 
   const main = document.querySelector("main");
   if (!main) return null;
@@ -59,33 +54,23 @@ function extractFromFeedLayout() {
   if (main.querySelector("h1")) return null;
   if (!main.querySelector('[data-testid="expandable-text-box"]')) return null;
 
+  function hrefMatchesOwner(a) {
+    const href = a.getAttribute("href") || "";
+    const m = href.match(/\/in\/([^/?#]+)/);
+    return !!m && m[1].toLowerCase() === slugLower;
+  }
+
   let authorAnchor = null;
-  for (const el of main.querySelectorAll("[aria-label]")) {
-    const label = (el.getAttribute("aria-label") || "").toLowerCase();
-    if (!slugParts.every((p) => label.includes(p))) continue;
-    const anchor = el.closest("a[href*='/in/']");
-    if (anchor && anchor.querySelectorAll("p").length >= 2) {
-      authorAnchor = anchor;
-      break;
-    }
+  for (const a of main.querySelectorAll("a[href*='/in/']")) {
+    if (!hrefMatchesOwner(a)) continue;
+    if (a.querySelectorAll("p").length < 2) continue;
+    if (a.querySelector('[data-testid="expandable-text-box"]')) continue;
+    const firstP = (a.querySelector("p")?.textContent || "").trim();
+    if (firstP.length < 2 || firstP.length > 80) continue;
+    if (firstP.split(/\s+/).length > 5) continue;
+    authorAnchor = a;
+    break;
   }
-
-  if (!authorAnchor) {
-    for (const a of main.querySelectorAll("a[href*='/in/']")) {
-      const rawHref = a.getAttribute("href") || "";
-      let href;
-      try { href = decodeURIComponent(rawHref).toLowerCase(); }
-      catch { href = rawHref.toLowerCase(); }
-      if (!slugParts.every((p) => href.includes(p))) continue;
-      if (a.querySelectorAll("p").length < 2) continue;
-      const firstP = (a.querySelector("p")?.textContent || "").trim();
-      if (firstP.length > 0 && firstP.length < 80 && /^\S+\s+\S+/.test(firstP)) {
-        authorAnchor = a;
-        break;
-      }
-    }
-  }
-
   if (!authorAnchor) return null;
 
   const paragraphs = Array.from(authorAnchor.querySelectorAll("p"))
@@ -94,8 +79,7 @@ function extractFromFeedLayout() {
   if (paragraphs.length === 0) return null;
 
   const name = paragraphs[0];
-  const nameLower = name.toLowerCase();
-  if (!slugParts.some((p) => nameLower.includes(p))) return null;
+  if (name.length < 2 || name.length > 80) return null;
 
   const headline = paragraphs.slice(1).find((t) =>
     t.length > 10
@@ -113,23 +97,19 @@ function extractFromFeedLayout() {
   for (const textEl of textEls) {
     let p = textEl.parentElement;
     let depth = 0;
-    let nearestAuthorHref = null;
-    while (p && depth < 20 && !nearestAuthorHref) {
+    let nearestAuthor = null;
+    while (p && depth < 20 && !nearestAuthor) {
       const authors = Array.from(p.querySelectorAll("a[href*='/in/']")).reverse();
       for (const a of authors) {
         if (a.compareDocumentPosition(textEl) & FOLLOWING) {
-          nearestAuthorHref = a.getAttribute("href") || "";
+          nearestAuthor = a;
           break;
         }
       }
       p = p.parentElement;
       depth++;
     }
-    if (!nearestAuthorHref) continue;
-    let fh;
-    try { fh = decodeURIComponent(nearestAuthorHref).toLowerCase(); }
-    catch { fh = nearestAuthorHref.toLowerCase(); }
-    if (!slugParts.every((sp) => fh.includes(sp))) continue;
+    if (!nearestAuthor || !hrefMatchesOwner(nearestAuthor)) continue;
 
     const text = textEl.textContent.trim().replace(/\s+/g, " ").slice(0, 500);
     if (text && !seen.has(text) && text.length > 40) {

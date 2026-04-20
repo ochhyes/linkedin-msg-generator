@@ -519,15 +519,7 @@
     const slug = extractSlugFromUrl();
     if (!slug) return null;
 
-    // Derive name fragments from the URL slug (handles Polish diacritics etc.)
-    // "anna-wo%C5%82osz-b34517386" → ["anna", "wołosz"]  (numeric suffix dropped)
-    let decodedSlug;
-    try { decodedSlug = decodeURIComponent(slug).toLowerCase(); }
-    catch { decodedSlug = slug.toLowerCase(); }
-    // LinkedIn slugs end with an alphanumeric id like "b34517386" or
-    // "315531199" — drop anything containing a digit, keep pure name parts.
-    const slugParts = decodedSlug.split(/[-_]/).filter((p) => !/\d/.test(p) && p.length >= 2);
-    if (slugParts.length === 0) return null;
+    const slugLower = slug.toLowerCase();
 
     const main = document.querySelector("main");
     if (!main) return null;
@@ -542,42 +534,32 @@
     // — skip, let DOM path try and fall through to a diagnostic if it fails.
     if (!main.querySelector('[data-testid="expandable-text-box"]')) return null;
 
-    // Primary: find the aria-label marker naming the profile owner. The marker
-    // looks like <div aria-label="Anna Wołosz Zweryfikowano Profil 2."> and is
-    // LinkedIn's stable handle for the author card; the div itself only wraps
-    // name + connection level — the headline and timestamp live in SIBLING
-    // divs, so we expand to the surrounding <a href="/in/slug"> which
-    // contains the full card.
+    // Match the profile owner by EXACT slug in the URL path — works for both
+    // dash-separated ("anna-wolosz-b34517386") and compact ("marcinjurka")
+    // custom URLs, without needing to split slug into name parts (fails on
+    // compact slugs where "marcin jurka" in aria-label has no "marcinjurka"
+    // substring).
+    function hrefMatchesOwner(a) {
+      const href = a.getAttribute("href") || "";
+      const m = href.match(/\/in\/([^/?#]+)/);
+      return !!m && m[1].toLowerCase() === slugLower;
+    }
+
+    // Author anchor: <a href="/in/slug"> with >=2 <p> children, first <p>
+    // shaped like a person name (≤5 words, 2-80 chars, no post-body marker).
+    // Rejects promo cards / promoted events whose anchors happen to link
+    // to the profile but whose first <p> is a product tagline.
     let authorAnchor = null;
-    for (const el of main.querySelectorAll("[aria-label]")) {
-      const label = (el.getAttribute("aria-label") || "").toLowerCase();
-      if (!slugParts.every((p) => label.includes(p))) continue;
-      const anchor = el.closest("a[href*='/in/']");
-      if (anchor && anchor.querySelectorAll("p").length >= 2) {
-        authorAnchor = anchor;
-        break;
-      }
+    for (const a of main.querySelectorAll("a[href*='/in/']")) {
+      if (!hrefMatchesOwner(a)) continue;
+      if (a.querySelectorAll("p").length < 2) continue;
+      if (a.querySelector('[data-testid="expandable-text-box"]')) continue;
+      const firstP = (a.querySelector("p")?.textContent || "").trim();
+      if (firstP.length < 2 || firstP.length > 80) continue;
+      if (firstP.split(/\s+/).length > 5) continue;
+      authorAnchor = a;
+      break;
     }
-
-    // Fallback: any <a href="/in/SLUG"> whose decoded href contains all name
-    // fragments AND whose first <p> looks like a two-word name. Filters out
-    // sponsored cards that happen to link to the profile.
-    if (!authorAnchor) {
-      for (const a of main.querySelectorAll("a[href*='/in/']")) {
-        const rawHref = a.getAttribute("href") || "";
-        let href;
-        try { href = decodeURIComponent(rawHref).toLowerCase(); }
-        catch { href = rawHref.toLowerCase(); }
-        if (!slugParts.every((p) => href.includes(p))) continue;
-        if (a.querySelectorAll("p").length < 2) continue;
-        const firstP = (a.querySelector("p")?.textContent || "").trim();
-        if (firstP.length > 0 && firstP.length < 80 && /^\S+\s+\S+/.test(firstP)) {
-          authorAnchor = a;
-          break;
-        }
-      }
-    }
-
     if (!authorAnchor) return null;
 
     const paragraphs = Array.from(authorAnchor.querySelectorAll("p"))
@@ -586,11 +568,7 @@
     if (paragraphs.length === 0) return null;
 
     const name = paragraphs[0];
-
-    // Sanity: the name we picked must actually contain a slug fragment, else
-    // we grabbed a promoted post card that slipped through the filter.
-    const nameLower = name.toLowerCase();
-    if (!slugParts.some((p) => nameLower.includes(p))) return null;
+    if (name.length < 2 || name.length > 80) return null;
 
     // Headline = first paragraph after the name that isn't:
     //  - the verification / connection-level pill ("• 2", "1st")
@@ -602,42 +580,33 @@
       && !/\bEdytowano\b/i.test(t)
       && !/^\d+\s*(dni|dzień|godz|tyg|mies|rok|lat|min|sek)\b/i.test(t)
     ) || "";
-
     if (!headline) return null;
 
     // Collect recent posts — iterate over all expandable-text-box elements
-    // (each is one post body) and walk upward until we find the first
-    // <a href="/in/"> — that's the post's author. Keep only posts where the
-    // author is the profile owner (filters out promoted / reactor content).
+    // (each is one post body) and walk upward until we find the NEAREST
+    // <a href="/in/"> preceding textEl in DOM order (reversed iteration).
+    // Keep only posts whose nearest author link matches the profile owner
+    // (filters out promoted / reactor / commenter content).
     const posts = [];
     const seen = new Set();
     const textEls = main.querySelectorAll('[data-testid="expandable-text-box"]');
     const FOLLOWING = 0x04; // Node.DOCUMENT_POSITION_FOLLOWING
     for (const textEl of textEls) {
-      // Walk up, at each level look for the NEAREST author link preceding
-      // textEl in DOM order (reversed iteration). The closest-before author
-      // is the post author — anyone further back is a reactor / commenter
-      // from a prior post in the feed.
       let p = textEl.parentElement;
       let depth = 0;
-      let nearestAuthorHref = null;
-      while (p && depth < 20 && !nearestAuthorHref) {
+      let nearestAuthor = null;
+      while (p && depth < 20 && !nearestAuthor) {
         const authors = Array.from(p.querySelectorAll("a[href*='/in/']")).reverse();
         for (const a of authors) {
-          // a precedes textEl iff textEl is positioned FOLLOWING a.
           if (a.compareDocumentPosition(textEl) & FOLLOWING) {
-            nearestAuthorHref = a.getAttribute("href") || "";
+            nearestAuthor = a;
             break;
           }
         }
         p = p.parentElement;
         depth++;
       }
-      if (!nearestAuthorHref) continue;
-      let fh;
-      try { fh = decodeURIComponent(nearestAuthorHref).toLowerCase(); }
-      catch { fh = nearestAuthorHref.toLowerCase(); }
-      if (!slugParts.every((sp) => fh.includes(sp))) continue;
+      if (!nearestAuthor || !hrefMatchesOwner(nearestAuthor)) continue;
 
       const text = textEl.textContent.trim().replace(/\s+/g, " ").slice(0, 500);
       if (text && !seen.has(text) && text.length > 40) {
