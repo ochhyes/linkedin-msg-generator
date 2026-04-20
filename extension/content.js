@@ -381,6 +381,199 @@
     return window.location.href.split("?")[0].replace(/\/$/, "");
   }
 
+  // ── Voyager JSON extraction (primary source) ─────────────────────
+  //
+  // LinkedIn pre-renders API responses into <code id="bpr-guid-..."> tags
+  // for React hydration. Parsing these is layout-independent — survives
+  // DOM class rotations and A/B layout tests.
+  //
+  // We detect entities by SHAPE, not by $type strings, because Voyager
+  // URN schemas vary (com.linkedin.voyager.identity.profile.Profile,
+  // com.linkedin.voyager.dash.identity.profile.Profile, etc.).
+
+  function collectVoyagerIncluded() {
+    const tags = document.querySelectorAll('code[id^="bpr-guid-"]');
+    const all = [];
+    for (const tag of tags) {
+      let payload;
+      try { payload = JSON.parse(tag.textContent); } catch { continue; }
+      // Voyager responses wrap data differently across endpoints.
+      // Search multiple plausible locations for an `included` array.
+      const candidates = [
+        payload?.included,
+        payload?.data?.included,
+        payload?.response?.included,
+      ];
+      for (const arr of candidates) {
+        if (Array.isArray(arr)) {
+          for (const e of arr) if (e && typeof e === "object") all.push(e);
+        }
+      }
+    }
+    return all;
+  }
+
+  function isProfileEntity(e) {
+    return e.firstName && e.lastName && (e.headline || e.summary || e.locationName || e.geoLocationName);
+  }
+  function isPositionEntity(e) {
+    return e.title && (e.companyName || e.companyUrn || e.company) && (e.timePeriod || e.dateRange);
+  }
+  function isCompanyEntity(e) {
+    return e.name && e.entityUrn && /company/i.test(String(e.entityUrn));
+  }
+  function isEducationEntity(e) {
+    return (e.schoolName || (e.school && e.school.name)) && (e.degreeName || e.fieldOfStudy || e.schoolUrn);
+  }
+
+  function currentFlag(e) {
+    // Position has open-ended date range if endDate/endMonth is null/missing.
+    const tp = e.timePeriod || e.dateRange;
+    if (!tp) return false;
+    const end = tp.endDate || tp.end || null;
+    return !end || (end && end.year == null && end.month == null);
+  }
+
+  function resolveCompanyNameFromPos(pos, companiesByUrn) {
+    if (pos.companyName) return pos.companyName;
+    if (pos.company && typeof pos.company === "object" && pos.company.name) return pos.company.name;
+    const urn = pos.companyUrn || pos.company;
+    if (typeof urn === "string" && companiesByUrn.has(urn)) {
+      return companiesByUrn.get(urn).name || "";
+    }
+    return "";
+  }
+
+  function extractFromVoyagerPayloads() {
+    const included = collectVoyagerIncluded();
+    if (included.length === 0) return null;
+
+    const profile = included.find(isProfileEntity);
+    if (!profile) return null;
+
+    const positions = included.filter(isPositionEntity);
+    const educations = included.filter(isEducationEntity);
+    const companies = new Map();
+    for (const e of included) if (isCompanyEntity(e)) companies.set(e.entityUrn, e);
+
+    const currentPos = positions.find(currentFlag) || positions[0];
+    const company = currentPos ? resolveCompanyNameFromPos(currentPos, companies) : "";
+
+    const name = `${profile.firstName || ""} ${profile.lastName || ""}`.trim();
+    const headline = profile.headline || "";
+    const about = profile.summary || "";
+    const location = profile.locationName || profile.geoLocationName || "";
+
+    const experience = positions.slice(0, 5).map((p) => {
+      const c = resolveCompanyNameFromPos(p, companies);
+      return c ? `${p.title} @ ${c}` : p.title;
+    });
+
+    const education = educations.slice(0, 3).map((e) => {
+      const school = e.schoolName || (e.school && e.school.name) || "";
+      const field = e.degreeName || e.fieldOfStudy || "";
+      return field ? `${school} — ${field}` : school;
+    }).filter(Boolean);
+
+    return {
+      name,
+      headline,
+      company,
+      location,
+      about,
+      experience,
+      education,
+      skills: [],
+      featured: [],
+      mutual_connections: null,
+      follower_count: null,
+      recent_activity: [],
+      profile_url: extractProfileUrl(),
+    };
+  }
+
+  // ── JSON-LD extraction (secondary source) ────────────────────────
+
+  function extractFromJsonLd() {
+    const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+    for (const script of scripts) {
+      let data;
+      try { data = JSON.parse(script.textContent); } catch { continue; }
+      const candidates = Array.isArray(data?.["@graph"]) ? data["@graph"] : [data];
+      const person = candidates.find((c) => c && c["@type"] === "Person" && c.name);
+      if (!person) continue;
+
+      return {
+        name: person.name || "",
+        headline: person.jobTitle || "",
+        company: (person.worksFor && person.worksFor.name) || "",
+        location: (person.address && person.address.addressLocality)
+          || (person.homeLocation && person.homeLocation.name) || "",
+        about: person.description || "",
+        experience: [],
+        education: [],
+        skills: [],
+        featured: [],
+        mutual_connections: null,
+        follower_count: null,
+        recent_activity: [],
+        profile_url: person.url || extractProfileUrl(),
+      };
+    }
+    return null;
+  }
+
+  // ── Enriched diagnostics ─────────────────────────────────────────
+
+  function collectDiagnostics() {
+    const voyagerTags = document.querySelectorAll('code[id^="bpr-guid-"]');
+    const jsonLdTags = document.querySelectorAll('script[type="application/ld+json"]');
+
+    let voyagerHasProfile = false;
+    let voyagerProfileFields = null;
+    for (const tag of voyagerTags) {
+      try {
+        const p = JSON.parse(tag.textContent);
+        const arrs = [p?.included, p?.data?.included, p?.response?.included].filter(Array.isArray);
+        for (const arr of arrs) {
+          const prof = arr.find((e) => e && isProfileEntity(e));
+          if (prof) {
+            voyagerHasProfile = true;
+            voyagerProfileFields = Object.keys(prof).slice(0, 20);
+            break;
+          }
+        }
+        if (voyagerHasProfile) break;
+      } catch {}
+    }
+
+    return {
+      url: window.location.href,
+      readyState: document.readyState,
+      title: document.title,
+      hasMain: !!document.querySelector("main"),
+      h1Count: document.querySelectorAll("h1").length,
+      h1Texts: Array.from(document.querySelectorAll("h1")).map((h) => h.textContent.trim().slice(0, 80)),
+      h2Count: document.querySelectorAll("h2").length,
+      ariaHeadingCount: document.querySelectorAll("[role=heading]").length,
+      voyagerPayloadCount: voyagerTags.length,
+      voyagerHasProfile,
+      voyagerProfileFields,
+      jsonLdCount: jsonLdTags.length,
+      hasTopCard: !!document.querySelector(".pv-top-card, section.pv-top-card, .ph5"),
+      hasExperience: !!document.querySelector("#experience"),
+      hasAbout: !!document.querySelector("#about"),
+      hasAuthGate: !!document.querySelector(
+        ".authwall, .auth-wall, [data-tracking-control-name*='public_profile'], " +
+        ".join-form, .sign-in-form, .cold-join-form"
+      ),
+      mainClass: document.querySelector("main")?.className?.slice(0, 200) || null,
+      topSectionIds: Array.from(document.querySelectorAll("main section"))
+        .slice(0, 10)
+        .map((s) => s.id || s.getAttribute("aria-label") || "anon"),
+    };
+  }
+
   // ── Sync Extraction ──────────────────────────────────────────────
 
   function scrapeProfileNow() {
@@ -429,78 +622,97 @@
    * 4. MERGE best results from all attempts.
    */
   async function scrapeProfileAsync() {
+    // Priority 1: Voyager JSON (layout-independent, most reliable)
+    // Give React one short tick to paste payloads into the DOM.
+    await waitForElement(
+      ['code[id^="bpr-guid-"]', "main h1", "main h2"],
+      3000
+    );
+    let voyager = extractFromVoyagerPayloads();
+    if (voyager && voyager.name && voyager.headline) {
+      console.log("[LinkedIn MSG] Extracted via Voyager JSON");
+      voyager._source = "voyager";
+      return { success: true, profile: voyager, error: null, timestamp: new Date().toISOString() };
+    }
+
+    // Priority 2: JSON-LD Person schema (secondary, often present on profiles)
+    const jsonLd = extractFromJsonLd();
+    if (jsonLd && jsonLd.name) {
+      // If Voyager gave partial data (e.g. name but no headline), merge.
+      const base = voyager || jsonLd;
+      const merged = { ...jsonLd, ...(voyager || {}) };
+      // Fill blanks from jsonLd where voyager was empty
+      if (!merged.headline && jsonLd.headline) merged.headline = jsonLd.headline;
+      if (!merged.about && jsonLd.about) merged.about = jsonLd.about;
+      if (!merged.company && jsonLd.company) merged.company = jsonLd.company;
+      if (!merged.location && jsonLd.location) merged.location = jsonLd.location;
+      if (merged.name && merged.headline) {
+        console.log("[LinkedIn MSG] Extracted via JSON-LD", voyager ? "(merged with partial Voyager)" : "");
+        merged._source = voyager ? "voyager+jsonld" : "jsonld";
+        return { success: true, profile: merged, error: null, timestamp: new Date().toISOString() };
+      }
+    }
+
+    // Priority 3: DOM scraping (legacy path, retained for the classic layout).
     // Step 1: Wait for name to appear
     const nameEl = await waitForElement(NAME_SELECTORS, CONFIG.PRIMARY_TIMEOUT_MS);
 
     if (!nameEl) {
-      // Last-resort fallback: any h1 on the page with plausible name-like text
       const lastResort = findAnyLikelyNameHeading();
       if (lastResort) {
         console.warn("[LinkedIn MSG] Primary selectors failed; using fallback h1:", lastResort);
       } else {
-        // Build diagnostic snapshot
-        const h1Count = document.querySelectorAll("h1").length;
-        const hasTopCard = !!document.querySelector(".pv-top-card, section.pv-top-card, .ph5");
-        const hasExperience = !!document.querySelector("#experience");
-        const hasAbout = !!document.querySelector("#about");
-        const hasAuthGate = !!document.querySelector(
-          ".authwall, .auth-wall, [data-tracking-control-name*='public_profile'], " +
-          ".join-form, .sign-in-form, .cold-join-form"
-        );
-
-        const diagnostic = {
-          url: window.location.href,
-          readyState: document.readyState,
-          title: document.title,
-          h1Count,
-          h1Texts: Array.from(document.querySelectorAll("h1")).map(h => h.textContent.trim().slice(0, 80)),
-          hasTopCard,
-          hasMain: !!document.querySelector("main"),
-          hasExperience,
-          hasAbout,
-          hasAuthGate,
-        };
+        const diagnostic = collectDiagnostics();
         console.warn("[LinkedIn MSG] Scrape timeout. Diagnostic:", diagnostic);
 
-        // Detect specific failure modes for a better user-facing message
+        // If Voyager payloads are present but we couldn't extract — log that too.
+        if (diagnostic.voyagerPayloadCount > 0 && !diagnostic.voyagerHasProfile) {
+          console.warn(
+            "[LinkedIn MSG] Voyager payloads present but no profile entity detected. " +
+            "Shape may have changed — paste this diagnostic to report."
+          );
+        }
+
         const looksLikeAuthwall =
-          h1Count === 0 && !hasTopCard && !hasExperience && !hasAbout;
+          diagnostic.h1Count === 0 && !diagnostic.hasTopCard
+          && !diagnostic.hasExperience && !diagnostic.hasAbout
+          && diagnostic.voyagerPayloadCount === 0
+          && diagnostic.jsonLdCount === 0;
 
         let message;
-        if (hasAuthGate || looksLikeAuthwall) {
+        if (diagnostic.hasAuthGate || looksLikeAuthwall) {
           message =
             "LinkedIn nie pokazuje tego profilu. Najczęstsze przyczyny:\n"
             + "1) Nie jesteś zalogowany — wejdź na linkedin.com, zaloguj się i odśwież tę stronę.\n"
             + "2) LinkedIn zablokował Cię tymczasowo (zbyt dużo wejść na profile). Poczekaj 15-30 min.\n"
             + "3) Profil jest widoczny tylko dla kontaktów, z którymi masz koneksję.";
+        } else if (diagnostic.voyagerPayloadCount > 0 || diagnostic.jsonLdCount > 0) {
+          message =
+            "Nie umiem wyciągnąć danych z tego wariantu LinkedIn. "
+            + "Otwórz DevTools (F12) → Console, znajdź wpis [LinkedIn MSG] Scrape timeout "
+            + "i prześlij diagnostykę.";
         } else {
           message =
             "Timeout: LinkedIn nie wyrenderował profilu w "
             + (CONFIG.PRIMARY_TIMEOUT_MS / 1000) + "s. "
-            + "Odśwież stronę i spróbuj ponownie. Jeśli dalej nie działa, "
-            + "otwórz DevTools (F12) → Console i zobacz diagnostykę [LinkedIn MSG].";
+            + "Odśwież stronę i spróbuj ponownie.";
         }
 
         return {
           success: false,
           profile: null,
           error: message,
+          diagnostics: diagnostic,
           timestamp: new Date().toISOString(),
         };
       }
     }
 
-    // Small grace period — headline often renders 100-300ms after name
     await delay(200);
 
-    // Step 2: First scrape
     let bestResult = scrapeProfileNow();
+    if (!bestResult.success) return bestResult;
 
-    if (!bestResult.success) {
-      return bestResult;
-    }
-
-    // Step 3: Check if lazy sections are missing
     const hasLazySections =
       bestResult.profile.about ||
       bestResult.profile.experience.length > 0 ||
@@ -509,40 +721,24 @@
     if (!hasLazySections) {
       for (let attempt = 1; attempt <= CONFIG.LAZY_RETRIES; attempt++) {
         await delay(CONFIG.LAZY_RETRY_DELAY_MS);
-
-        // Wait for any lazy section anchor to appear
-        await waitForElement(
-          ["#experience", "#about", "#skills"],
-          CONFIG.LAZY_TIMEOUT_MS
-        );
-
+        await waitForElement(["#experience", "#about", "#skills"], CONFIG.LAZY_TIMEOUT_MS);
         const retryResult = scrapeProfileNow();
-
         const nowHasLazy =
           retryResult.profile.about ||
           retryResult.profile.experience.length > 0 ||
           retryResult.profile.skills.length > 0;
-
-        // Merge: keep version with more data
         mergeProfiles(bestResult.profile, retryResult.profile);
-
         if (nowHasLazy) {
           console.log(`[LinkedIn MSG] Lazy sections found on retry ${attempt}`);
           break;
         }
-
-        console.log(
-          `[LinkedIn MSG] Retry ${attempt}/${CONFIG.LAZY_RETRIES} — lazy sections still empty`
-        );
       }
     }
 
-    // Step 4: One final pass
     const finalResult = scrapeProfileNow();
-    if (finalResult.success) {
-      mergeProfiles(bestResult.profile, finalResult.profile);
-    }
+    if (finalResult.success) mergeProfiles(bestResult.profile, finalResult.profile);
 
+    bestResult.profile._source = "dom";
     return bestResult;
   }
 

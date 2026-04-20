@@ -111,6 +111,7 @@
     if (profile.featured?.length) metaParts.push(`${profile.featured.length} featured`);
     if (profile.mutual_connections) metaParts.push(profile.mutual_connections);
     if (profile.follower_count) metaParts.push(profile.follower_count);
+    if (profile._source) metaParts.push(`[${profile._source}]`);
     profileMeta.textContent = metaParts.join(" · ") || "Minimalny profil";
 
     // Show about preview so user can verify it was scraped
