@@ -19,6 +19,20 @@ class LinkedInProfile(BaseModel):
         default_factory=list,
         description="Kluczowe umiejętności",
     )
+    featured: Optional[list[str]] = Field(
+        default_factory=list,
+        description="Tytuły przypiętych postów/artykułów z sekcji Featured",
+    )
+    education: Optional[list[str]] = Field(
+        default_factory=list,
+        description="Uczelnia + kierunek (max 2)",
+    )
+    mutual_connections: Optional[str] = Field(None, description="Liczba wspólnych kontaktów")
+    follower_count: Optional[str] = Field(None, description="Liczba obserwujących")
+    recent_activity: Optional[list[str]] = Field(
+        default_factory=list,
+        description="Tytuły ostatnich postów z sekcji aktywności",
+    )
     profile_url: Optional[str] = Field(None, description="URL profilu LinkedIn")
 
 
@@ -34,7 +48,7 @@ class GenerateMessageRequest(BaseModel):
         description="Ton wiadomości (np. 'profesjonalny', 'swobodny'). Jeśli puste, dobierany automatycznie.",
     )
     language: str = Field(default="pl", description="Język wiadomości: pl | en")
-    max_chars: int = Field(default=300, description="Limit znaków wiadomości")
+    max_chars: int = Field(default=1000, description="Limit znaków wiadomości")
     sender_context: Optional[str] = Field(
         None,
         description="Kontekst nadawcy (kim jestem, co robię) — opcjonalny, wzbogaca personalizację",

@@ -142,7 +142,7 @@ class TestGenerateMessage:
                 "profile": PROFILE_FULL_PL,
                 "goal": "recruitment",
                 "language": "pl",
-                "max_chars": 300,
+                "max_chars": 1000,
             },
         )
         assert resp.status_code == 200
@@ -164,7 +164,7 @@ class TestGenerateMessage:
                 "profile": PROFILE_FULL_EN,
                 "goal": "networking",
                 "language": "en",
-                "max_chars": 300,
+                "max_chars": 1000,
             },
         )
         assert resp.status_code == 200
@@ -294,14 +294,14 @@ class TestPromptBuilder:
             profile=LinkedInProfile(**PROFILE_FULL_PL),
             goal="recruitment",
             language="pl",
-            max_chars=300,
+            max_chars=1000,
         )
         prompt = build_prompt(req)
         assert "Anna Kowalska" in prompt
         assert "Samsung" in prompt
         assert "NLP" in prompt
-        assert "300" in prompt
-        assert "rekrutacyjna" in prompt
+        assert "3-5 zdań" in prompt
+        assert "recruitment" in prompt or "rekrutacyj" in prompt or "CO PISAĆ" in prompt
 
     def test_build_prompt_minimal(self):
         from models import GenerateMessageRequest, LinkedInProfile

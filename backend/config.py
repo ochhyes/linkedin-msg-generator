@@ -24,15 +24,11 @@ class Settings(BaseSettings):
     RATE_LIMIT_WINDOW: int = 60  # seconds
 
     # CORS
-    CORS_ORIGINS: list[str] = [
-        "chrome-extension://*",
-        "http://localhost:*",
-        "http://127.0.0.1:*",
-    ]
+    CORS_ORIGINS: list[str] = ["*"]
 
     # Message defaults
     DEFAULT_LANGUAGE: str = "pl"
-    DEFAULT_MAX_CHARS: int = 300
+    DEFAULT_MAX_CHARS: int = 1000
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

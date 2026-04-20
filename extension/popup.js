@@ -75,9 +75,29 @@
     const metaParts = [];
     if (profile.company) metaParts.push(profile.company);
     if (profile.location) metaParts.push(profile.location);
-    if (profile.experience?.length) metaParts.push(`${profile.experience.length} pozycje`);
-    if (profile.skills?.length) metaParts.push(`${profile.skills.length} umiejętności`);
+    if (profile.experience?.length) metaParts.push(`${profile.experience.length} dośw.`);
+    if (profile.skills?.length) metaParts.push(`${profile.skills.length} umiej.`);
+    if (profile.education?.length) metaParts.push(`${profile.education.length} wykszт.`);
+    if (profile.featured?.length) metaParts.push(`${profile.featured.length} featured`);
+    if (profile.mutual_connections) metaParts.push(profile.mutual_connections);
+    if (profile.follower_count) metaParts.push(profile.follower_count);
     profileMeta.textContent = metaParts.join(" · ") || "Minimalny profil";
+
+    // Show about preview so user can verify it was scraped
+    let aboutEl = profilePreview.querySelector(".profile-card__about");
+    if (profile.about) {
+      if (!aboutEl) {
+        aboutEl = document.createElement("div");
+        aboutEl.className = "profile-card__about";
+        profilePreview.appendChild(aboutEl);
+      }
+      const preview = profile.about.length > 120
+        ? profile.about.slice(0, 120) + "…"
+        : profile.about;
+      aboutEl.textContent = `O mnie: ${preview}`;
+    } else if (aboutEl) {
+      aboutEl.textContent = "O mnie: (brak)";
+    }
 
     profilePreview.classList.remove("hidden");
   }
@@ -238,7 +258,7 @@
       apiUrl: setApiUrl.value.trim(),
       apiKey: setApiKey.value.trim(),
       senderContext: setSender.value.trim(),
-      defaultMaxChars: parseInt(setMaxChars.value, 10) || 300,
+      defaultMaxChars: parseInt(setMaxChars.value, 10) || 1000,
     };
 
     try {

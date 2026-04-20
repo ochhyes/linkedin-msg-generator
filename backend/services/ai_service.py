@@ -5,28 +5,77 @@ from config import settings
 from models import GenerateMessageRequest
 
 
-GOAL_DESCRIPTIONS = {
-    "recruitment": "rekrutacyjna — zaproś kandydata do rozmowy o ofercie pracy",
-    "networking": "networkingowa — zaproś do kontaktu, buduj relację",
-    "sales": "sprzedażowa — zaproponuj współpracę biznesową bez nachalności",
-    "followup": "follow-up — nawiąż do wcześniejszego kontaktu lub wydarzenia",
+GOAL_PROMPTS = {
+    "recruitment": {
+        "do": (
+            "Napisz wiadomość rekrutacyjną. "
+            "Wskaż KONKRETNĄ rzecz z profilu (projekt, firma, technologia, ścieżka kariery) "
+            "która sprawiła, że piszesz właśnie do tej osoby. "
+            "Powiedz co robisz / czego szukasz w jednym zdaniu — bez nazwy stanowiska ani widełek. "
+            "Zakończ konkretnym pytaniem (np. czy jest otwarta na rozmowę w tym tygodniu)."
+        ),
+        "nie_rob": (
+            "NIE pisz 'poszukujemy osoby z Twoim doświadczeniem'. "
+            "NIE pisz 'mamy interesującą ofertę'. "
+            "NIE wymieniaj benefitów. "
+            "NIE pisz 'Twoje doświadczenie jest imponujące'."
+        ),
+    },
+    "networking": {
+        "do": (
+            "Napisz wiadomość networkingową. "
+            "Nawiąż do czegoś konkretnego z profilu — wspólna branża, technologia, temat który cię zainteresował. "
+            "Powiedz krótko kim jesteś i co cię łączy z odbiorcą. "
+            "Zaproponuj konkretny powód kontaktu (wymiana doświadczeń, pytanie branżowe, wspólny temat)."
+        ),
+        "nie_rob": (
+            "NIE pisz 'chciałbym nawiązać kontakt' bez powodu. "
+            "NIE pisz 'Twój profil przykuł moją uwagę' — to nic nie znaczy. "
+            "NIE bądź ogólnikowy."
+        ),
+    },
+    "sales": {
+        "do": (
+            "Napisz wiadomość sprzedażową / propozycję współpracy. "
+            "Zacznij od obserwacji dotyczącej firmy lub roli odbiorcy — pokaż że wiesz z kim piszesz. "
+            "Powiedz konkretnie co oferujesz i jaką wartość to daje (jedna rzecz, nie lista). "
+            "Zakończ pytaniem które otwiera rozmowę, nie zamyka sprzedaż."
+        ),
+        "nie_rob": (
+            "NIE pisz 'wierzę że nasza współpraca przyniesie obopólne korzyści'. "
+            "NIE wymieniaj wszystkich funkcji produktu. "
+            "NIE pisz 'chciałem przedstawić naszą ofertę'."
+        ),
+    },
+    "followup": {
+        "do": (
+            "Napisz wiadomość follow-up nawiązującą do wcześniejszego kontaktu. "
+            "Przypomnij kontekst w jednym zdaniu (gdzie się spotkaliście / o czym rozmawialiście). "
+            "Dodaj coś nowego — obserwację, link, pytanie — żeby był powód do odpowiedzi. "
+            "Zakończ konkretną propozycją następnego kroku."
+        ),
+        "nie_rob": (
+            "NIE pisz tylko 'chciałem przypomnieć o sobie'. "
+            "NIE bądź przepraszający. "
+            "NIE pisz długiego podsumowania poprzedniej rozmowy."
+        ),
+    },
 }
 
 TONE_DEFAULTS = {
-    "recruitment": "profesjonalny, ale ciepły i ludzki",
-    "networking": "swobodny, autentyczny, bez korporacyjnego żargonu",
+    "recruitment": "profesjonalny, ale bezpośredni i ludzki",
+    "networking": "swobodny, ciekawski, bez korporacyjnego żargonu",
     "sales": "konkretny, oparty na wartości, bez nachalności",
     "followup": "ciepły, nawiązujący do wspólnego kontekstu",
 }
 
 
 def build_prompt(req: GenerateMessageRequest) -> str:
-    """Build the system + user prompt from request data."""
-
-    goal_desc = GOAL_DESCRIPTIONS.get(req.goal, req.goal)
+    goal = GOAL_PROMPTS.get(req.goal, {})
+    goal_do = goal.get("do", req.goal)
+    goal_nie = goal.get("nie_rob", "")
     tone = req.tone or TONE_DEFAULTS.get(req.goal, "profesjonalny")
 
-    # Build profile section
     profile_parts = [
         f"- Imię i nazwisko: {req.profile.name}",
         f"- Nagłówek: {req.profile.headline}",
@@ -36,14 +85,21 @@ def build_prompt(req: GenerateMessageRequest) -> str:
     if req.profile.location:
         profile_parts.append(f"- Lokalizacja: {req.profile.location}")
     if req.profile.about:
-        about_trimmed = req.profile.about[:500]
-        profile_parts.append(f"- O mnie: {about_trimmed}")
+        profile_parts.append(f"- O mnie: {req.profile.about[:500]}")
     if req.profile.experience:
-        exp_str = "; ".join(req.profile.experience[:3])
-        profile_parts.append(f"- Doświadczenie: {exp_str}")
+        profile_parts.append(f"- Doświadczenie: {'; '.join(req.profile.experience[:3])}")
     if req.profile.skills:
-        skills_str = ", ".join(req.profile.skills[:8])
-        profile_parts.append(f"- Umiejętności: {skills_str}")
+        profile_parts.append(f"- Umiejętności: {', '.join(req.profile.skills[:8])}")
+    if req.profile.education:
+        profile_parts.append(f"- Wykształcenie: {'; '.join(req.profile.education[:2])}")
+    if req.profile.featured:
+        profile_parts.append(f"- Przypięte posty/artykuły: {'; '.join(req.profile.featured[:3])}")
+    if req.profile.recent_activity:
+        profile_parts.append(f"- Ostatnia aktywność (posty): {'; '.join(req.profile.recent_activity[:3])}")
+    if req.profile.mutual_connections:
+        profile_parts.append(f"- Wspólne kontakty: {req.profile.mutual_connections}")
+    if req.profile.follower_count:
+        profile_parts.append(f"- Obserwujący: {req.profile.follower_count}")
 
     profile_block = "\n".join(profile_parts)
 
@@ -55,30 +111,43 @@ def build_prompt(req: GenerateMessageRequest) -> str:
 
     prompt = f"""Napisz spersonalizowaną wiadomość na LinkedIn.
 
-CEL WIADOMOŚCI: {goal_desc}
-TON: {tone}
 JĘZYK: {lang_label}
-LIMIT ZNAKÓW: {req.max_chars}
+TON: {tone}
+DŁUGOŚĆ: 3-5 zdań
+
+CO PISAĆ:
+{goal_do}
+
+CZEGO NIE PISAĆ:
+{goal_nie}
 
 PROFIL ODBIORCY:
 {profile_block}
 {sender_block}
-ZASADY:
-1. Wiadomość musi być krótka i konkretna (maks. {req.max_chars} znaków).
-2. Nawiąż do czegoś specyficznego z profilu — unikaj generycznych frazesów.
-3. Nie zaczynaj od "Cześć, nazywam się..." — to LinkedIn, odbiorca widzi kto pisze.
-4. Zakończ jednym konkretnym call-to-action (pytanie lub propozycja).
-5. Bądź autentyczny — pisz jak człowiek, nie jak bot.
-6. NIE używaj emoji.
-7. Odpowiedz TYLKO treścią wiadomości, bez żadnych komentarzy, wyjaśnień ani cudzysłowów."""
+ANTY-WZORCE — te frazy są zakazane:
+- "Twoje doświadczenie jest imponujące" — pusty komplement, mówi to każdy bot
+- "W naszej firmie poszukujemy" / "mamy ofertę" — generyczne, odbiorca dostaje to codziennie
+- "Chciałbym nawiązać kontakt" — po co? zawsze podaj powód
+- "Czy byłbyś otwarty na rozmowę" — brzmi jak skrypt call center
+- "Wierzę że nasza współpraca" — nie znasz tej osoby, nie wiesz tego
+
+DOBRE WZORCE:
+- Nazwij konkretną rzecz z profilu (firma, projekt, technologia, ścieżka)
+- Użyj terminów z branży odbiorcy — pokaż że wiesz z kim rozmawiasz
+- Pisz jak w normalnej rozmowie, nie jak w mailu formalnym
+- CTA = jedno konkretne pytanie, nie ogólne "daj znać co myślisz"
+
+Odpowiedz TYLKO treścią wiadomości, bez komentarzy, cudzysłowów ani wyjaśnień."""
 
     return prompt
 
 
-SYSTEM_PROMPT = """Jesteś ekspertem od komunikacji na LinkedIn. Piszesz krótkie, 
-spersonalizowane wiadomości, które brzmią naturalnie i ludzko. Nigdy nie piszesz 
-generycznych szablonów. Każda wiadomość jest unikalna i odnosi się do konkretnych 
-elementów profilu odbiorcy. Odpowiadasz WYŁĄCZNIE treścią wiadomości."""
+SYSTEM_PROMPT = (
+    "Piszesz wiadomości na LinkedIn. "
+    "Krótkie, konkretne, ludzkie. "
+    "Żadnych generycznych komplementów, żadnych emoji, 3-5 zdań max. "
+    "Odpowiadasz TYLKO treścią wiadomości."
+)
 
 
 async def call_claude(prompt: str) -> str:
@@ -100,7 +169,6 @@ async def call_claude(prompt: str) -> str:
         )
         resp.raise_for_status()
         data = resp.json()
-        # Extract text from content blocks
         text_parts = [
             block["text"]
             for block in data.get("content", [])

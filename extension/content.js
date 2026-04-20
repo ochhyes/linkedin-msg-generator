@@ -237,6 +237,105 @@
     ], skillsSection, 8);
   }
 
+  function extractFeatured() {
+    const featuredSection = document.querySelector("#featured")?.closest("section");
+    if (!featuredSection) return [];
+    return queryAllTexts([
+      ".t-bold span[aria-hidden='true']",
+      ".hoverable-link-text span[aria-hidden='true']",
+      ".feed-shared-text span[aria-hidden='true']",
+      "span.visually-hidden",
+    ], featuredSection, 3);
+  }
+
+  function extractEducation() {
+    const educationSection = document.querySelector("#education")?.closest("section");
+    if (!educationSection) return [];
+    const items = [];
+    const listItems = educationSection.querySelectorAll(
+      ".pvs-list__paged-list-item, li.pvs-list__item--line-separated"
+    );
+    for (const item of Array.from(listItems).slice(0, 2)) {
+      const school = queryText([
+        ".t-bold span[aria-hidden='true']",
+        ".mr1.t-bold span",
+        "span.visually-hidden",
+      ], item);
+      const field = queryText([
+        ".t-normal:not(.t-black--light) span[aria-hidden='true']",
+        ".t-14.t-normal span[aria-hidden='true']",
+      ], item);
+      if (school) {
+        items.push(field ? `${school} — ${field}` : school);
+      }
+    }
+    return items;
+  }
+
+  function extractMutualConnections() {
+    // LinkedIn renders this in the top card area
+    const candidates = [
+      ".pv-top-card--list .link-without-visited-state",
+      ".pv-top-card--list-bullet .link-without-visited-state",
+      "[href*='search/results/people'] span[aria-hidden='true']",
+      ".distance-badge ~ span",
+    ];
+    const text = queryText(candidates);
+    if (text && /\d/.test(text) && /(wspólnych|mutual)/i.test(text)) return text;
+
+    // Fallback: scan all small texts in top card area for the pattern
+    const topCard =
+      document.querySelector("section.pv-top-card") ||
+      document.querySelector(".pv-top-card--list") ||
+      document.querySelector(".scaffold-layout__main");
+    if (topCard) {
+      const allSpans = topCard.querySelectorAll(".text-body-small, .t-14, span");
+      for (const el of allSpans) {
+        const t = el.textContent.trim();
+        if (/\d+\s+(wspólnych kontaktów|mutual connections)/i.test(t)) return t;
+      }
+    }
+    return null;
+  }
+
+  function extractFollowerCount() {
+    const candidates = [
+      ".pv-top-card--list .text-body-small",
+      ".pv-top-card .follower-count",
+      ".pvs-header__optional-link",
+    ];
+    const text = queryText(candidates);
+    if (text && /(obserwuj|follower)/i.test(text)) return text;
+
+    // Fallback: scan top card area for follower pattern
+    const topCard =
+      document.querySelector("section.pv-top-card") ||
+      document.querySelector(".scaffold-layout__main");
+    if (topCard) {
+      const allSmall = topCard.querySelectorAll(".text-body-small, .t-14, span");
+      for (const el of allSmall) {
+        const t = el.textContent.trim();
+        if (/[\d,]+\s*(obserwuj|follower)/i.test(t)) return t;
+      }
+    }
+    return null;
+  }
+
+  function extractRecentActivity() {
+    const activitySection =
+      document.querySelector("#recent-activity")?.closest("section") ||
+      document.querySelector("[data-generated-suggestion-target='recent_activity']")?.closest("section") ||
+      document.querySelector(".pv-recent-activity-section");
+    if (!activitySection) return [];
+    return queryAllTexts([
+      ".feed-shared-text span[aria-hidden='true']",
+      ".t-bold span[aria-hidden='true']",
+      ".update-components-text span[aria-hidden='true']",
+      ".feed-shared-article__title span[aria-hidden='true']",
+      "span.break-words",
+    ], activitySection, 3);
+  }
+
   function extractProfileUrl() {
     return window.location.href.split("?")[0].replace(/\/$/, "");
   }
@@ -252,6 +351,11 @@
       about: extractAbout(),
       experience: extractExperience(),
       skills: extractSkills(),
+      featured: extractFeatured(),
+      education: extractEducation(),
+      mutual_connections: extractMutualConnections(),
+      follower_count: extractFollowerCount(),
+      recent_activity: extractRecentActivity(),
       profile_url: extractProfileUrl(),
     };
 
@@ -362,12 +466,13 @@
     if (!base.about && newer.about) base.about = newer.about;
     if (!base.company && newer.company) base.company = newer.company;
     if (!base.location && newer.location) base.location = newer.location;
-    if (newer.experience.length > base.experience.length) {
-      base.experience = newer.experience;
-    }
-    if (newer.skills.length > base.skills.length) {
-      base.skills = newer.skills;
-    }
+    if (!base.mutual_connections && newer.mutual_connections) base.mutual_connections = newer.mutual_connections;
+    if (!base.follower_count && newer.follower_count) base.follower_count = newer.follower_count;
+    if (newer.experience.length > base.experience.length) base.experience = newer.experience;
+    if (newer.skills.length > base.skills.length) base.skills = newer.skills;
+    if (newer.featured.length > base.featured.length) base.featured = newer.featured;
+    if (newer.education.length > base.education.length) base.education = newer.education;
+    if (newer.recent_activity.length > base.recent_activity.length) base.recent_activity = newer.recent_activity;
   }
 
   // ── SPA Navigation Detection ─────────────────────────────────────

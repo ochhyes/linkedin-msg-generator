@@ -10,7 +10,7 @@ const DEFAULT_SETTINGS = {
   apiKey: "dev-test-key-123",
   defaultGoal: "networking",
   defaultLanguage: "pl",
-  defaultMaxChars: 300,
+  defaultMaxChars: 1000,
   senderContext: "",
 };
 
