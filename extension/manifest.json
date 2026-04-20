@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LinkedIn Message Generator",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Generuj spersonalizowane wiadomości LinkedIn z pomocą AI",
   "permissions": [
     "activeTab",

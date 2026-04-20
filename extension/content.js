@@ -11,6 +11,17 @@
 (() => {
   "use strict";
 
+  // Guard: content.js can be injected multiple times (manifest + popup's
+  // executeScript fallback + SPA navigations). Without this guard each
+  // injection registers another chrome.runtime.onMessage listener — every
+  // scrape request then gets N responses, and the late ones fire after the
+  // channel is closed, spamming "chrome-extension://invalid/ net::ERR_FAILED".
+  if (window.__LINKEDIN_MSG_LOADED__) {
+    console.log("[LinkedIn MSG] Already loaded, skipping re-injection");
+    return;
+  }
+  window.__LINKEDIN_MSG_LOADED__ = true;
+
   // ── Configuration ────────────────────────────────────────────────
 
   const CONFIG = {
@@ -582,10 +593,19 @@
   // ── Message Listener ─────────────────────────────────────────────
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    // Orphan check: after the extension is reloaded/updated, old content
+    // scripts in already-open tabs lose their runtime connection. Calling
+    // sendResponse here would throw "chrome-extension://invalid/ ERR_FAILED".
+    if (!chrome.runtime?.id) return;
+
     if (message.action === "scrapeProfile") {
       scrapeProfileAsync()
-        .then(sendResponse)
+        .then((result) => {
+          if (!chrome.runtime?.id) return;
+          sendResponse(result);
+        })
         .catch((err) => {
+          if (!chrome.runtime?.id) return;
           sendResponse({
             success: false,
             profile: null,
