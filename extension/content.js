@@ -455,41 +455,50 @@
     const included = collectVoyagerIncluded();
     if (included.length === 0) return null;
 
-    const profile = included.find(isProfileEntity);
-    if (!profile) return null;
+    // LinkedIn embeds TWO profile entities on any /in/<slug> page:
+    //   - the viewed profile (the person whose URL we're on)
+    //   - "me" (the logged-in user, used for nav/sidebar)
+    // A naive .find(isProfileEntity) returns whichever is first in DOM order,
+    // which in practice is often "me" — meaning we'd scrape the USER's own
+    // profile instead of the one they're looking at. Match by URL slug.
+    const slug = extractSlugFromUrl();
+    const slugLower = slug ? slug.toLowerCase() : null;
 
-    const positions = included.filter(isPositionEntity);
-    const educations = included.filter(isEducationEntity);
-    const companies = new Map();
-    for (const e of included) if (isCompanyEntity(e)) companies.set(e.entityUrn, e);
+    const profiles = included.filter(isProfileEntity);
+    if (profiles.length === 0) return null;
 
-    const currentPos = positions.find(currentFlag) || positions[0];
-    const company = currentPos ? resolveCompanyNameFromPos(currentPos, companies) : "";
+    let profile = null;
+    if (slugLower) {
+      profile = profiles.find((p) => {
+        const pid = String(p.publicIdentifier || p.vanityName || "").toLowerCase();
+        return pid && pid === slugLower;
+      });
+    }
+    // Safety: if we couldn't match slug AND there are multiple profiles in the
+    // payload, we can't disambiguate — bail so DOM path gets a chance. Only
+    // trust an unmatched sole-profile case.
+    if (!profile) {
+      if (profiles.length === 1) profile = profiles[0];
+      else return null;
+    }
 
     const name = `${profile.firstName || ""} ${profile.lastName || ""}`.trim();
     const headline = profile.headline || "";
     const about = profile.summary || "";
     const location = profile.locationName || profile.geoLocationName || "";
 
-    const experience = positions.slice(0, 5).map((p) => {
-      const c = resolveCompanyNameFromPos(p, companies);
-      return c ? `${p.title} @ ${c}` : p.title;
-    });
-
-    const education = educations.slice(0, 3).map((e) => {
-      const school = e.schoolName || (e.school && e.school.name) || "";
-      const field = e.degreeName || e.fieldOfStudy || "";
-      return field ? `${school} — ${field}` : school;
-    }).filter(Boolean);
-
+    // Positions/education/companies in `included` may belong to EITHER the
+    // viewed profile OR "me" — without a reliable owner-urn linkage we can't
+    // disambiguate. Ship only the base fields from Voyager and let the DOM
+    // path (or backend) fill in experience/education from the rendered page.
     return {
       name,
       headline,
-      company,
+      company: "",
       location,
       about,
-      experience,
-      education,
+      experience: [],
+      education: [],
       skills: [],
       featured: [],
       mutual_connections: null,
@@ -770,40 +779,53 @@
    * 4. MERGE best results from all attempts.
    */
   async function scrapeProfileAsync() {
-    // Priority 1: Voyager JSON (layout-independent, most reliable)
-    // Give React one short tick to paste payloads into the DOM.
+    // Short initial wait — give React time to paint the top card or feed.
     await waitForElement(
-      ['code[id^="bpr-guid-"]', "main h1", "main h2"],
+      ['code[id^="bpr-guid-"]', "main h1", "main h2", '[data-testid="expandable-text-box"]'],
       3000
     );
-    let voyager = extractFromVoyagerPayloads();
+
+    // LAYOUT DETECTION: LinkedIn serves two very different variants on /in/.
+    //
+    // Classic: <h1> with name + about / experience / skills sections rendered
+    //          in DOM. All rich fields come from DOM scraping.
+    //
+    // Feed-only (2025 SPA): no <h1>, page renders as author's post feed. Name
+    //          and headline live in an <a href="/in/slug"> author card; about
+    //          / experience aren't rendered at all.
+    //
+    // Prefer DOM path on classic — it gets FULL data. Fall back to Voyager /
+    // JSON-LD / feed extractors only when DOM has nothing to work with.
+    const main = document.querySelector("main");
+    const hasClassicTopCard = !!(main && main.querySelector("h1"));
+
+    if (hasClassicTopCard) {
+      const domResult = await extractViaDom();
+      if (domResult.success) {
+        domResult.profile._source = "dom";
+        return domResult;
+      }
+      // DOM path failed even though h1 existed — fall through to fallbacks.
+    }
+
+    // Fallback 1: Voyager JSON payloads embedded in <code id="bpr-guid-*">.
+    // Now slug-matched — won't return the viewer's own profile anymore.
+    const voyager = extractFromVoyagerPayloads();
     if (voyager && voyager.name && voyager.headline) {
       console.log("[LinkedIn MSG] Extracted via Voyager JSON");
       voyager._source = "voyager";
       return { success: true, profile: voyager, error: null, timestamp: new Date().toISOString() };
     }
 
-    // Priority 2: JSON-LD Person schema (secondary, often present on profiles)
+    // Fallback 2: JSON-LD Person schema.
     const jsonLd = extractFromJsonLd();
-    if (jsonLd && jsonLd.name) {
-      // If Voyager gave partial data (e.g. name but no headline), merge.
-      const base = voyager || jsonLd;
-      const merged = { ...jsonLd, ...(voyager || {}) };
-      // Fill blanks from jsonLd where voyager was empty
-      if (!merged.headline && jsonLd.headline) merged.headline = jsonLd.headline;
-      if (!merged.about && jsonLd.about) merged.about = jsonLd.about;
-      if (!merged.company && jsonLd.company) merged.company = jsonLd.company;
-      if (!merged.location && jsonLd.location) merged.location = jsonLd.location;
-      if (merged.name && merged.headline) {
-        console.log("[LinkedIn MSG] Extracted via JSON-LD", voyager ? "(merged with partial Voyager)" : "");
-        merged._source = voyager ? "voyager+jsonld" : "jsonld";
-        return { success: true, profile: merged, error: null, timestamp: new Date().toISOString() };
-      }
+    if (jsonLd && jsonLd.name && jsonLd.headline) {
+      console.log("[LinkedIn MSG] Extracted via JSON-LD");
+      jsonLd._source = "jsonld";
+      return { success: true, profile: jsonLd, error: null, timestamp: new Date().toISOString() };
     }
 
-    // Priority 2.5: Feed-layout variant (LinkedIn 2025 SPA — no top card,
-    // profile page renders as author's post feed). Navigates via stable
-    // <a href="/in/slug"> anchors + aria-label-marked author cards.
+    // Fallback 3: Feed layout (no h1, profile renders as posts).
     const feed = extractFromFeedLayout();
     if (feed && feed.name && feed.headline) {
       console.log("[LinkedIn MSG] Extracted via feed layout");
@@ -811,8 +833,21 @@
       return { success: true, profile: feed, error: null, timestamp: new Date().toISOString() };
     }
 
-    // Priority 3: DOM scraping (legacy path, retained for the classic layout).
-    // Step 1: Wait for name to appear
+    // Nothing worked — last resort DOM attempt + diagnostic.
+    const domFinal = await extractViaDom();
+    if (domFinal.success) {
+      domFinal.profile._source = "dom";
+      return domFinal;
+    }
+    return domFinal; // error + diagnostics
+  }
+
+  /**
+   * DOM scraping path — full data for classic LinkedIn layouts.
+   * Extracted into its own function so the orchestration flow can call it
+   * conditionally without inlining 100 lines.
+   */
+  async function extractViaDom() {
     const nameEl = await waitForElement(NAME_SELECTORS, CONFIG.PRIMARY_TIMEOUT_MS);
 
     if (!nameEl) {
@@ -896,7 +931,6 @@
     const finalResult = scrapeProfileNow();
     if (finalResult.success) mergeProfiles(bestResult.profile, finalResult.profile);
 
-    bestResult.profile._source = "dom";
     return bestResult;
   }
 
