@@ -44,6 +44,21 @@
     LAZY_RETRY_DELAY_MS: 800,
   };
 
+  // ── Runtime guard ────────────────────────────────────────────────
+
+  /**
+   * Returns true while this content script's chrome.runtime connection is
+   * still valid. After the extension is reloaded/updated, already-injected
+   * content scripts in open tabs lose `chrome.runtime.id` permanently — any
+   * subsequent chrome.* call (or sendResponse) would surface as
+   * `chrome-extension://invalid/` errors. Long-running callbacks
+   * (MutationObserver, setInterval, history overrides) must call this
+   * before doing work and bail out cleanly when it returns false.
+   */
+  function isContextValid() {
+    return typeof chrome !== "undefined" && !!chrome.runtime && !!chrome.runtime.id;
+  }
+
   // ── Utility ──────────────────────────────────────────────────────
 
   function queryText(selectors, context = document) {
@@ -111,6 +126,9 @@
 
       function check() {
         if (resolved) return;
+        // Bail out if extension was reloaded mid-wait. cleanup() is idempotent
+        // (zeroes observer/timers, sets resolved=true), so re-entry is safe.
+        if (!isContextValid()) { cleanup(); resolve(null); return; }
         for (const sel of selectors) {
           try {
             const el = document.querySelector(sel);
@@ -160,9 +178,17 @@
     ".scaffold-layout__main h1",
     ".ph5 h1",
     "[data-view-name='profile-card'] h1",
+    // 2026 hybrid layout: name renders in sticky toolbar via artdeco-entity-lockup,
+    // not in the classic top card. Found on profiles served as "render-mode-BIGPIPE"
+    // where h1 in pv-top-card is missing but toolbar still has it.
+    ".scaffold-layout-toolbar h1",
+    ".scaffold-layout-toolbar .artdeco-entity-lockup__title",
+    ".artdeco-entity-lockup__title h1",
     // Generic fallback: any h1 under main content
     "main h1",
     "main section h1",
+    // Last-resort: any h1 in document (filtered by findAnyLikelyNameHeading)
+    "h1",
   ];
 
   const HEADLINE_SELECTORS = [
@@ -956,6 +982,7 @@
   let lastUrl = window.location.href;
 
   function onUrlChange() {
+    if (!isContextValid()) return;
     const newUrl = window.location.href;
     if (newUrl !== lastUrl) {
       lastUrl = newUrl;
@@ -984,16 +1011,16 @@
     // Orphan check: after the extension is reloaded/updated, old content
     // scripts in already-open tabs lose their runtime connection. Calling
     // sendResponse here would throw "chrome-extension://invalid/ ERR_FAILED".
-    if (!chrome.runtime?.id) return;
+    if (!isContextValid()) return;
 
     if (message.action === "scrapeProfile") {
       scrapeProfileAsync()
         .then((result) => {
-          if (!chrome.runtime?.id) return;
+          if (!isContextValid()) return;
           sendResponse(result);
         })
         .catch((err) => {
-          if (!chrome.runtime?.id) return;
+          if (!isContextValid()) return;
           sendResponse({
             success: false,
             profile: null,
