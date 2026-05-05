@@ -166,14 +166,17 @@
 
   // ── Profile Extractors ───────────────────────────────────────────
 
+  // Selector cleanup (#16): removed historical names LinkedIn no longer
+  // generates — `h1.top-card-layout__title`, `.pv-text-details__left-panel`,
+  // `.pv-top-card--list`, `.pv-top-card-section__headline`. Kept structural
+  // `.pv-top-card` prefix and toolbar selectors — those are still active in
+  // 2026-05 (see "Znane problemy" in CLAUDE.md).
   const NAME_SELECTORS = [
-    // Known historical class names (LinkedIn rotates these)
+    // Active in 2026-05
     "h1.text-heading-xlarge",
     "h1.inline.t-24",
-    "h1.top-card-layout__title",
-    // Container-scoped
+    // Container-scoped — .pv-top-card is still emitted as structural prefix
     ".pv-top-card h1",
-    ".pv-text-details__left-panel h1",
     "section.pv-top-card h1",
     ".scaffold-layout__main h1",
     ".ph5 h1",
@@ -194,9 +197,6 @@
   const HEADLINE_SELECTORS = [
     ".text-body-medium.break-words",
     ".pv-top-card .text-body-medium",
-    ".pv-text-details__left-panel .text-body-medium",
-    ".pv-top-card--list .text-body-medium",
-    ".pv-top-card-section__headline",
     ".ph5 .text-body-medium",
   ];
 
@@ -1020,13 +1020,19 @@
   // ── SPA Navigation Detection ─────────────────────────────────────
 
   let lastUrl = window.location.href;
+  // Bumped on every confirmed URL change. scrapeProfileAsync captures the
+  // current value at the start of a scrape and compares before returning —
+  // mismatch means the user navigated mid-scrape, so we drop the result
+  // rather than risk attributing one profile's data to another URL (#15).
+  let navEpoch = 0;
 
   function onUrlChange() {
     if (!isContextValid()) return;
     const newUrl = window.location.href;
     if (newUrl !== lastUrl) {
       lastUrl = newUrl;
-      console.log("[LinkedIn MSG] SPA navigation detected:", newUrl);
+      navEpoch++;
+      console.log("[LinkedIn MSG] SPA navigation detected:", newUrl, "(epoch", navEpoch + ")");
     }
   }
 
@@ -1054,9 +1060,27 @@
     if (!isContextValid()) return;
 
     if (message.action === "scrapeProfile") {
+      // Capture nav epoch at request entry. SPA navigation mid-scrape would
+      // otherwise let us return one profile's data attributed to a URL the
+      // user has already left — popup would cache stale data under the new
+      // tab URL (#15). On mismatch we reject so popup shows the right error.
+      const startEpoch = navEpoch;
+      const startUrl = window.location.href;
       scrapeProfileAsync()
         .then((result) => {
           if (!isContextValid()) return;
+          if (startEpoch !== navEpoch) {
+            console.warn(
+              "[LinkedIn MSG] Navigation mid-scrape — dropping result.",
+              "Started at", startUrl, "now at", window.location.href
+            );
+            sendResponse({
+              success: false,
+              profile: null,
+              error: "Strona zmieniona w trakcie pobierania — odśwież i spróbuj ponownie.",
+            });
+            return;
+          }
           sendResponse(result);
         })
         .catch((err) => {

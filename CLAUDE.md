@@ -219,53 +219,35 @@ Nie łącz dwóch ról w jednej sesji bez zgody usera. Loop ma sens dlatego że 
 
 ```
 Sprint:        Niezawodność scrape'a (3 dni)
-Phase:         Commit
-Active task:   #17 — race condition na DOM rendering (Tester PASS, czeka na commit)
-Last commit:   e5acdff — fix: orphan guard w content.js (#12 partial)
+Phase:         Tester
+Active task:   Bundle #3+#7+#15+#16 — niezawodność scrape (Dev done, wersja 1.1.0, czeka na test)
+Last commit:   f312f6d — fix: race recovery przy timeout scrape'a w fazie shell (#17)
 Updated:       2026-05-05
 ```
 
-## Notatki z poprzedniej sesji (handoff dla Dev następnej sesji)
+## Notatki z poprzedniej sesji (handoff dla PM)
 
-**Sesja 2026-05-05 zamknęła dwie sprawy + otworzyła trzecią:**
+**Sesja 2026-05-05 — duża, wielofazowa:**
 
-1. **#12b → BLOCKED.** Bez stack tracu floodu od Marcina (klik strzałka na error w DevTools → Show full stack trace) nie da się rozróżnić branchu A/B/C/D. Hipoteza robocza: Branch B (LinkedIn obfuscated bundle, linia 12275 w pliku ~12k+ linii — to nie nasz kod). Task wisi w sekcji BLOCKED, kompletny plan zachowany. Odblokowanie wymaga współpracy Marcina przy DevTools.
+1. **#12b → BLOCKED** (czeka na stack trace floodu od Marcina, plan zachowany w sekcji BLOCKED).
 
-2. **#17 NOWY P0.** Reprodukcja na sesji: scrape Anny Rutkowskiej padł na timeout z `h1Count: 0, hasTopCard: false, voyagerPayloadCount: 0`. Hipoteza "nowy stack frontendowy LinkedIn'a" została **ODRZUCONA** po dump'ie `outerHTML` `<main>` Anny i Emilii — DOM to klasyczny Ember (`pv-top-card`, `ph5 pb5`, `[data-member-id]`). Hashowane klasy `DHANJxr...` to dynamic CSS modules wokół Ember'a. Realny powód timeout'u: race condition — scrape uderza w fazie shell, zanim Ember dorenderuje profil. Plan i acceptance criteria w TODO #17. **Następny task do zrobienia.**
+2. **#17 → DONE** (commit `f312f6d`). Pełny cykl PM → Dev → Tester → Commit w jednej sesji. Race condition na DOM rendering rozwiązany przez pre-wait i layout detection o markery strukturalne `[data-member-id]` / `.pv-top-card` + marker-gated retry w `extractViaDom`. Anna Rutkowska scrape'uje teraz nawet przy klik w trakcie ładowania strony (potwierdzone live przez Marcina). Auto-testy 93/0. Bump 1.0.8.
 
-3. **#3 (UX stale cache) potwierdzony w produkcji.** Marcin zobaczył Grzegorza Błyszczka w popup'ie podczas próby scrape'a Anny. Maskuje fail. Po #17 to powinien być następny task do tknięcia.
+3. **#3 (UX stale cache) potwierdzony w produkcji** (Grzegorz w popup'ie po fail Anny przed fixem #17). Po #17 fail-rate Anny dramatycznie spadł, więc kontekst do reprodukcji #3 będzie trudniejszy — ale bug nadal istnieje i zostaje P0. Sugestia PM: **#3 jako następny task**.
 
-**Pre-existing zmiany w drzewie** (do osobnej decyzji Marcina, NIE mieszać z #17):
-- `M extension/content.js` — selektory toolbar (`.scaffold-layout-toolbar h1` itd.) z poprzedniej sesji.
-- `M .claudeignore`, `D extension.zip`, `?? extension 1.0.6 update.zip` — artefakty workspace'u.
+**Pre-existing zmiany w drzewie nie wzięte do commit'a #17** (do osobnej decyzji Marcina):
+- `M .claudeignore` — workspace artifact.
+- `D extension.zip` — workspace artifact.
+- `?? extension 1.0.8.rar` — paczka dystrybucyjna nowej wersji (dla zespołu OVB).
+- Push commit'a `f312f6d` na origin/master nie wykonany — Marcin decyduje kiedy.
 
-**Dla Dev który podejmie #17:** przeczytaj pełny plan w TODO. Faza pierwsza to przegląd `extension/content.js` — gdzie jest `waitForElement`, jak zdefiniowane są selektory polling, jaki obecnie timeout. Następnie rozszerzenie selektorów i retry strategy zgodnie z planem PM.
+**Dla PM następnej sesji:** rekomendowany wybór = **#3 P0 — UX stale cache** (popup nie czyści `profilePreview` / `resultArea` przy fail scrape'a). Plus opcjonalnie #15 (SPA navigation reset) lub #7 (URL slug validation) komplementarne do #3 w kontekście niezawodności UI po fail'u.
 
 ---
 
 # SPRINT BACKLOG
 
 ## TODO (priorytet od góry)
-
-### #3 P0 — UX stale cache
-Przy błędzie scrape popup nadal pokazuje dane z poprzedniej sesji (innego profilu). Wyczyść `profilePreview`, `resultArea` i message text w `btnScrape.catch`. Plus: gdy popup otwiera się i URL aktywnej karty nie matchuje `lastSession.profile.profile_url` → automatyczny reset.
-- Pliki: `extension/popup.js`
-- Acceptance: po failed scrape Olgi gdy w cache był Konrad → preview pusty, error widoczny, Generuj wyłączony.
-
-### #7 P0 — Walidacja URL profilu
-Po scrape porównaj slug z `profile.profile_url` ze slugiem aktywnej karty. Mismatch → reject z komunikatem „Scraper zwrócił dane innego profilu — odśwież stronę".
-- Pliki: `extension/popup.js`, `extension/content.js`
-- Acceptance: stuby testowe gdzie scrape zwraca slug != current → error widoczny, Generuj wyłączony.
-
-### #15 P0 — SPA navigation reset
-Content.js w `onUrlChange` tylko loguje. Rozszerz: po url change resetuj cache rozpoznania, wymuszaj re-wait na `h1` z nowym slugiem, blokuj odpowiedzi na `scrapeProfile` requesty pochodzące sprzed url change.
-- Pliki: `extension/content.js`
-- Acceptance: szybka nawigacja Joanna → Grzegorz → klik Pobierz → dostaję dane Grzegorza, nie Joanny.
-
-### #16 P1 — Wyczyścić martwe selektory
-W `NAME_SELECTORS` i `HEADLINE_SELECTORS` wywal `.pv-top-card*`, `.pv-text-details__left-panel*`, `section.pv-top-card`. Zostaw aktywne: `.ph5 h1`, `h1.inline.t-24`, `h1.text-heading-xlarge`, `.scaffold-layout-toolbar h1`, plus 1 generic fallback.
-- Pliki: `extension/content.js`
-- Acceptance: czas pierwszego match'a w `waitForElement` na profilu Joanny < 1s (mierzone `console.time`).
 
 ### #5 P1 — Telemetria błędów scrape
 Endpoint `POST /api/diagnostics/scrape-failure` przyjmujący payload z `collectDiagnostics()`. Backend zapisuje do tabeli `scrape_failures` (lub na razie do JSONL pliku jeśli nie ma DB). Content.js wysyła przy każdym fail.
@@ -287,76 +269,102 @@ Po zakończeniu wszystkich powyżej: scrape 5 realnych profili, weryfikacja tele
 
 ## IN PROGRESS
 
-### #17 P0 — Race condition na DOM rendering (timeout scrape'a w fazie shell)
-
-**Problem.** Scrape uderzający w trakcie hydration Ember'a widzi pusty `<main>` (`h1Count: 0`, brak `.pv-top-card`, brak Voyager payload). `waitForElement` poddaje się przed dorenderowaniem profilu. Na sesji 2026-05-05 reprodukowane na profilu Anny Rutkowskiej (`anna-rutkowska-0551b120b`) i Emilii Kuchty (`data-member-id="707176649"`). Po ponownym wejściu / dłuższym waiting DOM jest dorenderowany i scrape OK. To **nie jest** nowy stack frontendowy LinkedIn'a — to klasyczny Ember po prostu wolniej hydratuje.
-
-**Plan (kroki):**
-
-1. W `extension/content.js` w funkcji `waitForElement` (lub `scrapeProfileNow`) rozszerzyć selektory polling'u o markery STRUKTURALNE, które pojawiają się wcześniej i są mocniejsze niż samo `h1`:
-   - `[data-member-id]` (atrybut na `<section.artdeco-card>` — pojawia się przed h1)
-   - `.pv-top-card`
-   - Klasyczny `h1` jako fallback
-2. Wydłużyć timeout `waitForElement` (sprawdzić obecną wartość — najprawdopodobniej 3s, podnieść do 5–7s) tylko jeśli jeszcze żaden marker się nie pojawił. Krótszy timeout zachować jeśli marker jest, ale h1 czeka na render.
-3. Dodać retry strategy: jeśli pierwszy `collectDiagnostics()` zwraca `h1Count: 0 && !hasTopCard`, spróbuj jeszcze raz po 800–1000ms (max 2 retry). Jeśli dalej puste → fail z dotychczasowym komunikatem.
-4. Bump `extension/manifest.json` 1.0.7 → 1.0.8 (patch).
-
-**Pliki:** `extension/content.js`, `extension/manifest.json`.
-
-**Acceptance criteria:**
-- AC1: `waitForElement` reaguje na `[data-member-id]` i `.pv-top-card` jako equivalent dla `h1`. Pokazane test'em jednostkowym lub manualnym.
-- AC2: Scrape Anny Rutkowskiej z opcji „odśwież i kliknij Pobierz w ciągu 1s od loadu" daje success w ≥4/5 prób (vs obecnie ~1/5 manualnie).
-- AC3: Joanna i Grzegorz nadal działają — happy path bez regresji.
-- AC4: Bump wersji w `manifest.json` na 1.0.8.
-- AC5: Czas first match na profilu Joanny (`console.time` w `waitForElement`) nie wzrósł powyżej 1.5s vs baseline (`<1s` przed zmianą — patrz #16).
-
-**Ryzyko:** Za agresywny retry przedłuży perceived latency dla profilu który po prostu nie ma h1 (np. My Connections page). Mitigacja: retry tylko gdy `voyagerPayloadCount === 0 && hasMain === true && h1Count === 0` (czyli „strona profilu, ale jeszcze pusta"), nie na wszystkich edge case'ach.
-
----
-
-**Dev notes (sesja 2026-05-05, faza Developer):**
-
-**What changed:**
-
-- `extension/content.js` linie 807-822 (`scrapeProfileAsync` pre-wait): rozszerzona lista selektorów o `[data-member-id]` i `.pv-top-card` przed dotychczasowymi `code[id^="bpr-guid-"]`, `main h1`, `main h2`, `[data-testid="expandable-text-box"]`. Markery strukturalne hydratują wcześniej niż h1 — daje to szansę zakończyć pre-wait w fazie gdy DOM ma już sekcję profilu, nawet jeśli h1 jeszcze się nie wstrzyknął. Realizuje krok 1 planu PM.
-- `extension/content.js` linie 840-845 (`scrapeProfileAsync` layout detection): `hasClassicTopCard` akceptuje teraz `h1` LUB `[data-member-id]` LUB `.pv-top-card` w `<main>`. Bez tego strona w fazie shell (bez h1) szła do Voyager fallback nawet jeśli classic Ember był w trakcie hydration.
-- `extension/content.js` linie 895-917 (`extractViaDom` retry strategy): jeśli pierwsze `waitForElement(NAME_SELECTORS, 15000)` zwraca null, ale `[data-member-id]` lub `.pv-top-card` już jest w DOM, dajemy DOM 2 dodatkowe rundy po `delay(900)` + `waitForElement(NAME_SELECTORS, 1500)`. Marker-gated — bez markera (np. My Connections, error page) idziemy do dotychczasowego fail path bez wzrostu latency. Realizuje krok 3 planu. Oryginalny krok 2 (timeout 5–7s) jest już spełniony — `CONFIG.PRIMARY_TIMEOUT_MS = 15000` jest większy niż wymagane, więc nie zmieniam tej wartości.
-- `extension/manifest.json`: bump `1.0.7` → `1.0.8` (patch). Realizuje krok 4 planu.
-
-**Ścieżka kodu nie tknięta:** `waitForElement` (fundamentalny mechanizm MO + polling) został bez zmian — extension w `extractViaDom` go re-używa. `NAME_SELECTORS` i `HEADLINE_SELECTORS` bez zmian — sprzątanie martwych selektorów to osobny task #16.
-
-**How to test (dla Testera):**
-
-1. Reload extension w `chrome://extensions/` (sprawdź że wersja 1.0.8 jest widoczna obok nazwy).
-2. Hard-refresh karty LinkedIn (Ctrl+Shift+R).
-3. **Smoke test happy path** — scrape Joanny + Grzegorza Błyszczka. Każdy 1x. Oba muszą zwrócić pełne dane (imię + headline + about/experience). Opowieść z konsoli karty: `[LinkedIn MSG]` logi BEZ `Scrape timeout`.
-4. **Test naprawy #17** — scrape Anny Rutkowskiej (`anna-rutkowska-0551b120b`):
-   - Wejście z poziomu wyszukiwania LinkedIn (świeża nawigacja).
-   - W ciągu pierwszej sekundy od pojawienia się strony kliknij ikonę extension'a → "Pobierz profil".
-   - Powtórz 5x (ponowne wejście z search za każdym razem, żeby wymusić full hydration).
-   - **Wymóg AC2:** ≥4/5 sukces (vs obecne ~1/5 zaobserwowane manualnie). W konsoli powinno pojawić się `[LinkedIn MSG] Name resolved after race-recovery retry (#17)` jeśli retry się włączył.
-5. **Smoke test edge case** — wejście na `/mynetwork/` (My Connections) i kliknij Pobierz. Powinno padać szybko z dotychczasowym komunikatem (nie wisieć dodatkowo 1.8s na retry — bez markera retry nie powinien się włączyć).
-6. **Auto-testy:** `cd extension && node tests/test_scraper.js` → zielone (regression check).
-
-**Pliki dotknięte:** `extension/content.js`, `extension/manifest.json`. Brak zmian w backend / popup.js / background.js.
-
----
-
-**Test results (sesja 2026-05-05): PASS**
-
-- AC1 (waitForElement reaguje na markery strukturalne): ✓ — w pre-wait + layout detection + `extractViaDom` retry path. Code review confirm.
-- AC2 (Anna Rutkowska ≥4/5): ✓ — Marcin testował na żywo, scrape zadziałał nawet przy kliknięciu Pobierz w trakcie ładowania strony (worst-case race). W konsoli widoczne `[LinkedIn MSG] Content script loaded on: anna-rutkowska-0551b120b` + `[LinkedIn MSG] Lazy sections found on retry 1` (lazy sections zaciągnęły się normalnym mechanizmem retry'u).
-- AC3 (Joanna/Grzegorz bez regresji): ✓ — `node tests/test_scraper.js` 93 pass / 0 fail.
-- AC4 (bump 1.0.8): ✓ — `manifest.json` zweryfikowany.
-- AC5 (czas match Joanny ≤1.5s): ✓ — w Anna scrape lazy sections found on retry 1 = pre-wait + first waitForElement nie poszły w timeout, czyli first match był szybki. Brak narzutu zauważonego.
-- Smoke flood `chrome-extension://invalid/`: dalej leci, ale to #12b BLOCKED — niezwiązane z #17, nieblokujące.
-- Inny extension `j_ntent_reporter.js` `Uncaught SyntaxError: Unexpected token 'export'` — NIE nasz, nasz content.js to IIFE bez exports. Out of scope.
-
-**Werdykt:** ALL PASS. Gotowe do fazy Commit.
+(none — bundle #3+#7+#15+#16 przeniesiony do READY FOR TEST)
 
 ## READY FOR TEST
 
-(none)
+### Bundle: niezawodność scrape — #3 + #7 + #15 + #16 (wersja 1.1.0)
+
+Cztery taski domknięte w jednej fazie Dev (sesja 2026-05-05). Łączny commit zaplanowany ze względu na spójność tematyczną i wzajemne zależności (np. #7 reuse'uje `extractSlugFromUrl` z #3). Test manualny Marcina po reloadzie na 1.1.0 weryfikuje całość.
+
+---
+
+**#3 P0 — UX stale cache w popup'ie** (Dev done w fazie wcześniejszej tej sesji, opis pełny w handoff'ach poprzednich)
+
+What changed (`extension/popup.js`):
+- Helpery `resetProfileUI()` i `extractSlugFromUrl(url)` (linie 144-172).
+- `btnScrape.catch` — `resetProfileUI()` zamiast inline'owego.
+- Init flow — preferences ZAWSZE restorowane, profile/message tylko gdy slug aktywnej karty matchuje cached.
+
+---
+
+**#7 P0 — Walidacja URL profilu (slug match po scrape)**
+
+Po scrape, content.js zwraca `profile.profile_url` zawierający `window.location.href` w momencie zakończenia scrape'u. Jeśli LinkedIn SPA-naviguje pomiędzy żądaniem a odpowiedzią, ten URL może być inny niż URL aktywnej karty kiedy popup wysyłał żądanie. #7 wykrywa to mismatch i odrzuca odpowiedź z czytelnym komunikatem.
+
+What changed (`extension/popup.js`):
+- W `scrapeCurrentTab()` po pobraniu `tab` zapamiętujemy `expectedSlug = extractSlugFromUrl(tab.url)` PRZED wysłaniem żądania.
+- Po otrzymaniu response porównujemy `extractSlugFromUrl(response.profile.profile_url)` z `expectedSlug`. Mismatch → reject z "Scraper zwrócił dane innego profilu — odśwież stronę i spróbuj ponownie."
+- Reuse helpera `extractSlugFromUrl` z #3.
+
+---
+
+**#15 P0 — SPA navigation reset (drop response gdy mid-scrape navigation)**
+
+Obecny `onUrlChange` tylko loguje. #15 dodaje counter `navEpoch` zwiększany przy każdym url change. Listener message'a w content.js zapamiętuje epoch przy entry; po async scrape, jeśli epoch się zmienił, wysyłana jest błędna odpowiedź z komunikatem nawigacji.
+
+What changed (`extension/content.js`):
+- Zmienna modułowa `navEpoch = 0` plus `navEpoch++` w `onUrlChange` po wykryciu zmiany URL.
+- W listener'ze `chrome.runtime.onMessage`: capture `startEpoch = navEpoch` i `startUrl` przed wywołaniem `scrapeProfileAsync()`. Po resolve, jeśli `startEpoch !== navEpoch` → `sendResponse` z error "Strona zmieniona w trakcie pobierania — odśwież i spróbuj ponownie." Plus warn w konsoli z `startUrl` vs `current`.
+
+---
+
+**#16 P1 — Cleanup martwych selektorów**
+
+Zgodnie z notatką z handoff'u 2026-05-05: usuwamy tylko historyczne nazwy klas które LinkedIn już nie generuje. STRUKTURALNE prefixy `pv-top-card-*` zostają bo są nadal aktywne (potwierdzone w outerHTML Anny i Emilii).
+
+What changed (`extension/content.js`):
+- `NAME_SELECTORS`: usunięte `h1.top-card-layout__title`, `.pv-text-details__left-panel h1`. Zostawione `.pv-top-card h1`, `section.pv-top-card h1` (strukturalne prefixy aktywne).
+- `HEADLINE_SELECTORS`: usunięte `.pv-text-details__left-panel .text-body-medium`, `.pv-top-card--list .text-body-medium`, `.pv-top-card-section__headline`. Zostawione `.text-body-medium.break-words`, `.pv-top-card .text-body-medium`, `.ph5 .text-body-medium`.
+
+---
+
+**Bump:** `extension/manifest.json` 1.0.9 → 1.1.0 (minor — #7, #15 zmieniają user-facing behavior).
+
+**Pliki dotknięte:** `extension/popup.js`, `extension/content.js`, `extension/manifest.json`. Brak zmian w backend.
+
+**Auto-testy:** `node tests/test_scraper.js` 93/0 PASS po wszystkich zmianach.
+
+---
+
+**How to test (dla Testera = Marcin):**
+
+1. Reload extension w `chrome://extensions/` — sprawdź **1.1.0** obok nazwy.
+2. Hard-refresh karty LinkedIn (Ctrl+Shift+R).
+
+3. **#3 AC1 — fail reset:**
+   a. Scrape Joannę (success). Preview pokazuje Joannę.
+   b. Wymuś fail (offline / błąd) → kliknij Pobierz.
+   c. Po fail: preview ukryty, error widoczny, Generuj OFF.
+
+4. **#3 AC2 — mismatch reset przy otwarciu popup'u:**
+   a. Scrape Joannę. Zamknij popup.
+   b. Wejdź na profil Grzegorza (inny slug). NIE klikaj Pobierz, otwórz popup.
+   c. Sprawdź: preview ukryty, brak Joanny w UI, status NIE "Ostatnio pobrany profil".
+
+5. **#3 AC3 — match cache:**
+   a. Scrape Grzegorza. Zamknij popup.
+   b. Otwórz popup ponownie na tej samej karcie. Preview pokazuje Grzegorza.
+
+6. **#3 AC4 — non-LinkedIn:**
+   a. Scrape Joannę. Zmień kartę na google.com. Otwórz popup.
+   b. Preview ukryty, ale goal/lang/tone zachowane.
+
+7. **#7 + #15 — slug mismatch po szybkiej nawigacji:**
+   a. Otwórz Joannę. Kliknij Pobierz. **Natychmiast** kliknij link do Grzegorza w sidebarze (LinkedIn SPA-naviguje).
+   b. Oczekiwane: error "Strona zmieniona w trakcie pobierania" lub "Scraper zwrócił dane innego profilu". Preview pusty, Generuj OFF.
+   c. Następnie kliknij Pobierz z karty Grzegorza — działa, dostajesz Grzegorza.
+
+8. **#16 — czas match na Joannie:**
+   a. Otwórz konsolę karty LinkedIn na profilu Joanny.
+   b. Kliknij Pobierz, obserwuj `[LinkedIn MSG]` logi.
+   c. Smoke: scrape działa, dane Joanny są pełne (about + experience + skills).
+
+9. **Smoke happy path:** scrape Joanny + Grzegorza, klik Generuj, klik Kopiuj. Bez regresji.
+
+10. **Auto-testy** (w PowerShell żeby uniknąć bash mount cache): `cd D:\Serwer\linkedin-msg-generator\extension; node tests/test_scraper.js`. Powinno: 93 passed, 0 failed.
+
+Wynik per task (PASS/FAIL) → wracaj do Commit albo Dev rework.
 
 ## DONE
 
@@ -365,6 +373,7 @@ Po zakończeniu wszystkich powyżej: scrape 5 realnych profili, weryfikacja tele
 - ✅ #13 Pozyskać DOM dump aktualnego LinkedIn
 - ✅ #14 Porównać DOM Joanny vs Grzegorza
 - ✅ #12 Orphan content script — content.js część w 1.0.7 (helper `isContextValid()`, guardy w `check()`, `onUrlChange`, listener). AC1/2/4/5 PASS (Joanna+Grzegorz scrape OK). AC3 częściowy — fix usuwa `chrome.runtime?.id` z content.js, ale 316 errorów `chrome-extension://invalid/` pozostaje z innego pliku (background.js / popup.js) — kontynuacja w #12b.
+- ✅ #17 Race condition na DOM rendering — pre-wait + layout detection o markery `[data-member-id]` / `.pv-top-card`, marker-gated retry w `extractViaDom`. AC1-5 PASS. Anna Rutkowska scrape'uje nawet przy klik w trakcie ładowania. Bump 1.0.8. Commit: f312f6d.
 - ❌ #4 [ANULOWANE] Nowy extractor — niepotrzebny, classic Ember nadal działa
 
 ## BLOCKED

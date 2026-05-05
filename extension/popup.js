@@ -141,6 +141,35 @@
     resultArea.classList.remove("hidden");
   }
 
+  /**
+   * Reset profile-related UI and state to a "no profile loaded" baseline.
+   * Hides profile preview + result area, clears in-memory caches, disables
+   * Generuj. Does NOT touch errorArea, statusBar, or user preferences
+   * (goal/lang/tone) — those are deliberately preserved across resets.
+   *
+   * Used in two places (#3): (1) failed scrape, (2) popup init when the
+   * active tab's profile slug doesn't match the cached one.
+   */
+  function resetProfileUI() {
+    profilePreview.classList.add("hidden");
+    resultArea.classList.add("hidden");
+    currentProfile = null;
+    currentMessage = null;
+    currentGenTime = null;
+    btnGenerate.disabled = true;
+  }
+
+  /**
+   * Extract the canonical /in/<slug> identifier from a LinkedIn profile URL.
+   * Returns lowercase slug with trailing slash stripped, or null when the URL
+   * isn't a profile page. Used to compare cached profile vs active tab (#3).
+   */
+  function extractSlugFromUrl(url) {
+    if (!url || typeof url !== "string") return null;
+    const m = url.match(/linkedin\.com\/in\/([^/?#]+)/i);
+    return m ? m[1].toLowerCase() : null;
+  }
+
   // ── Content Script Communication ─────────────────────────────────
 
   async function scrapeCurrentTab() {
@@ -149,6 +178,12 @@
     if (!tab?.url?.includes("linkedin.com/in/")) {
       throw new Error("Otwórz profil na LinkedIn (linkedin.com/in/...)");
     }
+
+    // Capture the slug we EXPECT scrape to return data for. If LinkedIn
+    // SPA-navigates between request and response, the content script may
+    // scrape a different profile than what's currently active — we'll
+    // reject the response and ask the user to refresh (#7).
+    const expectedSlug = extractSlugFromUrl(tab.url);
 
     // Inject content script if not already there
     try {
@@ -174,6 +209,16 @@
         }
         if (!response.success) {
           reject(new Error(response.error || "Nie udało się pobrać profilu."));
+          return;
+        }
+        // Slug validation (#7): scrape must return data for the slug we
+        // started on. Mismatch indicates the content script saw a different
+        // URL by the time it ran — possible during fast SPA navigation.
+        const returnedSlug = extractSlugFromUrl(response.profile?.profile_url);
+        if (expectedSlug && returnedSlug && expectedSlug !== returnedSlug) {
+          reject(new Error(
+            "Scraper zwrócił dane innego profilu — odśwież stronę i spróbuj ponownie."
+          ));
           return;
         }
         resolve(response.profile);
@@ -219,8 +264,10 @@
       saveSession();
     } catch (err) {
       showError(err.message);
-      currentProfile = null;
-      btnGenerate.disabled = true;
+      // Hide stale profile/result, clear in-memory state. Without this the
+      // popup keeps showing the previous profile after a fail — looks like
+      // it worked when it didn't (#3).
+      resetProfileUI();
     } finally {
       setLoading(btnScrape, false);
     }
@@ -344,21 +391,42 @@
     const last = await loadSession();
     if (!last) return;
 
+    // User preferences are always restored — they're not tied to a specific
+    // profile and the user has set them deliberately.
     if (last.goal) selectGoal.value = last.goal;
     if (last.language) selectLang.value = last.language;
     if (typeof last.tone === "string") inputTone.value = last.tone;
 
+    // Profile + message restore is gated by URL slug match (#3).
+    // Without this gate, opening the popup on Olga while last session
+    // cached Konrad would show Konrad in the preview before the user even
+    // clicks Pobierz — masking that the cache is stale.
     if (last.profile) {
-      currentProfile = last.profile;
-      showProfile(currentProfile);
-      btnGenerate.disabled = false;
-      setStatus("Ostatnio pobrany profil", "success");
-    }
+      let slugMatch = false;
+      try {
+        const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        const activeSlug = extractSlugFromUrl(activeTab?.url);
+        const cachedSlug = extractSlugFromUrl(last.profile.profile_url);
+        slugMatch = !!(activeSlug && cachedSlug && activeSlug === cachedSlug);
+      } catch {
+        // No tabs permission or tab unavailable — fall through as mismatch.
+      }
 
-    if (last.message) {
-      currentMessage = last.message;
-      currentGenTime = last.genTime;
-      showResult(last.message, last.genTime || 0);
+      if (slugMatch) {
+        currentProfile = last.profile;
+        showProfile(currentProfile);
+        btnGenerate.disabled = false;
+        setStatus("Ostatnio pobrany profil", "success");
+
+        if (last.message) {
+          currentMessage = last.message;
+          currentGenTime = last.genTime;
+          showResult(last.message, last.genTime || 0);
+        }
+      }
+      // Mismatch — leave profilePreview / resultArea hidden by default.
+      // currentProfile stays null, btnGenerate stays disabled. User clicks
+      // Pobierz to scrape the active profile fresh.
     }
   })();
 })();
