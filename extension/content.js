@@ -806,8 +806,19 @@
    */
   async function scrapeProfileAsync() {
     // Short initial wait — give React time to paint the top card or feed.
+    // Includes structural markers ([data-member-id], .pv-top-card) which
+    // hydrate earlier than h1 on slow profile renders (#17). Without these
+    // we sometimes finish the pre-wait while <main> is still in shell phase
+    // and report `h1Count: 0, hasTopCard: false` even on classic Ember.
     await waitForElement(
-      ['code[id^="bpr-guid-"]', "main h1", "main h2", '[data-testid="expandable-text-box"]'],
+      [
+        "[data-member-id]",
+        ".pv-top-card",
+        'code[id^="bpr-guid-"]',
+        "main h1",
+        "main h2",
+        '[data-testid="expandable-text-box"]',
+      ],
       3000
     );
 
@@ -822,8 +833,16 @@
     //
     // Prefer DOM path on classic — it gets FULL data. Fall back to Voyager /
     // JSON-LD / feed extractors only when DOM has nothing to work with.
+    //
+    // Detection accepts h1 OR a structural marker ([data-member-id], .pv-top-card)
+    // — markers indicate the profile section is mounted even if h1 hasn't
+    // hydrated yet. extractViaDom will retry-wait for h1 in that case (#17).
     const main = document.querySelector("main");
-    const hasClassicTopCard = !!(main && main.querySelector("h1"));
+    const hasClassicTopCard = !!(main && (
+      main.querySelector("h1") ||
+      main.querySelector("[data-member-id]") ||
+      main.querySelector(".pv-top-card")
+    ));
 
     if (hasClassicTopCard) {
       const domResult = await extractViaDom();
@@ -874,7 +893,28 @@
    * conditionally without inlining 100 lines.
    */
   async function extractViaDom() {
-    const nameEl = await waitForElement(NAME_SELECTORS, CONFIG.PRIMARY_TIMEOUT_MS);
+    let nameEl = await waitForElement(NAME_SELECTORS, CONFIG.PRIMARY_TIMEOUT_MS);
+
+    // Race condition recovery (#17): if h1 wasn't found but a structural
+    // profile marker IS present, the section is mounted but h1 hasn't
+    // hydrated yet — give it 2 more shots, ~900ms apart. Marker-gated so
+    // we don't extend latency for non-profile pages (My Connections etc.)
+    // where there's no profile to wait for.
+    if (!nameEl) {
+      const hasProfileMarker = !!(
+        document.querySelector("[data-member-id]") ||
+        document.querySelector(".pv-top-card")
+      );
+      if (hasProfileMarker) {
+        for (let i = 0; i < 2 && !nameEl; i++) {
+          await delay(900);
+          nameEl = await waitForElement(NAME_SELECTORS, 1500);
+        }
+        if (nameEl) {
+          console.log("[LinkedIn MSG] Name resolved after race-recovery retry (#17)");
+        }
+      }
+    }
 
     if (!nameEl) {
       const lastResort = findAnyLikelyNameHeading();
