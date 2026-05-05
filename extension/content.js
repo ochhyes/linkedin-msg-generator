@@ -1121,4 +1121,32 @@
   });
 
   console.log("[LinkedIn MSG] Content script loaded on:", window.location.href);
+
+  // Orphan auto-reload (#12b, v1.2.1).
+  //
+  // Problem: po reloadzie extension'u LinkedIn'owy SPA bundle nadal trzyma
+  // URL'e do starego (już nieważnego) extension ID i próbuje przez
+  // window.fetch ściągać moduły. Każdy fetch leci jako
+  // chrome-extension://invalid/ → flood errorów w konsoli (200+ na minutę).
+  // To NIE jest nasz kod — to ich obfuscated bundle (d3jr0erc6...:12275).
+  //
+  // Single jednorazowy reload czyści ich SW/runtime cache i flood znika.
+  // Po reload nowy content script się normalnie wstrzyknie (extension żyje).
+  const ORPHAN_POLL_MS = 3000;
+  const orphanPoll = setInterval(() => {
+    if (!isContextValid()) {
+      clearInterval(orphanPoll);
+      console.warn(
+        "[LinkedIn MSG] Extension orphaned — reloading page to clear LinkedIn cache (#12b)"
+      );
+      // Krótki delay żeby console.warn zdążył się wyflushować przed reloadem.
+      setTimeout(() => {
+        try {
+          location.reload();
+        } catch (_) {
+          /* noop — page już się przeładowuje albo karta zamknięta */
+        }
+      }, 100);
+    }
+  }, ORPHAN_POLL_MS);
 })();

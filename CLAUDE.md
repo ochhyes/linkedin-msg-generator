@@ -93,7 +93,7 @@ Commity zmieniające tylko `backend/`, `deploy/` lub dokumentację — NIE bumpu
 - SPA navigation race: po szybkiej nawigacji LinkedIn zostawia DOM z poprzedniej strony pod nowym URL'em. Scrape może łapać śmieci (np. listę kontaktów pod URL'em profilu).
 - Service worker MV3 idle kill po 30s — może urwać async sendResponse.
 - UX stale cache w popup'ie (zaobserwowane 2026-05-05, #3 w TODO): po fail'u scrape'a popup pokazuje dane z poprzedniej sesji (np. Grzegorz wisi gdy próbujesz Annę). Maskuje fail — wygląda jakby coś działało.
-- Flood `chrome-extension://invalid/` po reload extension'u (2026-05): 200+ errorów w konsoli karty LinkedIn ze źródła `d3jr0erc6y93o17nx3pgkd9o9:12275`. Diagnoza otwarta — patrz BLOCKED #12b. Robocza hipoteza: LinkedIn'owy obfuscated bundle / SW próbuje fetch'ować stary URL content scriptu po reload. **Cosmetic — nie blokuje scrape'a.**
+- Flood `chrome-extension://invalid/` po reload extension'u (2026-05): zdiagnozowany 2026-05-05 jako Branch B z #12b — LinkedIn'owy obfuscated bundle (`d3jr0erc6y93o17nx3pgkd9o9:12275`, ich `window.fetch`) cache'uje URL'e do starego extension ID i pinguje je po reload'zie. Stack trace + `chrome.runtime?.id === undefined` potwierdziły że to ich bundle, nie nasz kod. **Mitygacja w v1.2.1**: content.js poll'uje co 3s `isContextValid()`; gdy orphaned → `location.reload()` jednorazowy. Czyści LinkedIn'owy cache, flood znika. Po reload nowy content script wstrzykuje się normalnie.
 
 ---
 
