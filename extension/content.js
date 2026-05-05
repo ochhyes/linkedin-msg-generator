@@ -957,6 +957,31 @@
             + "Odśwież stronę i spróbuj ponownie.";
         }
 
+        // Telemetria #5 — fire-and-forget do backendu przez background.js.
+        // Wywołujemy TYLKO tutaj (rzeczywisty fail extractViaDom) — NIE
+        // w branchu findAnyLikelyNameHeading (to fallback success) ani
+        // w fallback'ach Voyager/JSON-LD/feed (to też success).
+        try {
+          if (isContextValid()) {
+            const p = chrome.runtime.sendMessage({
+              action: "reportScrapeFailure",
+              payload: {
+                url: window.location.href,
+                diagnostics: diagnostic,
+                error_message: message,
+              },
+            });
+            if (p && typeof p.catch === "function") {
+              p.catch(() => {
+                // Orphan extension / SW idle / background unreachable —
+                // telemetria NIGDY nie blokuje user flow.
+              });
+            }
+          }
+        } catch (_) {
+          // sendMessage może rzucić synchronicznie po inwalidacji extension'a.
+        }
+
         return {
           success: false,
           profile: null,

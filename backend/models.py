@@ -1,6 +1,6 @@
 """Pydantic models for API request / response."""
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -178,3 +178,51 @@ class SettingsDefaultsResponse(BaseModel):
     default_antipatterns: List[str]
     default_system_prompt: str
     tone_defaults: Dict[str, str]
+
+
+# ── Diagnostics / telemetria błędów scrape (#5) ─────────────────────
+
+class ScrapeFailureReport(BaseModel):
+    """
+    Raport pojedynczego fail'a scrape'a wysyłany z extension'a.
+    Endpoint: POST /api/diagnostics/scrape-failure
+    Zapisywany jako JSONL line do pliku z settings.SCRAPE_FAILURE_LOG_PATH.
+
+    Hash slug'a NIE jest privacy decision — URL i tak zawiera slug w cleartext.
+    Hash służy do agregacji ("ile fail'i per profil?") bez parsowania URL'a.
+    """
+
+    client_timestamp: str = Field(
+        ...,
+        max_length=40,
+        description="ISO8601 timestamp z extension'a (chwila wystąpienia fail'a).",
+    )
+    extension_version: str = Field(
+        ...,
+        pattern=r"^\d+\.\d+\.\d+$",
+        description="Wersja extension'a z manifest.json (np. '1.2.0').",
+    )
+    slug_hash: str = Field(
+        ...,
+        pattern=r"^[a-f0-9]{64}$",
+        description="SHA-256 (hex) slug'a profilu — analytics indexing, nie privacy.",
+    )
+    url: str = Field(
+        ...,
+        max_length=500,
+        description="Pełny URL strony LinkedIn (debug). Slug w cleartext.",
+    )
+    browser_ua: str = Field(
+        ...,
+        max_length=500,
+        description="navigator.userAgent z karty.",
+    )
+    diagnostics: Dict[str, Any] = Field(
+        ...,
+        description="Output collectDiagnostics() — luźny shape (h1Count, hasTopCard, voyagerPayloadCount, etc.).",
+    )
+    error_message: Optional[str] = Field(
+        None,
+        max_length=1000,
+        description="Komunikat błędu pokazany użytkownikowi w popup'ie.",
+    )

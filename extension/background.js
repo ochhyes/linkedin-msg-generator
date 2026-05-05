@@ -94,6 +94,83 @@ function personalizationToBody(us) {
   return out;
 }
 
+// ── Diagnostics — telemetria fail'i scrape (#5) ──────────────────────
+
+/**
+ * Wyciąga slug profilu z URL'a LinkedIn (kopia helpera z popup.js;
+ * vanilla JS bez modułów, więc ad-hoc duplikacja jest świadoma).
+ */
+function extractSlugFromUrl(url) {
+  if (!url || typeof url !== "string") return "";
+  const m = url.match(/\/in\/([^/?#]+)/);
+  return m ? m[1] : "";
+}
+
+/**
+ * SHA-256 hex digest stringa. Używa WebCrypto (dostępne w MV3 SW
+ * od Chrome 95+). Hash służy do agregacji telemetrii — NIE jest
+ * privacy decision, bo URL i tak zawiera slug w cleartext.
+ */
+async function sha256Hex(str) {
+  const buf = new TextEncoder().encode(str || "");
+  const digest = await crypto.subtle.digest("SHA-256", buf);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/**
+ * Forwarder z extension'a do backendu. Fire-and-forget — żaden
+ * błąd sieciowy nie może rozłożyć user flow scrape'a.
+ *
+ * Wywoływany przez content.js w `extractViaDom` fail path.
+ * Payload zawiera diagnostics + url + error_message; tutaj
+ * dorzucamy version, slug_hash, browser_ua, client_timestamp.
+ */
+async function reportScrapeFailure(payload) {
+  try {
+    const settings = await getSettings();
+    if (!settings.apiKey) {
+      console.warn("[LinkedIn MSG] Telemetry skipped — no API key configured");
+      return;
+    }
+
+    const apiUrl = `${settings.apiUrl.replace(/\/$/, "")}/api/diagnostics/scrape-failure`;
+    const url = payload.url || "";
+    const slug = extractSlugFromUrl(url);
+    const slugHash = await sha256Hex(slug);
+
+    const body = {
+      client_timestamp: new Date().toISOString(),
+      extension_version: chrome.runtime.getManifest().version,
+      slug_hash: slugHash,
+      url: url.slice(0, 500),
+      browser_ua: (navigator.userAgent || "unknown").slice(0, 500),
+      diagnostics: payload.diagnostics || {},
+      error_message: payload.error_message || null,
+    };
+
+    const resp = await fetch(apiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": settings.apiKey,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!resp.ok && resp.status !== 204) {
+      console.warn(
+        `[LinkedIn MSG] Telemetry rejected: HTTP ${resp.status}`
+      );
+    }
+  } catch (err) {
+    // Backend down, network fail, crypto fail — wszystko połykamy.
+    // Telemetria NIGDY nie blokuje scrape'a.
+    console.warn("[LinkedIn MSG] Telemetry send failed:", err && err.message);
+  }
+}
+
 // ── API Calls ────────────────────────────────────────────────────────
 
 async function generateMessage(profile, options = {}) {
@@ -163,6 +240,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         case "getSettingsDefaults":
           return await getSettingsDefaults();
+
+        case "reportScrapeFailure":
+          // Fire-and-forget. Nie czekamy na sieć — od razu zwracamy ack
+          // żeby content.js nie trzymał kanału MV3 (idle kill po 30s).
+          reportScrapeFailure(message.payload || {});
+          return { success: true };
 
         default:
           throw new Error(`Nieznana akcja: ${message.action}`);

@@ -156,6 +156,39 @@ sudo tail -f /var/log/nginx/access.log
 sudo certbot certificates
 ```
 
+### 7.1. Telemetria fail'i scrape (#5, od v1.2.0)
+
+Extension wysyła JSONL do `/var/log/linkedin-msg/failures.jsonl` przy każdym
+fail'u `extractViaDom` (rzeczywisty timeout, nie sukces przez fallback).
+Plik jest mountowany z hosta — przeżywa restart kontenera.
+
+**Przed pierwszym `compose up` po update na v1.2.0:**
+
+```bash
+sudo mkdir -p /var/log/linkedin-msg
+# Dockerfile używa root w kontenerze, więc bez chown'a OK.
+# Jeśli kiedyś zmienisz user'a w Dockerfile, dodaj:
+#   sudo chown -R <uid>:<gid> /var/log/linkedin-msg
+```
+
+**Podgląd na żywo:**
+
+```bash
+tail -f /var/log/linkedin-msg/failures.jsonl
+```
+
+**Format wpisu (jedna linia JSON):**
+
+```json
+{"client_timestamp":"2026-05-05T12:34:56.000Z","extension_version":"1.2.0","slug_hash":"7a1b...64hex","url":"https://www.linkedin.com/in/jan-kowalski/","browser_ua":"Mozilla/5.0 ... Chrome/130.0.0.0","diagnostics":{"h1Count":0,"hasTopCard":false,"voyagerPayloadCount":0,"hasAuthGate":false,"readyState":"complete"},"error_message":"Timeout: LinkedIn nie wyrenderowal profilu w 8s.","server_timestamp":"2026-05-05T12:34:56.123456+00:00"}
+```
+
+`slug_hash` to SHA-256 slug'a — analytics indexing (agregacja "ile fail'i per profil"),
+NIE privacy. URL i tak zawiera slug w cleartext.
+
+**Brak rotation/retention** — przy ~100 fail'i/mies × ~2KB to ~2.4MB/rok.
+Stretch goal jeśli kiedyś nadrasta.
+
 ---
 
 ## 8. Instalacja rozszerzenia (dla Ciebie i użytkowników)

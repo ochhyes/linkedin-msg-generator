@@ -8,6 +8,11 @@ services:
     ports:
       # Bind ONLY to localhost — host's nginx reverse-proxies here.
       - "127.0.0.1:8321:8000"
+    volumes:
+      # Telemetria fail'i scrape (#5) — JSONL log na hoscie, zeby
+      # przezyl restart kontenera. Marcin tworzy katalog przed
+      # `compose up`: sudo mkdir -p /var/log/linkedin-msg
+      - /var/log/linkedin-msg:/var/log/linkedin-msg
     healthcheck:
       test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/api/health')"]
       interval: 30s

@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     DEFAULT_LANGUAGE: str = "pl"
     DEFAULT_MAX_CHARS: int = 1000
 
+    # Diagnostyka — telemetria fail'i scrape'a (#5)
+    SCRAPE_FAILURE_LOG_PATH: str = "/var/log/linkedin-msg/failures.jsonl"
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

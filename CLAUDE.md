@@ -218,30 +218,46 @@ Nie łącz dwóch ról w jednej sesji bez zgody usera. Loop ma sens dlatego że 
 # CURRENT STATE
 
 ```
-Sprint:        Niezawodność scrape'a (3 dni)
+Sprint:        #2 — Observability + safety net (start)
 Phase:         Tester
-Active task:   Bundle #3+#7+#15+#16 — niezawodność scrape (Dev done, wersja 1.1.0, czeka na test)
-Last commit:   f312f6d — fix: race recovery przy timeout scrape'a w fazie shell (#17)
+Active task:   #5 P0 — Telemetria błędów scrape (Dev done, READY FOR TEST)
+Last commit:   1668c56 — feat: cache reset, slug match, nav guard, cleanup (#3,#7,#15,#16)
 Updated:       2026-05-05
 ```
 
+## Sprint #1 — RETRO (skrót do utrwalenia w #11)
+
+**Sprint:** "Niezawodność scrape'a (3 dni)" — domknięty 2026-05-05.
+
+**Co zostało zrobione (5 commitów):**
+- `e5acdff` — orphan guard w content.js (#12 partial, 1.0.7).
+- `f312f6d` — race recovery na DOM rendering (#17, 1.0.8).
+- `1668c56` — bundle reliability (#3 UX cache + #7 slug match + #15 nav reset + #16 selectors cleanup, 1.1.0).
+- (poprzednie commity sprint'u: #12 orphan, #13 DOM dump, #14 porównanie Joanna/Grzegorz, #1/#2 logi i repro).
+
+**Co zostało po sprintcie:**
+- **#12b BLOCKED** — flood `chrome-extension://invalid/`. Czeka na stack trace od Marcina.
+- **#5 P1** Telemetria błędów scrape — przeniesione do sprintu #2 z ↑P0 (krytyczne dla zespołu OVB, którzy nie patrzą w konsolę).
+- **#8 P1** Smoke testy E2E na fixture'ach — przeniesione do sprintu #2.
+- **#9 P2** Healthcheck monitoring — przeniesione do sprintu #2 jako stretch goal.
+- **#11 P2** Sprint retro — robiony równolegle z planowaniem sprintu #2 (ten skrót).
+
+**Lessons learned:**
+- LinkedIn DOM ma race conditions na hydration nawet gdy frontend stack jest klasyczny — nie wszystkie obfuscated klasy oznaczają nowy renderer (lekcja z #17, Anna Rutkowska).
+- Bug-symptom maskowanie (#3) — fail scrape'a wyglądał jak success bo popup nie czyścił cache. Zawsze waliduj UI state w fail path, nie tylko in-memory.
+- Workflow loop PM → Dev → Tester → Commit działa nawet w pojedynczej sesji jeśli Marcin daje zgodę explicite na łączenie ról. Marker'em "ALL PASS" przed Commit jest niezbędny.
+- Bash sandbox cache'uje stale widok plików po Edit'ach (mount lag) — dla weryfikacji finalnej polegać na Read tool, nie `wc -l`/`cat`.
+- Git config musi być ustawiony lokalnie w sandbox (`user.email`, `user.name`) żeby commitować — Marcin używa `Marcin Szmidtke <ochh.yes@gmail.com>`.
+
 ## Notatki z poprzedniej sesji (handoff dla PM)
 
-**Sesja 2026-05-05 — duża, wielofazowa:**
+**Sesja 2026-05-05 zamknęła sprint #1 (5 commitów). Plan sprintu #2 czeka na akceptację Marcina (poniżej).**
 
-1. **#12b → BLOCKED** (czeka na stack trace floodu od Marcina, plan zachowany w sekcji BLOCKED).
-
-2. **#17 → DONE** (commit `f312f6d`). Pełny cykl PM → Dev → Tester → Commit w jednej sesji. Race condition na DOM rendering rozwiązany przez pre-wait i layout detection o markery strukturalne `[data-member-id]` / `.pv-top-card` + marker-gated retry w `extractViaDom`. Anna Rutkowska scrape'uje teraz nawet przy klik w trakcie ładowania strony (potwierdzone live przez Marcina). Auto-testy 93/0. Bump 1.0.8.
-
-3. **#3 (UX stale cache) potwierdzony w produkcji** (Grzegorz w popup'ie po fail Anny przed fixem #17). Po #17 fail-rate Anny dramatycznie spadł, więc kontekst do reprodukcji #3 będzie trudniejszy — ale bug nadal istnieje i zostaje P0. Sugestia PM: **#3 jako następny task**.
-
-**Pre-existing zmiany w drzewie nie wzięte do commit'a #17** (do osobnej decyzji Marcina):
+**Pre-existing zmiany w drzewie nie wzięte do commit'a 1668c56** (do osobnej decyzji Marcina):
 - `M .claudeignore` — workspace artifact.
 - `D extension.zip` — workspace artifact.
-- `?? extension 1.0.8.rar` — paczka dystrybucyjna nowej wersji (dla zespołu OVB).
-- Push commit'a `f312f6d` na origin/master nie wykonany — Marcin decyduje kiedy.
-
-**Dla PM następnej sesji:** rekomendowany wybór = **#3 P0 — UX stale cache** (popup nie czyści `profilePreview` / `resultArea` przy fail scrape'a). Plus opcjonalnie #15 (SPA navigation reset) lub #7 (URL slug validation) komplementarne do #3 w kontekście niezawodności UI po fail'u.
+- `?? extension 1.0.8.rar` — paczka dystrybucyjna 1.0.8 (przed bundle 1.1.0). Marcin może wygenerować nową paczkę 1.1.0 do dystrybucji zespołowi OVB.
+- Push commit'ów `f312f6d` + `1668c56` na origin/master nie wykonany — Marcin decyduje kiedy push'ować (np. razem z dystrybucją 1.1.0 zespołowi OVB).
 
 ---
 
@@ -249,31 +265,186 @@ Updated:       2026-05-05
 
 ## TODO (priorytet od góry)
 
-### #5 P1 — Telemetria błędów scrape
-Endpoint `POST /api/diagnostics/scrape-failure` przyjmujący payload z `collectDiagnostics()`. Backend zapisuje do tabeli `scrape_failures` (lub na razie do JSONL pliku jeśli nie ma DB). Content.js wysyła przy każdym fail.
-- Pliki: `backend/main.py`, `backend/models.py`, `backend/services/`, `extension/content.js`
-- Acceptance: wymuszony fail (np. na profilu z modyfikowanym DOM przez `document.body.removeChild(main)`) → wpis w logu / DB widoczny.
+> **SPRINT #2 — "Observability + safety net"** (proponowany, ~3-4 dni pracy ad-hoc)
+>
+> **Cel sprintu:** zamknąć dziurę "fail scrape'a niewidoczny dla zespołu OVB" przez telemetrię (#5↑P0) plus wystawić siatkę bezpieczeństwa przeciwko kolejnym zmianom DOM LinkedIn'a (#8). Sprint review #11 jako klamra zamykająca. Zachować tempo solo-dev — bez przesadnego scope creep'u.
+>
+> **Skład:** #5 P0 (przeniesiony ↑z P1), #8 P1, #11 P2, plus #9 P2 jako stretch goal jeśli zostanie czas.
+>
+> **Czego NIE bierzemy:** BACKLOG (#6 self-test widget, #10 wersjonowanie selektorów) — czekają. #12b BLOCKED — zostaje BLOCKED dopóki Marcin nie zrzuci stack tracu.
 
 ### #8 P1 — Smoke testy E2E na fixture'ach
-3 dumpy z tej sesji (Joanna BIGPIPE, Grzegorz BIGPIPE, Olga My-Connections-pod-URL-em) → fixture HTML files. Test runner ładuje przez jsdom, woła `scrapeProfileNow()`, asercje na expected output.
-- Pliki: `extension/tests/fixtures/*.html`, `extension/tests/test_scraper.js`
-- Acceptance: `node tests/test_scraper.js` zielono dla 3 fixture'ów + 1 negative case (My Connections).
+Dumpy z sesji #1 (Joanna/Grzegorz BIGPIPE, Anna shell-phase, Emilia post-hydration) → fixture HTML files. Test runner ładuje przez jsdom, woła `scrapeProfileNow()` (lub `extractName`/`extractHeadline` osobno), asercje na expected output. Wykrywa regresje gdy LinkedIn znowu zmieni DOM ZANIM użytkownik OVB zauważy.
+- Pliki: `extension/tests/fixtures/*.html` (4 dumpy), `extension/tests/test_scraper.js` (asercje per fixture), `extension/tests/test_e2e.js` (nowy plik dla integracji)
+- Acceptance: `node tests/test_scraper.js` zielono dla 4 fixture'ów + 1 negative case (My Connections page → expected null/empty). CI-ready (jeśli kiedyś GitHub Actions).
 
-### #9 P2 — Healthcheck monitoring backendu
-n8n workflow co 5 min: curl `/api/health` → jeśli !=200 dwa razy z rzędu → telegram/email alert.
-- Pliki: konfiguracja n8n na VPS (poza repo)
+### #11 P2 — Sprint #1 retro + dystrybucja 1.1.0 dla OVB
+Wstępne lessons learned są już w sekcji "Sprint #1 — RETRO" wyżej w CLAUDE.md. Ten task to:
+- Scrape 5 realnych profili na 1.1.0 (smoke test produkcyjny po telemetrii z #5).
+- Weryfikacja że telemetria łapie real-world fail'e (jeśli się zdarzą).
+- Spakowanie 1.1.0 do `.rar`/`.zip`, dystrybucja zespołowi OVB.
+- Push commit'ów na origin/master.
+- Aktualizacja `Znane problemy` o ewentualne nowe edge case'y zaobserwowane.
+
+### #9 P2 — Healthcheck monitoring backendu (stretch — jeśli zostanie czas)
+n8n workflow co 5 min: curl `/api/health` → jeśli !=200 dwa razy z rzędu → telegram/email alert. Wpis konfiguracyjny w n8n + dokumentacja w DEPLOY.md.
+- Pliki: konfiguracja n8n na VPS (poza repo), `DEPLOY.md` sekcja "Monitoring"
 - Acceptance: zatrzymaj container backend → alert dostaje się w ≤10 min.
-
-### #11 P2 — Sprint review + retro
-Po zakończeniu wszystkich powyżej: scrape 5 realnych profili, weryfikacja telemetrii, lessons learned do tej sekcji `Znane problemy`.
 
 ## IN PROGRESS
 
-(none — bundle #3+#7+#15+#16 przeniesiony do READY FOR TEST)
+(none — #5 przeniesiony do READY FOR TEST)
+
+### [ARCHIWUM PLANU PM] #5 P0 — Telemetria błędów scrape (PM done 2026-05-05, Dev done 2026-05-05)
+
+**Kontekst.** Zespół OVB nie patrzy w konsolę DevTools. Gdy scrape padnie u nich, nie wiemy czemu — ani my, ani oni. Bez telemetrii nie wykryjemy że LinkedIn zmienił DOM zanim któryś użytkownik nie wpadnie do Marcina ze zrzutem ekranu. Cel: każdy fail w `extractViaDom` (rzeczywisty timeout, nie sukces przez fallback) → wpis w JSONL na backendzie. `tail -f` do podglądu, bez DB.
+
+**Decyzje PM (do utrwalenia, żeby Dev nie improwizował):**
+
+1. **Forwarder przez background.js, nie bezpośredni fetch z content.js.** Powód: `host_permissions` już mamy, ale separacja ma sens — content focus'uje się na DOM, background obsługuje sieć i auth. Mniejsze ryzyko CSP/CORS surprise.
+2. **API key gate na endpoincie.** Reuse `verify_api_key`. Powód: backend jest publiczny pod `linkedin-api.szmidtke.pl`. Bez gate'a każdy może spamować JSONL.
+3. **Hash slug'a w background.js, nie w content.** Powód: jedno miejsce na crypto, content już złożony. Background zna apiKey i tak.
+4. **Hash slug'a to NIE privacy decision — to analytics indexing.** URL w payloadzie zawiera slug w cleartext, więc hash niczego nie ukrywa. Hash służy do agregacji ("ile fail'i per profil?") bez parsowania URL'a. Świadomie dokumentuję żeby nie wpaść w pułapkę "ale przecież hash'ujemy → privacy OK".
+5. **Fire-and-forget z extension'a.** Telemetria w `.catch(() => {})`. Padnie backend? Marcin zobaczy w `console.warn`, ale scrape error pokazuje się normalnie. Telemetria NIGDY nie blokuje user flow.
+6. **Silent on success.** `extractViaDom` woła telemetrię tylko w fail return. Sukces przez fallback (Voyager/JSON-LD/feed) lub `findAnyLikelyNameHeading` to NIE jest fail — nie raportujemy.
+7. **Brak rate-limitingu w MVP.** User klikający 10× w kółko Pobierz na zepsutym profilu wygeneruje 10 wpisów. Akceptowalne — zobaczymy w real-world użyciu czy to problem.
+8. **Brak log rotation w MVP.** 100 fail'i/mies × ~2KB = 2.4MB/rok. Stretch goal jeśli kiedyś nadrasta.
+
+**Plan implementacji (Dev — kroki w TaskList #1-#10):**
+
+1. `backend/models.py` — model `ScrapeFailureReport` (Pydantic): `client_timestamp` (str ISO), `extension_version` (str regex semver), `slug_hash` (str regex `^[a-f0-9]{64}$`), `url` (str max 500), `browser_ua` (str max 500), `diagnostics` (Dict[str, Any] — luźny shape), `error_message` (Optional[str] max 1000).
+2. `backend/services/diagnostics_logger.py` — NOWY. `async def log_scrape_failure(report, log_path)`: asyncio.Lock module-level, `os.makedirs(parent, exist_ok=True)`, append jednej linii JSON z dorzuconym `server_timestamp` (UTC ISO). Catch IOError → log do stderr, NIE re-raise.
+3. `backend/config.py` — dodaj `SCRAPE_FAILURE_LOG_PATH: str = "/var/log/linkedin-msg/failures.jsonl"`.
+4. `backend/main.py` — `POST /api/diagnostics/scrape-failure` z `verify_api_key` dependency. Wywołuje `log_scrape_failure(report, settings.SCRAPE_FAILURE_LOG_PATH)`. Zwraca 204 (FastAPI: `Response(status_code=204)` lub `status_code=204` w decoratorze).
+5. `backend/tests/test_diagnostics.py` — pytest + TestClient. Cases: (a) valid + key → 204 + linia w tmp file, (b) invalid (bad slug_hash) → 422, (c) brak X-API-Key → 401, (d) 3× POST z rzędu → 3 linie w append order. `monkeypatch.setattr(settings, "SCRAPE_FAILURE_LOG_PATH", str(tmp_path / "failures.jsonl"))`.
+6. `extension/background.js` — handler `reportScrapeFailure`. Helpers: `sha256Hex(str)` przez `crypto.subtle.digest('SHA-256', ...)` → hex; `extractSlugFromUrl(url)` (kopia z popup.js). Buduje payload: `client_timestamp`, `extension_version` z `chrome.runtime.getManifest().version`, `slug_hash`, `url`, `browser_ua` z `navigator.userAgent`, `diagnostics`, `error_message`. POST na `${apiUrl}/api/diagnostics/scrape-failure` z `X-API-Key`. Try/catch — `console.warn("[LinkedIn MSG] Telemetry send failed:", err)`, NIE re-throw.
+7. `extension/content.js` — w `extractViaDom` przy końcu fail branch'a (linia ~960, tuż przed `return { success: false, ... }`) DODAJ: `chrome.runtime.sendMessage({ action: "reportScrapeFailure", payload: { url: window.location.href, diagnostics: diagnostic, error_message: message } }).catch(() => {})`. Fire-and-forget. NIE w branchu `findAnyLikelyNameHeading` (to fallback success).
+8. `extension/manifest.json` — bump `1.1.0 → 1.2.0` (minor — nowa funkcja, backward-compat).
+9. `deploy/docker-compose.yml` — dodaj `volumes: - /var/log/linkedin-msg:/var/log/linkedin-msg`. Update `DEPLOY.md` sekcją "Diagnostyka — telemetria fail'i scrape'a" z `tail -f /var/log/linkedin-msg/failures.jsonl` + jednym przykładowym wpisem JSON. Marcin przed deploy'em: `sudo mkdir -p /var/log/linkedin-msg` na VPS (uid kontenera = root w obecnym Dockerfile, więc bez chown'a OK).
+10. **Verification (Dev → Tester handoff):** `python -m pytest backend/tests/ -v` zielono, `node extension/tests/test_scraper.js` 93/0, lokalny smoke z `uvicorn main:app --port 8000` + `.env` z `SCRAPE_FAILURE_LOG_PATH=./failures.jsonl` — wymuszony fail w karcie LinkedIn (`document.body.querySelector('main').remove()` przed klikiem Pobierz) → wpis w `./failures.jsonl` w ≤5s.
+
+**Acceptance criteria (do weryfikacji przez Testera):**
+
+- **AC1 — happy path silent.** Given scrape Joanny działa | When klik Pobierz | Then 0 nowych wpisów w `failures.jsonl`, 0 `console.warn` z "Telemetry", message wygenerowana normalnie.
+- **AC2 — fail path captured.** Given profil z usuniętym `<main>` (`document.body.querySelector('main').remove()` w konsoli przed klikiem) | When klik Pobierz | Then w ≤5s wpis w `failures.jsonl` zawierający: `server_timestamp`, `client_timestamp`, `extension_version: "1.2.0"`, `slug_hash` (64-char hex), `url` (full LinkedIn URL profilu), `browser_ua`, `diagnostics` (object z `h1Count`, `hasTopCard`, `voyagerPayloadCount` etc.), `error_message` (string z popup'a).
+- **AC3 — extension resilience.** Given backend zatrzymany (`docker compose stop` lub bad apiUrl) | When extension próbuje raportować fail | Then `console.warn` z "Telemetry send failed", scrape error pokazuje się w popup'ie jak zwykle, popup nie wybucha.
+- **AC4 — backend kontrakt.** pytest dla `/api/diagnostics/scrape-failure`: valid+key→204+linia, invalid→422, brak key→401, 3× POST→3 linie w append order.
+- **AC5 — JSONL append-only.** 3 fail'e z rzędu → 3 osobne linie. Każda linia parse'uje się jako valid JSON. Brak nadpisywania.
+- **AC6 — silent on fallback success.** Given profil gdzie DOM zawodzi ale Voyager fallback łapie | When scrape sukces przez Voyager | Then 0 nowych wpisów w `failures.jsonl` (ten branch w content.js NIE wzywa telemetrii).
+- **AC7 — auto-tests.** Pełny `pytest backend/tests/ -v` zielono. `node extension/tests/test_scraper.js` 93/0 PASS (regresja scraper'a).
+- **AC8 — deploy ready.** `deploy/docker-compose.yml` ma volume mount, DEPLOY.md ma sekcję "Diagnostyka" z `tail -f` + przykładowym wpisem.
+
+**Pliki dotknięte:**
+- `backend/main.py` (endpoint)
+- `backend/models.py` (model)
+- `backend/services/diagnostics_logger.py` (NOWY)
+- `backend/config.py` (env path)
+- `backend/tests/test_diagnostics.py` (NOWY)
+- `extension/background.js` (forwarder + helpers)
+- `extension/content.js` (trigger w fail path)
+- `extension/manifest.json` (bump 1.2.0)
+- `deploy/docker-compose.yml` (volume mount)
+- `DEPLOY.md` (sekcja Diagnostyka)
+
+**Ryzyka:**
+- **Volume permissions na VPS.** Marcin musi `sudo mkdir -p /var/log/linkedin-msg` przed `docker compose up`. Inaczej kontener nie zapisze. Sprawdzić uid w `backend/Dockerfile` — jeśli root → bez chown'a, jeśli inny user → trzeba chown'ować.
+- **Service worker idle (MV3).** Background SW kill po 30s → fetch in-flight może zniknąć. Akceptujemy utratę. Alternatywa (chrome.alarms keepalive) — over-engineering w MVP.
+- **`crypto.subtle` w background.** Dostępne w MV3 service worker (sprawdzić: `crypto.subtle.digest` is available in extension SW kontekście — tak, od Chrome 95+). Jeśli nie, fallback na trywialny hash typu base64 z prostego rolling sum'a. Nie powinno być potrzebne.
+- **CORS.** Backend ma `CORS_ORIGINS=["*"]` więc OK. Background SW w ogóle nie podlega CORS dla extension fetchu z `host_permissions`, ale lepiej żeby działało gdyby ktoś kiedyś zmienił permissions.
+- **Edge case: `chrome.runtime.sendMessage` rzuca po orphan extension'u.** Dlatego `.catch(() => {})` — jak w innych miejscach po fixie #12.
+
+**Anti-patterns do unikania (Dev):**
+- NIE dodawać UI do popup'u że "telemetria wysłana" — silent. User nie ma o tym wiedzieć.
+- NIE łączyć z taskiem #8 (E2E fixtures) w tym commit. Telemetria osobno.
+- NIE robić rotation/retention w MVP. Świadomie poza scope.
+- NIE używać `extractSlugFromUrl` z popup.js przez import (vanilla JS, brak modułów) — kopia w background.js OK.
 
 ## READY FOR TEST
 
-### Bundle: niezawodność scrape — #3 + #7 + #15 + #16 (wersja 1.1.0)
+### #5 P0 — Telemetria błędów scrape (Dev done 2026-05-05, czeka na Tester = Marcin)
+
+**What changed:**
+
+- `backend/models.py` — nowy model `ScrapeFailureReport` (Pydantic v2): `client_timestamp` str max 40, `extension_version` regex semver `^\d+\.\d+\.\d+$`, `slug_hash` regex `^[a-f0-9]{64}$`, `url` max 500, `browser_ua` max 500, `diagnostics` `Dict[str, Any]`, `error_message` Optional max 1000.
+- `backend/services/diagnostics_logger.py` — NOWY plik. `async def log_scrape_failure(report, log_path)` z module-level `asyncio.Lock`, `os.makedirs(parent, exist_ok=True)`, append jednej linii JSON + dorzucony `server_timestamp` UTC ISO. `OSError` połykane do stderr — telemetria NIE rozkłada endpointu.
+- `backend/config.py` — dodany `SCRAPE_FAILURE_LOG_PATH: str = "/var/log/linkedin-msg/failures.jsonl"`. Lokalnie nadpisywalny przez `.env`.
+- `backend/main.py` — nowy endpoint `POST /api/diagnostics/scrape-failure` ze `status_code=204`, gate `verify_api_key`. Wywołuje `log_scrape_failure(report, settings.SCRAPE_FAILURE_LOG_PATH)`.
+- `backend/tests/test_diagnostics.py` — NOWY plik. 10 testów: auth (401 brak key, 403 zły key), happy path (204 + JSONL line z server_timestamp), validation (4 case'y → 422), append-only (3× POST → 3 linie w order). Fixture `tmp_log` przez `monkeypatch.setattr(settings, ...)`.
+- `extension/background.js` — dodane `extractSlugFromUrl(url)` i `async sha256Hex(str)` (WebCrypto). Forwarder `async reportScrapeFailure(payload)`: pobiera `apiUrl`+`apiKey` z settings, hashuje slug, buduje payload (client_timestamp, extension_version z `chrome.runtime.getManifest().version`, slug_hash, url, browser_ua, diagnostics, error_message), POST na `/api/diagnostics/scrape-failure` z `X-API-Key`. Wszystkie błędy połykane przez `try/catch` → `console.warn`. Handler `case "reportScrapeFailure"` w message routerze fire-and-forget'uje (NIE await'uje).
+- `extension/content.js` — w `extractViaDom` fail branch (linia ~960, tuż przed `return { success: false, ... }`) DODANE wywołanie `chrome.runtime.sendMessage({action: "reportScrapeFailure", payload: { url, diagnostics, error_message }})` z `.catch(() => {})` i `try/catch` na sync throw po orphan'ie. **NIE** w branchu `findAnyLikelyNameHeading` (fallback success), **NIE** w fallback'ach Voyager/JSON-LD/feed.
+- `extension/manifest.json` — bump `1.1.0 → 1.2.0` (minor: nowa funkcja, backward-compat).
+- `deploy/docker-compose.yml` — dodany `volumes: - /var/log/linkedin-msg:/var/log/linkedin-msg`. Komentarz wskazuje na konieczność `sudo mkdir -p /var/log/linkedin-msg` przed `compose up`.
+- `DEPLOY.md` — sekcja **7.1. Telemetria fail'i scrape (#5, od v1.2.0)** z `tail -f`, przykładowym wpisem JSON, instrukcją tworzenia katalogu, notką o braku rotation.
+
+**Pliki dotknięte (10):** `backend/main.py`, `backend/models.py`, `backend/services/diagnostics_logger.py` (NOWY), `backend/config.py`, `backend/tests/test_diagnostics.py` (NOWY), `extension/background.js`, `extension/content.js`, `extension/manifest.json`, `deploy/docker-compose.yml`, `DEPLOY.md`.
+
+**Auto-tests Dev przed handoff'em:**
+
+- `python -m pytest backend/tests/ -v` → **50/50 PASS** (40 existing + 10 nowych w `test_diagnostics.py`).
+- `node extension/tests/test_scraper.js` → **93/93 PASS**, brak regresji.
+- E2E smoke (curl → uvicorn lokalnie z `SCRAPE_FAILURE_LOG_PATH=/tmp/smoke.jsonl`):
+  - valid payload + valid key → **HTTP 204** + linia w JSONL z `server_timestamp` ✓
+  - brak X-API-Key → **HTTP 401** ✓
+  - invalid `slug_hash` (za krótki) → **HTTP 422** ✓
+
+**How to test (Tester = Marcin, smoke produkcyjny po deploy'u):**
+
+1. **Backend deploy na VPS:**
+   ```bash
+   ssh ubuntu@<vps>
+   cd ~/linkedin-msg-generator && git pull
+   sudo mkdir -p /var/log/linkedin-msg          # KRYTYCZNE — bez tego volume mount nie zadziała
+   cd deploy && docker compose up -d --build
+   curl http://127.0.0.1:8321/api/health        # status: ok
+   ```
+   Sprawdź `docker compose logs backend` — brak ImportError dla `diagnostics_logger` lub `ScrapeFailureReport`.
+
+2. **Załaduj extension 1.2.0 lokalnie:**
+   `chrome://extensions/` → reload przy LinkedIn Message Generator. Sprawdź **1.2.0** obok nazwy.
+
+3. **AC1 — happy path silent (Joanna):**
+   - Otwórz konsolę karty LinkedIn na profilu Joanny.
+   - W terminalu na VPS: `tail -f /var/log/linkedin-msg/failures.jsonl` (jeśli plik nie istnieje, `tail -F`).
+   - Klik **Pobierz**. Wiadomość scrape'uje się normalnie.
+   - **Oczekiwane:** 0 nowych linii w `failures.jsonl`. 0 logów `[LinkedIn MSG] Telemetry` w konsoli.
+
+4. **AC2 — fail path captured:**
+   - Otwórz Joannę / dowolny inny działający profil.
+   - W konsoli karty: `document.querySelector('main').remove()` przed klikiem.
+   - Klik **Pobierz** → popup pokazuje error.
+   - **Oczekiwane (≤5s):** w `tail -f` widoczna 1 nowa linia JSON. Sprawdź pola:
+     - `extension_version: "1.2.0"`
+     - `slug_hash` 64-char hex (lowercase)
+     - `url` z `/in/<slug>/`
+     - `diagnostics.h1Count` realistic (>0 bo `<h1>` istnieje, `<main>` zniknął), `hasTopCard: false`
+     - `error_message` zawiera "Timeout" lub "LinkedIn nie pokazuje"
+     - `server_timestamp` różny od `client_timestamp`
+
+5. **AC3 — extension resilience:**
+   - Na VPS: `cd deploy && docker compose stop backend`.
+   - W przeglądarce: ponowny scrape z usuniętym `<main>`.
+   - **Oczekiwane:** popup pokazuje normalny error scrape'a. W konsoli karty / SW'a `[LinkedIn MSG] Telemetry send failed: <fetch error>`. Brak crashu popup'u.
+   - Restart: `docker compose start backend`.
+
+6. **AC4 — backend kontrakt:** `pytest backend/tests/ -v` lokalnie → 50/50 PASS. (Dev to już zweryfikował, Tester może powtórzyć jeśli chce.)
+
+7. **AC5 — JSONL append-only:** wymuś 3 fail'e z rzędu (3× klik Pobierz po 3× `<main>.remove()`). `wc -l /var/log/linkedin-msg/failures.jsonl` → +3. Każda linia osobno parsowalna (`jq -c . failures.jsonl` nie wybucha).
+
+8. **AC6 — silent on fallback success:** trudne do wymuszenia ręcznie (wymaga profilu gdzie DOM zawodzi ale Voyager łapie). Smoke fallback: zwykły scrape Joanny z dobrym DOM → 0 nowych wpisów (covered by AC1). Świadomy compromise — pełna weryfikacja przez code review (branch w `extractViaDom` nie wzywa telemetrii poza fail return).
+
+9. **AC7 — auto-tests:** już wykonane przez Dev. Marcin może zrobić `cd backend && python -m pytest tests/ -v` i `cd extension && node tests/test_scraper.js` lokalnie dla potwierdzenia.
+
+10. **AC8 — deploy ready:** otwórz `DEPLOY.md` sekcja 7.1 — czytelne, czy zawiera `tail -f` + przykładowy JSON. `deploy/docker-compose.yml` ma `volumes:` z `/var/log/linkedin-msg`.
+
+11. **Smoke happy path (regresja sprintu #1):** scrape Joanny + Grzegorza, klik Generuj, klik Kopiuj. Bez regresji.
+
+**Wynik testów:** PASS / FAIL (z konkretnym opisem czego). Jeśli ALL PASS → CURRENT STATE → `Phase: Commit`. Jeśli FAIL → wracamy do Dev rework z repro steps.
+
+**Uwagi do dystrybucji 1.2.0 dla zespołu OVB (osobno, w #11):**
+- Bez wpisu `apiKey` w settings'ach extension'u, telemetria zostanie pominięta (`console.warn` → "Telemetry skipped — no API key configured"). Zespół już ma klucze (od dystrybucji 1.0.x), więc to nie problem — ale dla nowych użytkowników należy o tym pamiętać.
+- Marcin powinien spakować nowy `extension 1.2.0.rar`/`.zip` po ack'u testera.
+
+### [ARCHIWUM] Bundle: niezawodność scrape — #3 + #7 + #15 + #16 (wersja 1.1.0)
 
 Cztery taski domknięte w jednej fazie Dev (sesja 2026-05-05). Łączny commit zaplanowany ze względu na spójność tematyczną i wzajemne zależności (np. #7 reuse'uje `extractSlugFromUrl` z #3). Test manualny Marcina po reloadzie na 1.1.0 weryfikuje całość.
 
@@ -374,6 +545,10 @@ Wynik per task (PASS/FAIL) → wracaj do Commit albo Dev rework.
 - ✅ #14 Porównać DOM Joanny vs Grzegorza
 - ✅ #12 Orphan content script — content.js część w 1.0.7 (helper `isContextValid()`, guardy w `check()`, `onUrlChange`, listener). AC1/2/4/5 PASS (Joanna+Grzegorz scrape OK). AC3 częściowy — fix usuwa `chrome.runtime?.id` z content.js, ale 316 errorów `chrome-extension://invalid/` pozostaje z innego pliku (background.js / popup.js) — kontynuacja w #12b.
 - ✅ #17 Race condition na DOM rendering — pre-wait + layout detection o markery `[data-member-id]` / `.pv-top-card`, marker-gated retry w `extractViaDom`. AC1-5 PASS. Anna Rutkowska scrape'uje nawet przy klik w trakcie ładowania. Bump 1.0.8. Commit: f312f6d.
+- ✅ #3 UX stale cache w popup'ie — `resetProfileUI()` + slug-aware init flow w popup.js. Po fail scrape'a popup czyści preview/result. Po otwarciu na innej karcie cache nie pokazany jeśli slug różny. Bundle 1.1.0. Commit: 1668c56.
+- ✅ #7 Walidacja URL profilu — `scrapeCurrentTab` porównuje expected slug z returned slug, mismatch reject. Bundle 1.1.0. Commit: 1668c56.
+- ✅ #15 SPA navigation reset — navEpoch counter w content.js, listener guard'uje sendResponse na navigation mid-scrape. Bundle 1.1.0. Commit: 1668c56.
+- ✅ #16 Cleanup martwych selektorów — usunięte historyczne `top-card-layout__title`, `pv-text-details__left-panel*`, `pv-top-card--list*`, `pv-top-card-section__headline`. Strukturalne `pv-top-card-*` zostawione (aktywne 2026-05). Bundle 1.1.0. Commit: 1668c56.
 - ❌ #4 [ANULOWANE] Nowy extractor — niepotrzebny, classic Ember nadal działa
 
 ## BLOCKED

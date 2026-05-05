@@ -1,6 +1,6 @@
 """LinkedIn Message Generator — FastAPI Backend (MVP)"""
 
-from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi import FastAPI, HTTPException, Depends, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
@@ -12,6 +12,7 @@ from models import (
     GenerateMessageRequest,
     GenerateMessageResponse,
     HealthResponse,
+    ScrapeFailureReport,
     SettingsDefaultsResponse,
     TemplateInfo,
 )
@@ -22,6 +23,7 @@ from services.ai_service import (
     TONE_DEFAULTS,
     generate_message,
 )
+from services.diagnostics_logger import log_scrape_failure
 from services.rate_limiter import RateLimiter
 from services.auth import verify_api_key
 
@@ -146,6 +148,28 @@ async def generate(
         goal=req.goal,
         generation_time_s=elapsed,
     )
+
+
+# ── Diagnostics — telemetria fail'i scrape (#5) ──────────────────────
+@app.post(
+    "/api/diagnostics/scrape-failure",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def report_scrape_failure(
+    report: ScrapeFailureReport,
+    api_key: str = Depends(verify_api_key),
+):
+    """
+    Append jednej linii JSON do settings.SCRAPE_FAILURE_LOG_PATH.
+
+    Wywoływane fire-and-forget z extension'a w `extractViaDom` fail path.
+    NIGDY nie raportowane przy sukcesie (nawet przez fallback).
+
+    Brak rate-limitingu w MVP — świadoma decyzja, akceptujemy spam
+    od usera klikającego w kółko Pobierz na zepsutym profilu.
+    """
+    await log_scrape_failure(report, settings.SCRAPE_FAILURE_LOG_PATH)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 # ── Global error handler ─────────────────────────────────────────────
