@@ -189,6 +189,66 @@ NIE privacy. URL i tak zawiera slug w cleartext.
 **Brak rotation/retention** — przy ~100 fail'i/mies × ~2KB to ~2.4MB/rok.
 Stretch goal jeśli kiedyś nadrasta.
 
+### 7.2. Monitoring backendu (#9, od v1.2.1)
+
+Co 5 min sprawdza `https://linkedin-api.szmidtke.pl/api/health`. Po **2 fail'ach z rzędu** wysyła alert na Telegram. Reset countera po sukcesie.
+
+Dwie opcje implementacji — wybierz jedną.
+
+#### Opcja A — n8n workflow (preferowana, jeśli masz n8n)
+
+`deploy/n8n-healthcheck.json` to gotowy workflow do importu.
+
+**Setup (jednorazowo):**
+
+1. **Telegram bot** — utwórz przez `@BotFather` na Telegramie (`/newbot`), zapisz `BOT_TOKEN`. Dodaj bota do siebie / kanału alertów, zapisz `CHAT_ID` (z `https://api.telegram.org/bot<TOKEN>/getUpdates` po wysłaniu 1 wiadomości botowi).
+2. **n8n** — w UI:
+   - Settings → Credentials → New → Telegram → wklej `BOT_TOKEN` (id credential `telegram-bot`).
+   - Workflow → Import from File → wybierz `deploy/n8n-healthcheck.json`.
+   - W node "Telegram alert" sprawdź że `chatId` jest pusty (używa env'a `TELEGRAM_ALERT_CHAT_ID` z n8n environment) lub wpisz `CHAT_ID` na sztywno.
+   - Activate workflow (toggle prawy-górny róg).
+3. **Test:** ręczny "Execute Workflow" → powinien wysłać status 200 (no alert) albo wyrzucić w branchu IF jeśli backend faktycznie down.
+
+#### Opcja B — bash + cron (fallback bez n8n)
+
+`deploy/healthcheck.sh` to standalone script.
+
+**Setup:**
+
+```bash
+# Na VPS jako ubuntu:
+chmod +x ~/linkedin-msg-generator/deploy/healthcheck.sh
+
+# Plik z credentials (mode 600 — tylko owner czyta):
+cat > ~/.linkedin-healthcheck.env <<EOF
+TELEGRAM_BOT_TOKEN=123456:ABC-DEF...
+TELEGRAM_CHAT_ID=12345678
+EOF
+chmod 600 ~/.linkedin-healthcheck.env
+
+# Cron co 5 min:
+crontab -e
+# dorzuć linię:
+*/5 * * * * /home/ubuntu/linkedin-msg-generator/deploy/healthcheck.sh >> /tmp/linkedin-healthcheck.log 2>&1
+
+# Test ręczny:
+~/linkedin-msg-generator/deploy/healthcheck.sh
+echo "exit=$?"
+```
+
+**Test alertu:** zatrzymaj backend i poczekaj.
+
+```bash
+cd ~/linkedin-msg-generator/deploy && docker compose stop backend
+# Czekaj 5-10 min — alert na Telegram po 2 cyklu cron'a.
+docker compose start backend
+# Po następnym cyklu cron'a counter się resetuje.
+```
+
+**Acceptance:** zatrzymany backend → alert w ≤10 min.
+
+**Brak alert'u przy "self-recovery":** jeśli backend padł między dwoma cyklami cron'a i sam się zrestartował (Docker `restart: unless-stopped`), alert nie poleci. To **świadoma decyzja** — alertujemy tylko przy realnie persistent down'ie, nie przy chwilowych hiccup'ach.
+
 ---
 
 ## 8. Instalacja rozszerzenia (dla Ciebie i użytkowników)

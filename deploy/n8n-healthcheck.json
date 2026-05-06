@@ -1,0 +1,105 @@
+{
+  "name": "linkedin-api healthcheck",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every 5 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://linkedin-api.szmidtke.pl/api/health",
+        "options": {
+          "timeout": 10000,
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json",
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "http-health",
+      "name": "GET /api/health",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "status-not-ok",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 200,
+              "operator": {
+                "type": "number",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "or"
+        }
+      },
+      "id": "if-down",
+      "name": "Backend DOWN?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_ALERT_CHAT_ID }}",
+        "text": "=⚠️ *linkedin-api.szmidtke.pl DOWN*\n\nStatus: `{{ $('GET /api/health').item.json.statusCode || 'no response' }}`\nTime: {{ $now.toFormat('yyyy-LL-dd HH:mm:ss') }}\n\nSprawdź:\n- `ssh ubuntu@vps`\n- `cd ~/linkedin-msg-generator/deploy && docker compose ps`\n- `docker compose logs --tail 50 backend`",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "telegram-alert",
+      "name": "Telegram alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [900, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot",
+          "name": "Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 5 min": {
+      "main": [[{ "node": "GET /api/health", "type": "main", "index": 0 }]]
+    },
+    "GET /api/health": {
+      "main": [[{ "node": "Backend DOWN?", "type": "main", "index": 0 }]]
+    },
+    "Backend DOWN?": {
+      "main": [[{ "node": "Telegram alert", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": ["monitoring", "linkedin-api"]
+}
