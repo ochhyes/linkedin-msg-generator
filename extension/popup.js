@@ -1435,7 +1435,29 @@
       // Fresh install, defaults are fine
     }
 
-    // Then overlay last session state (takes precedence)
+    // Bulk Connect detection (#18) — reveal section niezależnie od session
+    // restore'u. Bez tego fresh install bez `lastSession` w storage zostawia
+    // bulk-connect hidden, mimo że user jest na search results page.
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab?.id) {
+        const detection = await chrome.tabs.sendMessage(tab.id, { action: "detectPageType" });
+        if (detection?.type === "search_results") {
+          bulkConnect.classList.remove("hidden");
+          loadProfilesList();
+          if (btnAddQueue) btnAddQueue.hidden = false;
+        }
+      }
+    } catch (_) {
+      // not on linkedin or content script not ready — silent
+    }
+
+    // Bulk queue state (#19) i follow-upy (#25) zawsze ładujemy — queue
+    // jest persistowane i może mieć aktywne items niezależnie od profilu.
+    loadBulkState();
+    loadFollowupList();
+
+    // Then overlay last session state (takes precedence dla profile preview)
     const last = await loadSession();
     if (!last) return;
 
@@ -1476,33 +1498,5 @@
       // currentProfile stays null, btnGenerate stays disabled. User clicks
       // Pobierz to scrape the active profile fresh.
     }
-
-    // Bulk Connect detection (#18): if the active tab is a LinkedIn search
-    // results page, reveal the bulk-connect section and load the visible
-    // profiles. Silent on every failure — non-LinkedIn tabs and not-yet-ready
-    // content scripts simply leave the section hidden.
-    try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (tab?.id) {
-        const detection = await chrome.tabs.sendMessage(tab.id, { action: "detectPageType" });
-        if (detection?.type === "search_results") {
-          bulkConnect.classList.remove("hidden");
-          loadProfilesList();
-          // Bulk-connect widoczny → "Dodaj zaznaczone do kolejki" musi być widoczny.
-          if (btnAddQueue) btnAddQueue.hidden = false;
-        }
-      }
-    } catch (_) {
-      // not on linkedin or content script not ready — silent
-    }
-
-    // Bulk queue state (#19): zawsze ładujemy — queue jest persistowane w
-    // storage.local i user może mieć aktywną kolejkę z poprzedniej sesji
-    // nawet jeśli akurat jest na stronie profilu / feed'a.
-    loadBulkState();
-
-    // Follow-up reminders (#25): zawsze pytamy background o due,
-    // sekcja sama się pokaże/ukryje w renderFollowupList.
-    loadFollowupList();
   })();
 })();
