@@ -1076,6 +1076,179 @@
 
   window.addEventListener("popstate", onUrlChange);
 
+  // ── Bulk Connect: page detection + search results extraction (#18) ──
+  //
+  // Faza 1A Sprint #3: extension wykrywa typ aktualnej strony (search results
+  // / profil / inne) i ekstrahuje listę profili z search results page.
+  // Nie klika nic — to jest faza prezentacyjna, auto-click przyjdzie w #19.
+
+  /**
+   * Wykrywa typ aktualnej strony LinkedIn po pathname URL'a.
+   * Zwraca obiekt z polem `type` i `url` (full href).
+   */
+  function detectPageType() {
+    const path = window.location.pathname || "";
+    let type = "other";
+    if (path.startsWith("/search/results/people/")) {
+      type = "search_results";
+    } else if (path.startsWith("/in/")) {
+      type = "profile";
+    }
+    return { type, url: window.location.href };
+  }
+
+  /**
+   * Ekstraktuje listę profili z search results page LinkedIn'a.
+   * Selektory wyłącznie strukturalne (role/href/struktura DOM) — bez hashed
+   * classes typu `entity-result__*` które LinkedIn rotuje co kilka tygodni.
+   *
+   * Per item: try/catch żeby pojedynczy fail nie zabił całej listy.
+   * Failed item → push `{slug: null, error: <msg>}` (do diagnostyki).
+   *
+   * @returns {Array<{name, headline, location, degree, slug, buttonState, error?}>}
+   */
+  function extractSearchResults() {
+    const results = [];
+    // Listing items mają role="listitem" w search results scaffold'u.
+    // Fallback do <li> jeśli LinkedIn zmieni atrybut role.
+    let items = Array.from(document.querySelectorAll('div[role="listitem"]'));
+    if (items.length === 0) {
+      // Fallback: szukaj <li> które zawierają link /in/ — te które mają
+      // strukturę pasującą do search result.
+      items = Array.from(document.querySelectorAll("li")).filter((li) =>
+        li.querySelector('a[href*="/in/"]')
+      );
+    }
+
+    // Filter mutual connection paragraphs ("Michał Stanioch i 5 innych
+     // wspólnych kontaktów") — LinkedIn dorzuca te frazy jako <p> w SDUI,
+     // co konfliktuje z paragraphs[0] zakładanym jako name+degree.
+    const isMutualText = (s) =>
+      /wspóln[ay]+\s+kontakt|mutual\s+connection|innych\s+wspólnych/i.test(s);
+
+    for (const item of items) {
+      try {
+        const allProfileLinks = Array.from(
+          item.querySelectorAll('a[href*="/in/"]')
+        );
+        if (allProfileLinks.length === 0) {
+          // To nie jest karta profilu — np. listitem dla "People you may know"
+          // sidebara lub osobnej sekcji. Pomijamy bez error'a.
+          continue;
+        }
+
+        // Paragraph-first parsing: <p> w SDUI zawiera czysty tekst, links
+        // zawierają cały klikalny obszar karty (włącznie z mutual connections).
+        // Polegamy na paragraphs, slug pozyskujemy przez match name → link.
+        const allParagraphs = Array.from(item.querySelectorAll("p"))
+          .map((p) => (p.innerText || p.textContent || "").trim())
+          .filter(Boolean);
+        const paragraphs = allParagraphs.filter((p) => !isMutualText(p));
+
+        // Name + degree: pierwszy <p> z separatorem " • ".
+        // LinkedIn renderuje "Jan Kowalski • 2" w pierwszym paragrafie po
+        // odfiltrowaniu mutual connections.
+        let nameLine = paragraphs.find((p) => p.includes(" • ")) || paragraphs[0] || "";
+        // Multi-line wewnątrz <p> jest rzadkie ale zdarza się
+        // (SR-text + visible). Preferuj linię z " • ".
+        const lines = nameLine.split("\n").map((l) => l.trim()).filter(Boolean);
+        if (lines.length > 0) {
+          nameLine = lines.find((l) => l.includes(" • ")) || lines[0];
+        }
+
+        let name = nameLine;
+        let degree = null;
+        const sepIdx = nameLine.lastIndexOf(" • ");
+        if (sepIdx !== -1) {
+          name = nameLine.slice(0, sepIdx).trim();
+          // LinkedIn dorzuca trailing whitespace / non-breaking space po degree.
+          degree = nameLine.slice(sepIdx + 3).trim();
+        }
+
+        // Headline + location: paragrafy po name'ie. Indeksujemy po pozycji
+        // name w przefiltrowanej liście — defensive jeśli LinkedIn doda
+        // nowe pola między name a headline'em.
+        const namePIdx = paragraphs.indexOf(nameLine);
+        const headline = namePIdx >= 0
+          ? paragraphs[namePIdx + 1] || null
+          : paragraphs[0] || null;
+        const location = namePIdx >= 0
+          ? paragraphs[namePIdx + 2] || null
+          : paragraphs[1] || null;
+
+        // Slug: znajdź link /in/ którego innerText zawiera nasze imię.
+        // Bez tego dla profili z mutual connections w obrębie <li>
+        // wzięlibyśmy slug pierwszej osoby z mutuals zamiast właściwego profilu.
+        let chosenLink = null;
+        if (name) {
+          chosenLink = allProfileLinks.find((a) => {
+            const t = (a.innerText || a.textContent || "").trim();
+            return t && t.includes(name);
+          }) || null;
+        }
+        // Fallback: jeśli match po name nie zadziała, weź pierwszy link który
+        // NIE prowadzi do mutual connection (po heurystyce text content).
+        if (!chosenLink) {
+          chosenLink = allProfileLinks.find((a) => {
+            const t = (a.innerText || a.textContent || "").trim();
+            return t && !isMutualText(t);
+          }) || allProfileLinks[0];
+        }
+        const href = chosenLink ? chosenLink.getAttribute("href") || "" : "";
+        const slugMatch = href.match(/\/in\/([^/?#]+)/);
+        const slug = slugMatch ? slugMatch[1] : null;
+
+        // Button state detection — strukturalnie po href/aria, NIE po klasach.
+        // Connect → link do /preload/search-custom-invite/ (LinkedIn invite flow).
+        // Message → link do /messaging/ (już w sieci 1st degree).
+        // Pending → link z aria-label zaczynającym się "W toku" / "Pending"
+        // (LinkedIn renderuje ten link dla wysłanych ale nie zaakceptowanych
+        // zaproszeń — klik = withdraw flow). Wyłapanie po aria-label jest
+        // odporne na zmiany pozycji w tekście całego <li>.
+        const connectLink = item.querySelector(
+          'a[href*="/preload/search-custom-invite/"]'
+        );
+        const messageLink = item.querySelector('a[href*="/messaging/"]');
+        const pendingLink = item.querySelector(
+          'a[aria-label^="W toku"], a[aria-label^="Pending"]'
+        );
+
+        let buttonState = "Unknown";
+        if (pendingLink) {
+          buttonState = "Pending";
+        } else if (connectLink) {
+          buttonState = "Connect";
+        } else if (messageLink) {
+          buttonState = "Message";
+        } else {
+          // Follow-only profiles (influencerzy / 3rd+ premium-locked) —
+          // tylko jeśli nie ma żadnego z powyższych linków.
+          const itemText = (item.textContent || "").toLowerCase();
+          if (itemText.includes("obserwuj") || itemText.includes("follow")) {
+            buttonState = "Follow";
+          }
+        }
+
+        results.push({
+          name: name || null,
+          headline,
+          location,
+          degree,
+          slug,
+          buttonState,
+        });
+      } catch (err) {
+        // Defensive: jeden zepsuty <li> nie zabija listy.
+        results.push({
+          slug: null,
+          error: err && err.message ? err.message : String(err),
+        });
+      }
+    }
+
+    return results;
+  }
+
   // ── Message Listener ─────────────────────────────────────────────
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -1117,6 +1290,22 @@
           });
         });
       return true; // Keep channel open for async
+    } else if (message.action === "detectPageType") {
+      // SYNC response — popup chce wiedzieć czy pokazywać sekcję Bulk Connect.
+      sendResponse(detectPageType());
+    } else if (message.action === "extractSearchResults") {
+      // SYNC response — ekstrakcja jest synchroniczna (pure DOM walk).
+      // Try/catch żeby fail nie zamknął channel'a bez response'a.
+      try {
+        sendResponse({ success: true, profiles: extractSearchResults() });
+      } catch (err) {
+        console.warn("[LinkedIn MSG] extractSearchResults failed:", err);
+        sendResponse({
+          success: false,
+          profiles: [],
+          error: err && err.message ? err.message : String(err),
+        });
+      }
     }
   });
 

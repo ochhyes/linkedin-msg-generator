@@ -37,6 +37,11 @@
   const setMaxChars = $("#set-max-chars");
   const btnSaveSettings = $("#btn-save-settings");
   const btnBack = $("#btn-back");
+  // Bulk Connect (#18) refs
+  const bulkConnect = $("#bulk-connect");
+  const bulkInfo = $("#bulk-info");
+  const profilesList = $("#profiles-list");
+  const btnRefreshList = $("#btn-refresh-list");
 
   // ── State ────────────────────────────────────────────────────────
   let currentProfile = null;
@@ -375,6 +380,114 @@
     saveSession();
   });
 
+  // ── Bulk Connect (#18) ───────────────────────────────────────────
+
+  /**
+   * Translate the buttonState string returned by extractSearchResults()
+   * into the user-facing Polish label shown on the badge.
+   */
+  function badgeLabel(state) {
+    switch (state) {
+      case "Connect": return "Połącz";
+      case "Pending": return "Wysłano";
+      case "Message": return "Wiadomość";
+      case "Follow":  return "Obserwuj";
+      default:        return "?";
+    }
+  }
+
+  /**
+   * Render the search results list inside the popup. Each row shows name
+   * + headline + a badge for the action available. 1st-degree connections,
+   * pending invites and follow-only profiles are rendered greyed-out and
+   * non-clickable so the user still sees them but can't open them by mistake.
+   */
+  function renderProfilesList(profiles) {
+    profilesList.innerHTML = "";
+
+    if (!Array.isArray(profiles) || profiles.length === 0) {
+      bulkInfo.textContent = "Brak profili na tej stronie";
+      return;
+    }
+
+    let connectable = 0;
+    for (const p of profiles) {
+      const slug = p?.slug || "";
+      const state = p?.buttonState || "Unknown";
+      const degree = p?.degree || "";
+      const isFirstDegree = typeof degree === "string" && degree.trim().startsWith("1");
+      const disabled = state !== "Connect" || isFirstDegree;
+      if (!disabled) connectable += 1;
+
+      const li = document.createElement("li");
+      li.className = "bulk-connect__row" + (disabled ? " bulk-connect__row--disabled" : "");
+      if (slug) li.dataset.slug = slug;
+
+      const textCol = document.createElement("div");
+      textCol.className = "bulk-connect__row-text";
+
+      const nameEl = document.createElement("span");
+      nameEl.className = "bulk-connect__row-name";
+      nameEl.textContent = p?.name || "—";
+
+      const headlineEl = document.createElement("span");
+      headlineEl.className = "bulk-connect__row-headline";
+      headlineEl.textContent = p?.headline || "";
+
+      textCol.appendChild(nameEl);
+      textCol.appendChild(headlineEl);
+
+      const badge = document.createElement("span");
+      badge.className = `badge badge--${String(state).toLowerCase()}`;
+      badge.textContent = badgeLabel(state);
+
+      li.appendChild(textCol);
+      li.appendChild(badge);
+      profilesList.appendChild(li);
+    }
+
+    bulkInfo.textContent = `${profiles.length} profili, ${connectable} dostępnych do Connect`;
+  }
+
+  /**
+   * Ask the content script for the search results visible on the page,
+   * then render them. Silent failure path — a missing content script or
+   * a non-LinkedIn tab just shows an info message.
+   */
+  async function loadProfilesList() {
+    bulkInfo.textContent = "Ładuję listę profili...";
+    profilesList.innerHTML = "";
+
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) {
+        bulkInfo.textContent = "Brak aktywnej karty";
+        return;
+      }
+      const response = await chrome.tabs.sendMessage(tab.id, { action: "extractSearchResults" });
+      if (response?.success) {
+        renderProfilesList(response.profiles || []);
+      } else {
+        bulkInfo.textContent = "Nie udało się pobrać listy profili";
+      }
+    } catch (err) {
+      console.warn("[LinkedIn MSG] loadProfilesList failed:", err);
+      bulkInfo.textContent = "Nie udało się pobrać listy profili";
+    }
+  }
+
+  // Delegated click handler: open the clicked profile in a background tab.
+  profilesList.addEventListener("click", (e) => {
+    const row = e.target.closest(".bulk-connect__row");
+    if (!row) return;
+    if (row.classList.contains("bulk-connect__row--disabled")) return;
+    const slug = row.dataset.slug;
+    if (!slug) return;
+    chrome.tabs.create({ url: `https://www.linkedin.com/in/${slug}/`, active: false });
+  });
+
+  btnRefreshList.addEventListener("click", loadProfilesList);
+
   // ── Init ─────────────────────────────────────────────────────────
 
   (async () => {
@@ -427,6 +540,23 @@
       // Mismatch — leave profilePreview / resultArea hidden by default.
       // currentProfile stays null, btnGenerate stays disabled. User clicks
       // Pobierz to scrape the active profile fresh.
+    }
+
+    // Bulk Connect detection (#18): if the active tab is a LinkedIn search
+    // results page, reveal the bulk-connect section and load the visible
+    // profiles. Silent on every failure — non-LinkedIn tabs and not-yet-ready
+    // content scripts simply leave the section hidden.
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab?.id) {
+        const detection = await chrome.tabs.sendMessage(tab.id, { action: "detectPageType" });
+        if (detection?.type === "search_results") {
+          bulkConnect.classList.remove("hidden");
+          loadProfilesList();
+        }
+      }
+    } catch (_) {
+      // not on linkedin or content script not ready — silent
     }
   })();
 })();
