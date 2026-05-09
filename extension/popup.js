@@ -25,6 +25,8 @@
   const resultText = $("#result-text");
   const resultMeta = $("#result-meta");
   const btnCopy = $("#btn-copy");
+  const btnCopyTrack = $("#btn-copy-track");
+  const trackStatus = $("#track-status");
   const btnRegenerate = $("#btn-regenerate");
   const errorArea = $("#error-area");
   const errorText = $("#error-text");
@@ -358,6 +360,75 @@
       document.execCommand("copy");
     }
   });
+
+  // Copy + track follow-ups (#26 v1.7.2) — manual outreach mode.
+  // Klik: clipboard write + open LinkedIn messaging compose + zapis profilu
+  // do queue jako "manual_sent" + scheduling follow-up #1/#2. Idempotent —
+  // drugi klik nie nadpisuje RemindAt'ów (hook w bulkMarkMessageSent guard).
+  if (btnCopyTrack) {
+    btnCopyTrack.addEventListener("click", async () => {
+      const message = resultText.value;
+      if (!currentProfile || !message) {
+        showTrackStatus("Brak profilu lub wiadomości", "error");
+        return;
+      }
+      const slug = extractSlugFromUrl(currentProfile.profile_url);
+      if (!slug) {
+        showTrackStatus("Nie mogę zidentyfikować profilu (brak slug w URL)", "error");
+        return;
+      }
+
+      btnCopyTrack.disabled = true;
+      const origText = btnCopyTrack.textContent;
+      btnCopyTrack.textContent = "Zapisuję…";
+
+      try {
+        // Clipboard najpierw — gdy przy nim coś pójdzie nie tak, nie wpisujemy
+        // do storage tracking dla wiadomości której user nie skopiował.
+        await navigator.clipboard.writeText(message);
+
+        const resp = await chrome.runtime.sendMessage({
+          action: "trackManualSent",
+          profile: currentProfile,
+          messageDraft: message,
+        });
+
+        if (!resp?.success) {
+          showTrackStatus(`Błąd: ${resp?.error || "unknown"}`, "error");
+          return;
+        }
+
+        // Open LinkedIn messaging compose tab.
+        chrome.tabs.create({
+          url: `https://www.linkedin.com/messaging/compose/?recipient=${encodeURIComponent(slug)}`,
+          active: true,
+        });
+
+        const action = resp.action === "updated" ? "Zaktualizowano" : "Zapisano";
+        showTrackStatus(
+          `✓ ${action}. Follow-up #1 za 3 dni, #2 za 7 dni. Wklej i wyślij w LinkedIn'ie.`,
+          "success"
+        );
+      } catch (err) {
+        console.warn("[LinkedIn MSG] copy+track failed:", err);
+        showTrackStatus(`Błąd: ${(err && err.message) || err}`, "error");
+      } finally {
+        btnCopyTrack.disabled = false;
+        btnCopyTrack.textContent = origText;
+      }
+    });
+  }
+
+  function showTrackStatus(text, kind) {
+    if (!trackStatus) return;
+    trackStatus.textContent = text;
+    trackStatus.classList.remove("hidden", "track-status--success", "track-status--error");
+    trackStatus.classList.add(kind === "error" ? "track-status--error" : "track-status--success");
+    // Auto-hide after 6s for success, sticky dla error.
+    if (kind !== "error") {
+      setTimeout(() => trackStatus.classList.add("hidden"), 6000);
+    }
+  }
 
   // ── Settings ─────────────────────────────────────────────────────
 

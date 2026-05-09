@@ -1,4 +1,4 @@
-# LinkedIn MSG — instrukcja dla zespołu OVB (v1.7.0)
+# LinkedIn MSG — instrukcja dla zespołu OVB (v1.7.2)
 
 Extension Chrome dla **bulk wysyłki zaproszeń** + **AI generator wiadomości** dla nowo zaakceptowanych kontaktów. Zastępuje Octopus Starter.
 
@@ -106,6 +106,30 @@ Następnego dnia (lub co kilka dni):
 5. Wracaj do popup'u → status osoby = **wysłane** ✓.
 
 **Nie chcesz pisać do kogoś?** Klik **"Pomiń"** → status `pominięto`, item greyed-out.
+
+### Krok F2 — Manual outreach (pisanie do osób spoza Bulk Connect, NOWE w 1.7.2)
+
+Bulk Connect (Kroki A-F) to flow dla MASOWYCH zaproszeń do nowych osób. Ale często chcesz napisać do **istniejącego kontaktu** (1st degree) — np. byłego kolegi, znajomego z konferencji. Wtedy używasz głównego flow popup'u:
+
+1. Wejdź na profil osoby (np. `linkedin.com/in/jankowalski`).
+2. Otwórz popup → klik **"Pobierz profil"** → AI scrape'uje profil.
+3. Klik **"Generuj wiadomość"** → AI tworzy spersonalizowany draft.
+4. Edytuj jeśli chcesz, potem **wybierz jeden z dwóch buttonów**:
+
+| Button | Co robi |
+|---|---|
+| **Kopiuj** | Tylko clipboard. Use gdy chcesz wkleić w mail / Slack / cokolwiek POZA LinkedIn'em |
+| **📨 Kopiuj + śledź** | Clipboard + otwiera czat LinkedIn z osobą + **automatycznie planuje follow-up #1 za 3 dni i #2 za 7 dni**. Use gdy wysyłasz wiadomość przez LinkedIn |
+
+5. Po kliknięciu **"Kopiuj + śledź"** zobaczysz toast `✓ Zapisano. Follow-up #1 za 3 dni, #2 za 7 dni`.
+6. W otwartej karcie LinkedIn'a: Ctrl+V → Send.
+7. Profil dołącza do "ukrytej" kolejki (status `manual_sent`) — NIE pojawia się w sekcji Bulk Connect ani Wiadomości po-Connect, ale **za 3 dni pojawi się w sekcji "Do follow-up'u"** tak samo jak osoby z bulk pipeline'u.
+
+> **Idempotency:** Możesz kliknąć "Kopiuj + śledź" wielokrotnie dla tej samej osoby. Drugi klik aktualizuje draft w storage (jeśli wygenerowałeś nową wersję), ale NIE nadpisuje dat follow-upów (te zostają z pierwszego kliku).
+>
+> **"Kopiuj + śledź" NIE wysyła wiadomości za Ciebie** — to TY musisz wkleić i kliknąć Send w LinkedIn'ie. Plugin zapisuje fakt że "user wysłał" w tym momencie kliknięcia.
+
+---
 
 ### Krok G — Follow-upy 3d / 7d (NOWE w 1.7.0)
 

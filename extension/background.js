@@ -458,6 +458,65 @@ async function bulkMarkMessageSent(slug) {
   return { success: true };
 }
 
+// ── Manual outreach tracking (#26 v1.7.2) ────────────────────────
+//
+// Główny flow popup'u (Profile preview → Generuj → Kopiuj + śledź) tworzy
+// queue item z status="manual_sent" + messageStatus="sent" + messageDraft
+// + scheduling follow-up #1/#2. To rozwiązuje gap z #25: follow-upy
+// działały TYLKO dla bulk-invite pipeline'u (#21), manualnie wysłane
+// wiadomości (do osób spoza queue) nie były śledzone.
+//
+// Status "manual_sent" automatycznie wykluczony z bulkCheckAccepts (filter
+// q.status === "sent") i bulkConnectTick (filter q.status === "pending"),
+// więc bezpiecznie współistnieje z bulk pipeline'em.
+async function bulkAddManualSent(profile, messageDraft) {
+  if (!profile || !profile.profile_url) {
+    return { success: false, error: "no_profile" };
+  }
+  const slug = extractSlugFromUrl(profile.profile_url);
+  if (!slug) return { success: false, error: "no_slug" };
+
+  const state = await getBulkState();
+  const existing = state.queue.find((q) => q.slug === slug);
+
+  if (existing) {
+    // Update existing: świeży draft + scrapedProfile, zachowaj status jeśli
+    // już jest manual_sent/sent (idempotent), ale nie wracaj z "skipped" do
+    // active gdyż user świadomie pominął kiedyś.
+    const patch = {
+      messageDraft,
+      scrapedProfile: profile,
+    };
+    if (existing.status !== "skipped" && existing.followupStatus !== "skipped") {
+      patch.messageStatus = "sent";
+      // status "pending" → "manual_sent" (manual override invite). "sent"
+      // (bulk-sent invite) zostaw jak jest. Other statuses bez zmiany.
+      if (existing.status === "pending") patch.status = "manual_sent";
+    }
+    await updateQueueItem(slug, patch);
+  } else {
+    // Create new manual item.
+    await addToQueue([{
+      slug,
+      name: profile.name || "",
+      headline: profile.headline || "",
+      pageNumber: 1,
+    }]);
+    await updateQueueItem(slug, {
+      status: "manual_sent",
+      messageStatus: "sent",
+      messageDraft,
+      scrapedProfile: profile,
+    });
+  }
+
+  // bulkMarkMessageSent ustawia messageSentAt + idempotent hook na follow-up
+  // RemindAt'y. Drugi klik nie nadpisuje (per #25 hook guard).
+  await bulkMarkMessageSent(slug);
+
+  return { success: true, slug, action: existing ? "updated" : "added" };
+}
+
 // ── Follow-upy 3d/7d (#25 v1.7.0) ────────────────────────────────
 //
 // Architektura: storage queue items (#21) extended o 7 pól follow-up'owych.
@@ -1093,6 +1152,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         case "bulkMarkMessageSent":
           return await bulkMarkMessageSent(message.slug);
+
+        case "trackManualSent":
+          return await bulkAddManualSent(message.profile, message.messageDraft);
 
         case "followupListDue":
           return await bulkListDueFollowups();

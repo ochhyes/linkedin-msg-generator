@@ -549,6 +549,11 @@ body {
 .message-pipeline__status--error { color: #f85149; }
 .message-pipeline__list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; max-height: 360px; overflow-y: auto; }
 
+/* Manual outreach tracking status (#26 v1.7.2) — toast po klik Kopiuj+śledź */
+.track-status { font-size: 11px; padding: 6px 8px; border-radius: var(--radius); margin: 6px 0 0; line-height: 1.4; }
+.track-status--success { color: #3fb950; background: rgba(63, 185, 80, 0.08); }
+.track-status--error { color: #f85149; background: rgba(248, 81, 73, 0.08); }
+
 .message-item { background: var(--bg-elevated, #1a1d24); border-radius: var(--radius); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
 .message-item--skipped, .message-item--sent { opacity: 0.6; }
 .message-item__head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
