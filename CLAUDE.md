@@ -94,6 +94,10 @@ Commity zmieniające tylko `backend/`, `deploy/` lub dokumentację — NIE bumpu
 - Service worker MV3 idle kill po 30s — może urwać async sendResponse.
 - UX stale cache w popup'ie (zaobserwowane 2026-05-05, #3 w TODO): po fail'u scrape'a popup pokazuje dane z poprzedniej sesji (np. Grzegorz wisi gdy próbujesz Annę). Maskuje fail — wygląda jakby coś działało.
 - Flood `chrome-extension://invalid/` po reload extension'u (2026-05): zdiagnozowany 2026-05-05 jako Branch B z #12b — LinkedIn'owy obfuscated bundle (`d3jr0erc6y93o17nx3pgkd9o9:12275`, ich `window.fetch`) cache'uje URL'e do starego extension ID i pinguje je po reload'zie. Stack trace + `chrome.runtime?.id === undefined` potwierdziły że to ich bundle, nie nasz kod. **Mitygacja w v1.2.1**: content.js poll'uje co 3s `isContextValid()`; gdy orphaned → `location.reload()` jednorazowy. Czyści LinkedIn'owy cache, flood znika. Po reload nowy content script wstrzykuje się normalnie.
+- Nowy SDUI layout LinkedIn'a na search results (zaobserwowany 2026-05-09 na `/search/results/all/?keywords=...`): `<main>` ma hashowane klasy (`d99855ad`, `_1b8a3c95`), zamiast klasycznego `entity-result__*` używa atrybutów typu `componentkey`, `data-sdui-screen`, `role="radio"`. Stary layout entity-result wciąż żyje na `/search/results/people/` — ale Marcin musi to zweryfikować na własnym koncie przed Dev #18 (fixture od niego). Dla scraper'a profilu (`/in/<slug>/`) layout dalej klasyczny Ember.
+- Modal "Połącz" w Shadow DOM (zdiagnozowany 2026-05-09 dla PM #19): klik na `<a href="/preload/search-custom-invite/?vanityName=...">` w search results NIE nawiguje — LinkedIn intercepts i otwiera modal client-side w shadow root pojedynczego hosta `<div id="interop-outlet" data-testid="interop-shadowdom">`. Modal ma `role="dialog"`, `aria-labelledby="send-invite-modal"`, klasa `.send-invite`. **`document.querySelector('[role="dialog"]')` z głównego DOM łapie INNE LinkedIn'owe dialogs** (Opcje reklamy, Nie chcę widzieć) — false positives. Wymagane przejście przez `host.shadowRoot.querySelector('.send-invite')`. Buttony w modal'u: X close (`button[data-test-modal-close-btn]`), "Dodaj notatkę" (`button.artdeco-button--secondary`), "Wyślij bez notatki" (`button.artdeco-button--primary`). Hashed klasy na liście wyników są **identyczne dla "Połącz" i "W toku"** — stan zakodowany wyłącznie w `aria-label` + `text` + `href`. Pełny dump w `extension/tests/fixtures/preload_modal_dump.md` (input dla PM #19).
+- Pending invite (search results) wykrywany przez `a[aria-label^="W toku"]` (PL) lub `a[aria-label^="Pending"]` (EN), NIE przez tekst "Oczekuje" (poprzedni 1.3.0 fixował to w 1.3.1 — polski LinkedIn używa "W toku"). Klik na taki link otwiera withdraw flow, NIE invite modal — bulk connect MUSI filter'ować takie profile inaczej zamiast zapraszać będzie wycofywać.
+- Mutual connections w SDUI search results (zdiagnozowane 2026-05-09 w 1.3.1 patch): LinkedIn dla niektórych 2nd-degree profili dorzuca `<p>` typu "Michał Stanioch i 5 innych wspólnych kontaktów" przed `<p>` z imieniem. Naiwny extractor (`paragraphs[0]` jako name) bierze tą frazę zamiast nazwiska osoby. Plus link `<a href="/in/<slug>/">` mutual connection siedzi w obrębie tego samego `<li>` co główny profil — pierwszy link w `<li>` może prowadzić do mutuala, nie do osoby z wiersza. Mitygacja w `extractSearchResults`: filter `/wspóln[ay]+\s+kontakt|innych\s+wspólnych|mutual connection/i` przed wyborem name + slug match po imieniu (`a.innerText.includes(name)`).
 
 ---
 
@@ -218,12 +222,24 @@ Nie łącz dwóch ról w jednej sesji bez zgody usera. Loop ma sens dlatego że 
 # CURRENT STATE
 
 ```
-Sprint:        #2 — Observability + safety net (start)
-Phase:         Tester
-Active task:   #5 P0 — Telemetria błędów scrape (Dev done, READY FOR TEST)
-Last commit:   1668c56 — feat: cache reset, slug match, nav guard, cleanup (#3,#7,#15,#16)
-Updated:       2026-05-05
+Sprint:        #3 — Bulk auto-connect MVP Faza 1 (Faza 1A done, PM #19 next)
+Phase:         PM (#19 rewrite pod Shadow DOM dump)
+Active task:   #19 P0 — przepisanie planu Faza 1B z modal dump'em (preload_modal_dump.md)
+Last commit:   c9394ba — feat: bulk connect detection + lista profili (#18, v1.3.1)
+Updated:       2026-05-09
 ```
+
+**Sprint #3 — kontekst handoff'u (PM done 2026-05-09):**
+
+Plan PM dla Sprintu #3 (Faza 1) dekompozyowany w sesji 2026-05-09. Driver biznesowy: zastąpić Octopus Starter dla zespołu OVB (~500 zł/user/rok × 10-20 osób = 5-12k/rok). Decyzje produktowe: source = LinkedIn search results only, state lokalny w `chrome.storage.local`, generator wiadomości przez backend API w Fazie 2 (NIE Faza 1).
+
+Sprint #3 realizowany w VS Code z Claude Code (subagent layer dla parallel work na DOM extraction / state management / testów). Cowork zostaje dla planowania PM i ad-hoc decyzji.
+
+Sprint #2 zamknięty (kod + smoke prod + dystrybucja 1.2.1 dla zespołu OVB done 2026-05-09). Telemetria #5 reuse'owana w Faza 1B (telemetria fail'i auto-click). Fixture'y #8 chronią przed regresją scraper'a w trakcie pracy nad bulk connect.
+
+**Pre-Dev #18 blocker:** istniejący `extension/tests/fixtures/search_results.html` jest z URL `/search/results/all/` i pokazuje **nowy SDUI layout** (hashed classes). Plan #18 zakłada **stary layout entity-result**. Marcin musi dostarczyć nowy fixture z `https://www.linkedin.com/search/results/people/?keywords=ovb` (`document.querySelector('main').outerHTML`) zapisany jako `extension/tests/fixtures/search_results_people.html`. Bez tego Dev pisze selektory na ślepo.
+
+Faza 2 (#21 AI nota) i Faza 3 (#22 pagination + selection) w BACKLOG'u jako placeholder — pełna dekompozycja PM dopiero po Faza 1 production-ready i smoke 7-dniowym z konta Marcina.
 
 ## Sprint #1 — RETRO (skrót do utrwalenia w #11)
 
@@ -249,15 +265,43 @@ Updated:       2026-05-05
 - Bash sandbox cache'uje stale widok plików po Edit'ach (mount lag) — dla weryfikacji finalnej polegać na Read tool, nie `wc -l`/`cat`.
 - Git config musi być ustawiony lokalnie w sandbox (`user.email`, `user.name`) żeby commitować — Marcin używa `Marcin Szmidtke <ochh.yes@gmail.com>`.
 
-## Notatki z poprzedniej sesji (handoff dla PM)
+## Sprint #2 — RETRO (domknięty 2026-05-09)
 
-**Sesja 2026-05-05 zamknęła sprint #1 (5 commitów). Plan sprintu #2 czeka na akceptację Marcina (poniżej).**
+**Sprint:** "Observability + safety net" — domknięty 2026-05-09.
 
-**Pre-existing zmiany w drzewie nie wzięte do commit'a 1668c56** (do osobnej decyzji Marcina):
-- `M .claudeignore` — workspace artifact.
-- `D extension.zip` — workspace artifact.
-- `?? extension 1.0.8.rar` — paczka dystrybucyjna 1.0.8 (przed bundle 1.1.0). Marcin może wygenerować nową paczkę 1.1.0 do dystrybucji zespołowi OVB.
-- Push commit'ów `f312f6d` + `1668c56` na origin/master nie wykonany — Marcin decyduje kiedy push'ować (np. razem z dystrybucją 1.1.0 zespołowi OVB).
+**Co zostało zrobione (4 commity, wersje 1.2.0 + 1.2.1):**
+- `5d73c7a` — feat: telemetria błędów scrape (#5, v1.2.0). Backend endpoint `/api/diagnostics/scrape-failure` + JSONL log + content.js fire-and-forget telemetry.
+- `408c79d` — fix: orphan auto-reload czyści LinkedIn cache (#12b, v1.2.1). Orphan guard pollerem co 3s + `location.reload()` jednorazowy. Flood `chrome-extension://invalid/` zniknął.
+- `ef7e2bc` — test: e2e fixtures + test_e2e.js (#8). 4 fixture'y (Anna voyager + 3 negative cases) + test runner z 27 asercjami.
+- `8091ac7` — feat: healthcheck monitoring n8n + bash fallback (#9). n8n workflow co 5 min + bash cron fallback z counter'em (alert dopiero po 2 fail'ach). DEPLOY.md sekcja 7.2.
+
+**#11 (retro + dystrybucja) — DONE 2026-05-09:**
+- Push commitów na origin/master ✓
+- Smoke prod 5 profili na 1.2.1 ✓
+- Dystrybucja `extension 1.2.1.zip` zespołowi OVB ✓
+
+**Lessons learned (do utrwalenia w pracy nad Sprintem #3):**
+- Mount lag w sandboxie powtarzający się problem (sprint #1 i #2). Workaround: `cat > file <<EOF` z bash zamiast Edit/Write na duże pliki, plus `tr -d '\0'` dla NUL-padding.
+- Diagnoza #12b (BLOCKED przez 2 sprinty) zajęła 5 minut gdy Marcin kliknął strzałkę przy errorze. Lesson: dla "blocked diagnostic-first" tasków eskalować do usera DOPÓKI nie dostarczy faktów, nie spekulować dalej.
+- Telemetria SILENT on fallback success (AC6) okazała się sensowna — Anna scrape'owała się przez Voyager mimo `<main>.remove()`, telemetria nie wystrzeliła.
+- E2E fixture'y mają wartość ale duplikacja Voyager parsera z content.js to debt — rozwiązać w #10 (BACKLOG).
+- LinkedIn rolluje **nowy SDUI layout** (hashed classes) na część search results pages. Stary entity-result layout dalej żyje na większości stron, ale trzeba mieć selektory na obie wersje. Dotknie nas w #18.
+
+## Notatki z poprzedniej sesji (handoff dla PM #19)
+
+**Sesja 2026-05-09 zamknęła #18 P0 (commit c9394ba, v1.3.0 → v1.3.1 patch w tym samym commitcie po dwóch bug'ach z smoke testu Marcina).**
+
+**Stan przed PM #19:**
+- Branch master, ostatni commit c9394ba lokalnie (push'owany razem z cleanup commit'em w tej sesji).
+- Manifest 1.3.1, testy 134/0.
+- Modal dump `extension/tests/fixtures/preload_modal_dump.md` (15 KB, sanitized HTML + selektory + skeleton kodu) — **wymagany input** dla PM #19. Zawiera: Shadow DOM modal z `interop-outlet`, structural selectors (`.send-invite`, `button[data-test-modal-close-btn]`, `.artdeco-modal__actionbar button.artdeco-button--primary`), state diff "Połącz" vs "W toku" (klasy identyczne, stan tylko w aria-label/text/href), edge cases (reklamy w liście, withdraw flow na "W toku", `<dialog>` w body to nie modal invite).
+- Dystrybucja 1.3.1 wstrzymana świadomie — zespół OVB dostanie zip dopiero po Faza 1B (1.4.0) z auto-click'iem (decyzja Marcina, opcja B z PM cleanup).
+
+**PM #19 task na następną sesję:** przepisać plan Faza 1B pod Shadow DOM modal. Aktualny plan #19 w TODO ma duży banner OUTDATED na początku — czeka na rewrite. Skeleton kodu z dumpu (sekcja "Implikacje dla content.js") jest gotowy do wklejenia po dostosowaniu do queue/throttling/state architektury.
+
+**Pre-existing nieczyste zmiany w drzewie po sesji 2026-05-09:**
+- `M extension.zip` — paczka dystrybucyjna 1.2.1 (workspace artifact, do regeneracji przy 1.4.0). Można dorzucić do `.claudeignore` żeby się nie pojawiała w `git status`.
+- `?? CLAUDE_CODE_GUIDE.md` — przewodnik onboarding'u na Claude Code w VS Code (untracked, świadomie poza repo).
 
 ---
 
@@ -265,393 +309,252 @@ Updated:       2026-05-05
 
 ## TODO (priorytet od góry)
 
-> **SPRINT #2 — "Observability + safety net"** (proponowany, ~3-4 dni pracy ad-hoc)
+> **SPRINT #3 — "Bulk auto-connect MVP (Faza 1)"** (start 2026-05-09 — Sprint #2 zamknięty)
 >
-> **Cel sprintu:** zamknąć dziurę "fail scrape'a niewidoczny dla zespołu OVB" przez telemetrię (#5↑P0) plus wystawić siatkę bezpieczeństwa przeciwko kolejnym zmianom DOM LinkedIn'a (#8). Sprint review #11 jako klamra zamykająca. Zachować tempo solo-dev — bez przesadnego scope creep'u.
+> **Driver biznesowy.** Zastąpienie Octopus Starter dla zespołu OVB. Pricing Octopusa ~500 zł/user/rok. 10 osób teraz = 5k/rok, 20 osób za chwilę = 10-12k/rok. Faza 1 (Connect bez noty + state lokalny) wystarczy żeby dorównać Starter Octopusa. Fazy 2-3 są bonusem "lepiej niż Octopus" (AI personalizacja noty), ale NIE warunkiem zwrotu inwestycji.
 >
-> **Skład:** #5 P0 (przeniesiony ↑z P1), #8 P1, #11 P2, plus #9 P2 jako stretch goal jeśli zostanie czas.
+> **Decyzje produktowe (z sesji PM 2026-05-09 z Marcinem):**
+> - **Source listy:** wyłącznie LinkedIn search results (`/search/results/people/`). NIE Sales Navigator, NIE "People you may know", NIE import CSV (te w BACKLOG'u).
+> - **State:** wyłącznie lokalnie (`chrome.storage.local`). Brak backend dedupe — każdy z zespołu OVB działa na własnych targetach, brak konfliktów.
+> - **Generator wiadomości:** robimy przez API z backendem (reuse istniejący `ai_service.py`) — ale to FAZA 2, nie 1.
+> - **Lista zaproszonych:** lokalnie w extension state. Brak eksportu CSV w MVP.
+> - **Dystrybucja:** Load Unpacked, jak dotychczas. Każdy user ma swój `apiKey`.
 >
-> **Czego NIE bierzemy:** BACKLOG (#6 self-test widget, #10 wersjonowanie selektorów) — czekają. #12b BLOCKED — zostaje BLOCKED dopóki Marcin nie zrzuci stack tracu.
+> **Risk profile:** Marcin używa Octopusa od 3 lat (4-6 update'ów = ~2/rok), ban konta nie jest priorytetowym ryzykiem. Defaults konserwatywne (delay 45-120s, daily cap 25) — to inżynieria, nie fobia.
+>
+> **Skład sprintu #3 (Faza 1):** #18 P0 (Faza 1A — Detection + Panel UI), #19 P0 (Faza 1B — Auto-click + Throttling + State + Cap). Łącznie ~2-3 sprinty Marcin'a (1 sprint Marcina ≈ 1-2 dni intensywnie + dzień bug fixe). W kalendarzu ~tydzień ad-hoc.
+>
+> **Czego NIE bierzemy w Faza 1:** AI nota (#21 BACKLOG, Faza 2), pagination + selection checkboxów (#22 BACKLOG, Faza 3), import CSV ze slug'ami z KRS/CEIDG, multi-source (Sales Navigator, sidebary).
+>
+> **Pre-rekwizyt:** Sprint #2 zamknięty 2026-05-09 (telemetria #5 v1.2.0 + orphan fix #12b v1.2.1 + e2e fixtures #8 + healthcheck #9 + dystrybucja zespołowi OVB). Telemetria #5 reuse'owana w Faza 1B (telemetria fail'i auto-click). Fixture'y #8 chronią przed regresją scraper'a w trakcie pracy nad bulk connect.
+>
+> **#18 zamknięty 2026-05-09 (commit c9394ba, v1.3.1).** Detection + lista profili w popup'ie działa, smoke test Marcina ALL PASS po patch fix'ie 1.3.1 (mutual connections + "W toku" detection). Faza 1B (#19) wymaga PM rewrite pod Shadow DOM modal — dump w `extension/tests/fixtures/preload_modal_dump.md`.
+>
+> **Środowisko pracy:** Sprint #3 lecimy w VS Code z Claude Code (subagent layer dla parallel work na DOM extraction / state management / testów). Cowork zostaje dla ad-hoc decyzji.
 
-### #8 P1 — Smoke testy E2E na fixture'ach
-Dumpy z sesji #1 (Joanna/Grzegorz BIGPIPE, Anna shell-phase, Emilia post-hydration) → fixture HTML files. Test runner ładuje przez jsdom, woła `scrapeProfileNow()` (lub `extractName`/`extractHeadline` osobno), asercje na expected output. Wykrywa regresje gdy LinkedIn znowu zmieni DOM ZANIM użytkownik OVB zauważy.
-- Pliki: `extension/tests/fixtures/*.html` (4 dumpy), `extension/tests/test_scraper.js` (asercje per fixture), `extension/tests/test_e2e.js` (nowy plik dla integracji)
-- Acceptance: `node tests/test_scraper.js` zielono dla 4 fixture'ów + 1 negative case (My Connections page → expected null/empty). CI-ready (jeśli kiedyś GitHub Actions).
+### #18 ✅ DONE — Bulk auto-connect Faza 1A. Detection + lista profili. Commit c9394ba. Pełny opis w sekcji DONE poniżej.
 
-### #11 P2 — Sprint #1 retro + dystrybucja 1.1.0 dla OVB
-Wstępne lessons learned są już w sekcji "Sprint #1 — RETRO" wyżej w CLAUDE.md. Ten task to:
-- Scrape 5 realnych profili na 1.1.0 (smoke test produkcyjny po telemetrii z #5).
-- Weryfikacja że telemetria łapie real-world fail'e (jeśli się zdarzą).
-- Spakowanie 1.1.0 do `.rar`/`.zip`, dystrybucja zespołowi OVB.
-- Push commit'ów na origin/master.
-- Aktualizacja `Znane problemy` o ewentualne nowe edge case'y zaobserwowane.
+(Pełny plan PM zachowany w git history — commit c9394ba zawiera ~120 linii planu w CLAUDE.md przed cleanup'em. Dla cienia historycznego — dla refrencji w PM #19 jeśli potrzeba przypomnieć decyzje produktowe.)
 
-### #9 P2 — Healthcheck monitoring backendu (stretch — jeśli zostanie czas)
-n8n workflow co 5 min: curl `/api/health` → jeśli !=200 dwa razy z rzędu → telegram/email alert. Wpis konfiguracyjny w n8n + dokumentacja w DEPLOY.md.
-- Pliki: konfiguracja n8n na VPS (poza repo), `DEPLOY.md` sekcja "Monitoring"
-- Acceptance: zatrzymaj container backend → alert dostaje się w ≤10 min.
+---
+
+### #19 P0 — Bulk auto-connect Faza 1B: Auto-click + Throttling + State + Cap
+
+> **⚠ PLAN OUTDATED — wymaga PM rewrite (next session).** Plan poniżej zakłada modal w głównym DOM (`<dialog>` z `button[aria-label="Send without a note"]`). Recon 2026-05-09 (po commitcie c9394ba) wykazał **modal w Shadow DOM** (`#interop-outlet` host) — `document.querySelector('[role="dialog"]')` z głównego DOM łapie LinkedIn'owe reklamowe dialogs (false positives). Plus na liście wyników wszystkie akcje to `<a>` (NIE `<button>`), Pending state ma `aria-label^="W toku"` (PL) — klik na "W toku" to withdraw flow, nie invite. Pełny dump: `extension/tests/fixtures/preload_modal_dump.md` (15 KB, sanitized HTML + selektory + skeleton kodu). Następna PM session przepisze ten plan pod Shadow DOM z dumpem jako referencja.
+
+**Kontekst.** Faza 1A daje listę i UX. Faza 1B dorzuca **auto-click "Wyślij bez notatki"** z throttlingiem, daily cap, stop button, persisted state w `chrome.storage.local`. To moment w którym extension funkcjonalnie zastępuje Octopusa Starter dla zespołu OVB. Po Fazie 1B Marcin może wyłączyć subscription Octopusa.
+
+**Decyzje PM:**
+
+1. **Click przez content.js w aktywnej karcie LinkedIn.** Background.js orchestruje queue + timing + state, ale fizyczny click jest w content.js (DOM access). Background wysyła message `case "bulkConnectClick"` z `{slug}`, content znajduje `<li>` po slug'u, klika Connect, czeka na modal "Send without a note", klika, weryfikuje sukces.
+2. **Modal handling.** LinkedIn po click "Connect" pokazuje modal `<dialog>` z dwoma opcjami: "Add a note" / "Send without a note". Content script klika "Send without a note" po random delay 300-800ms (symulacja człowieka). Czasami LinkedIn pomija modal (np. dla 2nd degree z kompletnym profilem) — wtedy click wystarczył, modal nie ma. Detection: `await waitForElement('button[aria-label*="Send without"]', 2000)` — jeśli timeout 2s → assume modal-less flow, verify `button[aria-label*="Pending"]` w DOM.
+3. **Throttling configurable, defaults konserwatywne.** Settings w popup (collapse "Bulk Connect Settings"):
+   - `delayMin: 45` (sec)
+   - `delayMax: 120` (sec)
+   - `dailyCap: 25` (invitations/day)
+   - `workingHoursStart: 9` (hour 0-23)
+   - `workingHoursEnd: 18`
+   Random delay między akcjami: `Math.random() * (delayMax - delayMin) + delayMin` (uniform — Gaussian to over-engineering w MVP).
+4. **State w `chrome.storage.local`.** Schema:
+   ```
+   {
+     bulkConnect: {
+       queue: [{slug, name, headline, status: "pending"|"sent"|"failed"|"skipped", timestamp?, error?}],
+       config: {delayMin, delayMax, dailyCap, workingHoursStart, workingHoursEnd},
+       stats: {sentToday: 0, sentTotal: 0, lastResetDate: "2026-05-09"},
+       active: false  // true gdy worker loop chodzi
+     }
+   }
+   ```
+   Reset `sentToday` przy pierwszym tick'u nowego dnia (`new Date().toDateString() !== lastResetDate`).
+5. **Worker loop w background.js.** `setTimeout`-based (NIE `setInterval` — MV3 SW kill zostawi orphan timer). Loop:
+   - Read state.
+   - Jeśli `active === false` → exit.
+   - Jeśli current hour poza working hours → `active = false`, popup widzi "Outside working hours, paused".
+   - Jeśli `sentToday >= dailyCap` → `active = false`, popup widzi "Daily cap reached".
+   - Find first pending w queue. Jeśli brak → `active = false`, popup widzi "Queue empty".
+   - Send `case "bulkConnectClick"` do content script.
+   - Wait dla response (success/failure).
+   - Update queue item status. Update sentToday + sentTotal.
+   - Wait random delay (delayMin–delayMax).
+   - Repeat.
+6. **MV3 SW idle keep-alive.** Long queue (25 zaproszeń × 90s avg = ~37 min) przekroczy 30s SW idle limit. Standard MV3 trick: `chrome.alarms.create("bulkKeepAlive", { periodInMinutes: 0.4 })` (24s) + dummy listener `chrome.alarms.onAlarm.addListener(() => {})`. Trzyma SW przy życiu. Disable alarm gdy `active === false`.
+7. **Stop button w popup.** Widoczny gdy `active === true`. Click → message `case "bulkConnectStop"` → background flag `active = false`. Worker loop kończy przy najbliższym tick'u (≤5s).
+8. **Resume po popup reopen.** Popup po otwarciu czyta state. Jeśli `queue` ma pending items i `active === false` → pokazuje "Queue paused. Resume?" button. Click → `active = true`, worker loop start.
+9. **Skip "Follow" buttons.** Jeśli card pokazuje Follow zamiast Connect (3rd+ premium-only profile), status = "skipped", error = "follow_only_profile". Nie próbuje click.
+10. **Telemetria fail'i auto-click.** Reuse forwarder z #5 (`reportScrapeFailure` w background.js). Każdy fail click'a (button nie znaleziony, modal nie pojawił się i Pending nie pokazany, content script error) → telemetry POST z extended payload `event_type: "bulk_connect_click_failure"`. Wymaga drobnego rozszerzenia `ScrapeFailureReport` w `backend/models.py` o pole `event_type: str` (default `"scrape_failure"` dla backward compat).
+11. **Bump 1.3.0 → 1.4.0** (minor — nowa funkcja, backward-compat).
+
+**Plan implementacji (Dev — kroki):**
+
+1. **Backend: rozszerz `ScrapeFailureReport`.** W `backend/models.py` dodaj pole `event_type: str = "scrape_failure"` (Pydantic v2, default value). Update test'a `test_diagnostics.py` o case z `event_type="bulk_connect_click_failure"` → 204 + linia w JSONL z polem.
+2. **Popup HTML — settings + queue + controls.** W sekcji bulk-connect dodaj:
+   - Checkbox per profil w liście (default checked dla Connect-able).
+   - Button `<button id="btnAddToQueue">Add selected to queue</button>`.
+   - Sekcja `<div id="queueState">` z listą queue items (slug, name, status badge).
+   - `<button id="btnStartQueue">Start</button>`, `<button id="btnStopQueue" hidden>Stop</button>`.
+   - Progress bar `<div id="bulkProgress">{sent}/{total} (today: {sentToday}/{dailyCap})</div>`.
+   - Collapse `<details id="bulkSettings">` z 5 inputami (number) + button `Save settings`.
+3. **Popup JS — handlers.**
+   - `addToQueue(profiles)` → push do `chrome.storage.local.bulkConnect.queue` (concat, dedupe po slug).
+   - `startQueue()` → `chrome.runtime.sendMessage({action: "bulkConnectStart"})`.
+   - `stopQueue()` → `chrome.runtime.sendMessage({action: "bulkConnectStop"})`.
+   - `renderQueue()` → renderuje queue z statusami (pending → szary, sent → zielony, failed → czerwony, skipped → żółty). Wywołane na każdy `chrome.storage.onChanged` event dla `bulkConnect`.
+   - `loadSettings()`, `saveSettings()` → input ↔ `bulkConnect.config`.
+4. **Background JS — worker loop.**
+   - `case "bulkConnectStart"` → set `active=true`, set keep-alive alarm, start `bulkConnectTick()`.
+   - `case "bulkConnectStop"` → set `active=false`, clear alarm.
+   - `bulkConnectTick()` async:
+     - Read state.
+     - Guards (active, working hours, daily cap, empty queue).
+     - Pick first pending → query active LinkedIn tab (`chrome.tabs.query({url: "*://*.linkedin.com/search/*"})`). Jeśli brak → `active=false`, error "No LinkedIn search tab open".
+     - Send `case "bulkConnectClick"` z `{slug}` do content script tej karty.
+     - Await response (timeout 30s).
+     - Update queue item, stats. Persist.
+     - Calculate delay. `setTimeout(bulkConnectTick, delay)`.
+   - `case "bulkKeepAlive"` alarm listener → no-op (just keeps SW alive).
+5. **Content JS — `case "bulkConnectClick"`.**
+   - `queryLi = document.querySelector('li:has(a[href*="/in/${slug}/"])')` (CSS `:has` — supported Chrome 105+, OK).
+   - Jeśli brak → return `{success: false, error: "li_not_found"}`.
+   - `connectButton = queryLi.querySelector('button[aria-label*="Invite" i], button[aria-label*="Connect" i]')`.
+   - Jeśli brak → `{success: false, error: "connect_button_not_found"}`.
+   - Sprawdź czy nie Follow: jeśli `aria-label` zawiera "Follow" → `{success: false, error: "follow_only_profile", skipped: true}`.
+   - `connectButton.click()`.
+   - Wait `await new Promise(r => setTimeout(r, 300 + Math.random()*500))` (300-800ms losowo).
+   - `sendButton = await waitForElement('button[aria-label*="Send without" i]', 2000)`. Jeśli brak (modal-less flow) → skip click.
+   - Jeśli `sendButton` → `sendButton.click()`.
+   - Wait `await new Promise(r => setTimeout(r, 1000 + Math.random()*1000))`.
+   - Verify success: `queryLi.querySelector('button[aria-label*="Pending" i]')` istnieje → `{success: true}`. Else → `{success: false, error: "pending_not_visible_after_send"}`.
+6. **Content JS — telemetria w fail path.** Każdy `{success: false}` z `bulkConnectClick` → `chrome.runtime.sendMessage({action: "reportScrapeFailure", payload: {url, diagnostics: {slug, error}, error_message: error, event_type: "bulk_connect_click_failure"}}).catch(() => {})`.
+7. **Background JS — `extractSlugFromUrl` reuse.** Już istnieje od #5 (kopia z popup'u). Brak duplikacji.
+8. **Bump `extension/manifest.json`:** `1.3.0 → 1.4.0`.
+9. **Tests fixture'owe.** `extension/tests/test_bulk_connect.js` — mockuje DOM (load fixture'a search_results_basic.html z #18), simuluje click handler bezpośrednio (bez full background flow), asercje na poprawność selektora `<li>` po slug'u + button detection.
+
+**Acceptance criteria:**
+
+- **AC1.** Otwórz search results, popup → wybierz 3 profile (checkbox) → "Add to queue" → queue pokazuje 3 pending items z imionami i slug'ami.
+- **AC2.** Click "Start" → po ≤2 min (delay 45-120s) pierwszy profil ma status "sent" w queue. Verify w LinkedIn UI: badge "Pending" widoczny przy tym profilu w search results po refresh.
+- **AC3.** Drugi profil zaczyna się w `delayMin`-`delayMax` po pierwszym (verify timing przez `timestamp` field w queue items: `t2 - t1` mieści się w 45-120s ±5s margin).
+- **AC4.** Click "Stop" w trakcie → loop kończy w ≤5s. Pozostałe pending items zostają pending. Active tab w LinkedIn nie ma click'a po Stop.
+- **AC5.** Hit daily cap (testowo: ustaw `dailyCap=2`, dodaj 5 do queue, start) → po 2nd sent, queue paused, popup pokazuje "Daily cap reached. Resets at midnight."
+- **AC6.** Outside working hours (testowo: ustaw `workingHoursStart=9, workingHoursEnd=10`, system time 23:00) → click Start → popup pokazuje "Outside working hours (9:00-10:00). Resume manually." Queue paused.
+- **AC7.** Stop, zamknij popup, otwórz ponownie → queue widoczne z poprzednimi statusami (state persisted w `chrome.storage.local`). Resume button widoczny.
+- **AC8.** Fail click (testowo: w konsoli karty `document.querySelectorAll('button[aria-label*="Invite"]').forEach(b => b.remove())` przed start) → status="failed" z error w queue. Telemetry POST do `/api/diagnostics/scrape-failure` z `event_type="bulk_connect_click_failure"` (verify w `tail -f /var/log/linkedin-msg/failures.jsonl` na VPS lub lokalnie).
+- **AC9.** SW idle resilience: dodaj 25 do queue, start, czekaj 5 min bez interakcji, sprawdź że queue dalej leci (keep-alive alarm trzyma SW).
+- **AC10.** Resume po SW kill (testowo: w `chrome://extensions/` kliknij "service worker" link, w DevTools background `chrome.runtime.reload()` przerywa SW) → popup po reopen pokazuje "Queue paused. Resume?" — click resume kontynuuje od pierwszego pending.
+- **AC11.** Brak regresji — scrape Joanny działa, sprint #2 fixture'y zielone, `node tests/test_scraper.js` 93/0 PASS, `node tests/test_search_extractor.js` z #18 dalej zielony.
+- **AC12.** Manual smoke produkcyjny przez Marcina: 5 zaproszeń wysłanych z search results na keyword'zie testowym (np. "ovb doradca finansowy"). Wszystkie odebrane przez LinkedIn (badge Pending widoczny po refresh). Telemetria nie zgłasza fail'i. Octopus subscription gotowy do wyłączenia po 7 dniach smoke z aktualnego konta.
+
+**Pliki dotknięte:**
+- `backend/models.py` (pole `event_type` w `ScrapeFailureReport`)
+- `backend/tests/test_diagnostics.py` (case dla `event_type` field)
+- `extension/popup.html` (settings, queue, controls)
+- `extension/popup.js` (handlers, render, settings)
+- `extension/popup.css` (styling progress bar + queue items)
+- `extension/background.js` (worker loop, alarms, message handlers)
+- `extension/content.js` (`bulkConnectClick` handler + telemetria w fail path)
+- `extension/manifest.json` (bump 1.4.0, dodać `"alarms"` do permissions)
+- `extension/tests/test_bulk_connect.js` (NOWY)
+
+**Ryzyka:**
+
+- **LinkedIn modal "Send without a note" zmienia label po locale.** "Send without a note" (en), "Wyślij bez notatki" (pl), różne wersje. Selektor musi obsłużyć kilka wariantów: `aria-label*="Send without" i, aria-label*="bez notatki" i`. Ewentualnie fallback po pozycji ("primary" button w modal'u).
+- **Modal-less flow.** Czasami LinkedIn wysyła Connect bez modal'a (np. 2nd degree z kompletnym profilem zaproszony przez Premium użytkownika). Detection: timeout 2s na modal → assume sent → verify Pending. Jeśli Pending też nie ma → fail.
+- **MV3 SW kill mid-loop.** Mimo keep-alive alarm'u, Chrome może w skrajnych przypadkach zabić SW (np. user wyłączy/włączy laptop). Resume mechanism (AC10) handluje to. Akceptujemy utratę tick'a, nie utratę queue.
+- **Race condition: user scroll'uje search results, lista DOM się zmienia, stary slug już nie ma `<li>`.** Click failuje, status=failed. Decyzja MVP: NIE retry, NIE skip-and-continue z notification. Marcin patrzy na queue, widzi failed, ręcznie usuwa lub robi refresh listy.
+- **LinkedIn anti-bot pattern detection.** Mimo konserwatywnych defaults, jeśli zespół OVB użyje agresywnych settings (delay 30s, cap 50/day), możliwy soft-ban. Settings są po stronie usera — Marcin edukuje zespół że defaults są OK i nie kombinują.
+- **Queue dedup.** User może 2× kliknąć "Add to queue" dla tego samego profilu. Implementacja: dedup po `slug` w `addToQueue`.
+- **Tab close mid-queue.** User zamyka kartę LinkedIn podczas queue → background nie znajdzie tab'a → `active=false`, error w popup'ie "Lost LinkedIn tab. Reopen and resume."
+
+**Anti-patterns:**
+
+- NIE wysyłać noty w Fazie 1B. Faza 2 będzie integrowała AI z generatorem.
+- NIE używać `setInterval` w worker loop — MV3 SW kill. `setTimeout` w loop'ie + keep-alive alarm.
+- NIE robić click w nowej karcie ani w background tabie — wszystko w aktywnej karcie LinkedIn search results page user'a.
+- NIE robić retry na fail click bez user'owego ack. Retry policy = manual.
+- NIE robić queue persistence po stronie backendu. Lokalnie w `chrome.storage.local` (decyzja produktowa).
+- NIE łączyć z Faza 2 (AI nota) w tym sprincie. Osobna minor bump i osobny task #21.
 
 ## IN PROGRESS
 
-(none — #5 przeniesiony do READY FOR TEST)
-
-### [ARCHIWUM PLANU PM] #5 P0 — Telemetria błędów scrape (PM done 2026-05-05, Dev done 2026-05-05)
-
-**Kontekst.** Zespół OVB nie patrzy w konsolę DevTools. Gdy scrape padnie u nich, nie wiemy czemu — ani my, ani oni. Bez telemetrii nie wykryjemy że LinkedIn zmienił DOM zanim któryś użytkownik nie wpadnie do Marcina ze zrzutem ekranu. Cel: każdy fail w `extractViaDom` (rzeczywisty timeout, nie sukces przez fallback) → wpis w JSONL na backendzie. `tail -f` do podglądu, bez DB.
-
-**Decyzje PM (do utrwalenia, żeby Dev nie improwizował):**
-
-1. **Forwarder przez background.js, nie bezpośredni fetch z content.js.** Powód: `host_permissions` już mamy, ale separacja ma sens — content focus'uje się na DOM, background obsługuje sieć i auth. Mniejsze ryzyko CSP/CORS surprise.
-2. **API key gate na endpoincie.** Reuse `verify_api_key`. Powód: backend jest publiczny pod `linkedin-api.szmidtke.pl`. Bez gate'a każdy może spamować JSONL.
-3. **Hash slug'a w background.js, nie w content.** Powód: jedno miejsce na crypto, content już złożony. Background zna apiKey i tak.
-4. **Hash slug'a to NIE privacy decision — to analytics indexing.** URL w payloadzie zawiera slug w cleartext, więc hash niczego nie ukrywa. Hash służy do agregacji ("ile fail'i per profil?") bez parsowania URL'a. Świadomie dokumentuję żeby nie wpaść w pułapkę "ale przecież hash'ujemy → privacy OK".
-5. **Fire-and-forget z extension'a.** Telemetria w `.catch(() => {})`. Padnie backend? Marcin zobaczy w `console.warn`, ale scrape error pokazuje się normalnie. Telemetria NIGDY nie blokuje user flow.
-6. **Silent on success.** `extractViaDom` woła telemetrię tylko w fail return. Sukces przez fallback (Voyager/JSON-LD/feed) lub `findAnyLikelyNameHeading` to NIE jest fail — nie raportujemy.
-7. **Brak rate-limitingu w MVP.** User klikający 10× w kółko Pobierz na zepsutym profilu wygeneruje 10 wpisów. Akceptowalne — zobaczymy w real-world użyciu czy to problem.
-8. **Brak log rotation w MVP.** 100 fail'i/mies × ~2KB = 2.4MB/rok. Stretch goal jeśli kiedyś nadrasta.
-
-**Plan implementacji (Dev — kroki w TaskList #1-#10):**
-
-1. `backend/models.py` — model `ScrapeFailureReport` (Pydantic): `client_timestamp` (str ISO), `extension_version` (str regex semver), `slug_hash` (str regex `^[a-f0-9]{64}$`), `url` (str max 500), `browser_ua` (str max 500), `diagnostics` (Dict[str, Any] — luźny shape), `error_message` (Optional[str] max 1000).
-2. `backend/services/diagnostics_logger.py` — NOWY. `async def log_scrape_failure(report, log_path)`: asyncio.Lock module-level, `os.makedirs(parent, exist_ok=True)`, append jednej linii JSON z dorzuconym `server_timestamp` (UTC ISO). Catch IOError → log do stderr, NIE re-raise.
-3. `backend/config.py` — dodaj `SCRAPE_FAILURE_LOG_PATH: str = "/var/log/linkedin-msg/failures.jsonl"`.
-4. `backend/main.py` — `POST /api/diagnostics/scrape-failure` z `verify_api_key` dependency. Wywołuje `log_scrape_failure(report, settings.SCRAPE_FAILURE_LOG_PATH)`. Zwraca 204 (FastAPI: `Response(status_code=204)` lub `status_code=204` w decoratorze).
-5. `backend/tests/test_diagnostics.py` — pytest + TestClient. Cases: (a) valid + key → 204 + linia w tmp file, (b) invalid (bad slug_hash) → 422, (c) brak X-API-Key → 401, (d) 3× POST z rzędu → 3 linie w append order. `monkeypatch.setattr(settings, "SCRAPE_FAILURE_LOG_PATH", str(tmp_path / "failures.jsonl"))`.
-6. `extension/background.js` — handler `reportScrapeFailure`. Helpers: `sha256Hex(str)` przez `crypto.subtle.digest('SHA-256', ...)` → hex; `extractSlugFromUrl(url)` (kopia z popup.js). Buduje payload: `client_timestamp`, `extension_version` z `chrome.runtime.getManifest().version`, `slug_hash`, `url`, `browser_ua` z `navigator.userAgent`, `diagnostics`, `error_message`. POST na `${apiUrl}/api/diagnostics/scrape-failure` z `X-API-Key`. Try/catch — `console.warn("[LinkedIn MSG] Telemetry send failed:", err)`, NIE re-throw.
-7. `extension/content.js` — w `extractViaDom` przy końcu fail branch'a (linia ~960, tuż przed `return { success: false, ... }`) DODAJ: `chrome.runtime.sendMessage({ action: "reportScrapeFailure", payload: { url: window.location.href, diagnostics: diagnostic, error_message: message } }).catch(() => {})`. Fire-and-forget. NIE w branchu `findAnyLikelyNameHeading` (to fallback success).
-8. `extension/manifest.json` — bump `1.1.0 → 1.2.0` (minor — nowa funkcja, backward-compat).
-9. `deploy/docker-compose.yml` — dodaj `volumes: - /var/log/linkedin-msg:/var/log/linkedin-msg`. Update `DEPLOY.md` sekcją "Diagnostyka — telemetria fail'i scrape'a" z `tail -f /var/log/linkedin-msg/failures.jsonl` + jednym przykładowym wpisem JSON. Marcin przed deploy'em: `sudo mkdir -p /var/log/linkedin-msg` na VPS (uid kontenera = root w obecnym Dockerfile, więc bez chown'a OK).
-10. **Verification (Dev → Tester handoff):** `python -m pytest backend/tests/ -v` zielono, `node extension/tests/test_scraper.js` 93/0, lokalny smoke z `uvicorn main:app --port 8000` + `.env` z `SCRAPE_FAILURE_LOG_PATH=./failures.jsonl` — wymuszony fail w karcie LinkedIn (`document.body.querySelector('main').remove()` przed klikiem Pobierz) → wpis w `./failures.jsonl` w ≤5s.
-
-**Acceptance criteria (do weryfikacji przez Testera):**
-
-- **AC1 — happy path silent.** Given scrape Joanny działa | When klik Pobierz | Then 0 nowych wpisów w `failures.jsonl`, 0 `console.warn` z "Telemetry", message wygenerowana normalnie.
-- **AC2 — fail path captured.** Given profil z usuniętym `<main>` (`document.body.querySelector('main').remove()` w konsoli przed klikiem) | When klik Pobierz | Then w ≤5s wpis w `failures.jsonl` zawierający: `server_timestamp`, `client_timestamp`, `extension_version: "1.2.0"`, `slug_hash` (64-char hex), `url` (full LinkedIn URL profilu), `browser_ua`, `diagnostics` (object z `h1Count`, `hasTopCard`, `voyagerPayloadCount` etc.), `error_message` (string z popup'a).
-- **AC3 — extension resilience.** Given backend zatrzymany (`docker compose stop` lub bad apiUrl) | When extension próbuje raportować fail | Then `console.warn` z "Telemetry send failed", scrape error pokazuje się w popup'ie jak zwykle, popup nie wybucha.
-- **AC4 — backend kontrakt.** pytest dla `/api/diagnostics/scrape-failure`: valid+key→204+linia, invalid→422, brak key→401, 3× POST→3 linie w append order.
-- **AC5 — JSONL append-only.** 3 fail'e z rzędu → 3 osobne linie. Każda linia parse'uje się jako valid JSON. Brak nadpisywania.
-- **AC6 — silent on fallback success.** Given profil gdzie DOM zawodzi ale Voyager fallback łapie | When scrape sukces przez Voyager | Then 0 nowych wpisów w `failures.jsonl` (ten branch w content.js NIE wzywa telemetrii).
-- **AC7 — auto-tests.** Pełny `pytest backend/tests/ -v` zielono. `node extension/tests/test_scraper.js` 93/0 PASS (regresja scraper'a).
-- **AC8 — deploy ready.** `deploy/docker-compose.yml` ma volume mount, DEPLOY.md ma sekcję "Diagnostyka" z `tail -f` + przykładowym wpisem.
-
-**Pliki dotknięte:**
-- `backend/main.py` (endpoint)
-- `backend/models.py` (model)
-- `backend/services/diagnostics_logger.py` (NOWY)
-- `backend/config.py` (env path)
-- `backend/tests/test_diagnostics.py` (NOWY)
-- `extension/background.js` (forwarder + helpers)
-- `extension/content.js` (trigger w fail path)
-- `extension/manifest.json` (bump 1.2.0)
-- `deploy/docker-compose.yml` (volume mount)
-- `DEPLOY.md` (sekcja Diagnostyka)
-
-**Ryzyka:**
-- **Volume permissions na VPS.** Marcin musi `sudo mkdir -p /var/log/linkedin-msg` przed `docker compose up`. Inaczej kontener nie zapisze. Sprawdzić uid w `backend/Dockerfile` — jeśli root → bez chown'a, jeśli inny user → trzeba chown'ować.
-- **Service worker idle (MV3).** Background SW kill po 30s → fetch in-flight może zniknąć. Akceptujemy utratę. Alternatywa (chrome.alarms keepalive) — over-engineering w MVP.
-- **`crypto.subtle` w background.** Dostępne w MV3 service worker (sprawdzić: `crypto.subtle.digest` is available in extension SW kontekście — tak, od Chrome 95+). Jeśli nie, fallback na trywialny hash typu base64 z prostego rolling sum'a. Nie powinno być potrzebne.
-- **CORS.** Backend ma `CORS_ORIGINS=["*"]` więc OK. Background SW w ogóle nie podlega CORS dla extension fetchu z `host_permissions`, ale lepiej żeby działało gdyby ktoś kiedyś zmienił permissions.
-- **Edge case: `chrome.runtime.sendMessage` rzuca po orphan extension'u.** Dlatego `.catch(() => {})` — jak w innych miejscach po fixie #12.
-
-**Anti-patterns do unikania (Dev):**
-- NIE dodawać UI do popup'u że "telemetria wysłana" — silent. User nie ma o tym wiedzieć.
-- NIE łączyć z taskiem #8 (E2E fixtures) w tym commit. Telemetria osobno.
-- NIE robić rotation/retention w MVP. Świadomie poza scope.
-- NIE używać `extractSlugFromUrl` z popup.js przez import (vanilla JS, brak modułów) — kopia w background.js OK.
+(none — #18 zamknięty commitem c9394ba, czeka PM #19 rewrite pod Shadow DOM)
 
 ## READY FOR TEST
 
-### #5 P0 — Telemetria błędów scrape (Dev done 2026-05-05, czeka na Tester = Marcin)
-
-**What changed:**
-
-- `backend/models.py` — nowy model `ScrapeFailureReport` (Pydantic v2): `client_timestamp` str max 40, `extension_version` regex semver `^\d+\.\d+\.\d+$`, `slug_hash` regex `^[a-f0-9]{64}$`, `url` max 500, `browser_ua` max 500, `diagnostics` `Dict[str, Any]`, `error_message` Optional max 1000.
-- `backend/services/diagnostics_logger.py` — NOWY plik. `async def log_scrape_failure(report, log_path)` z module-level `asyncio.Lock`, `os.makedirs(parent, exist_ok=True)`, append jednej linii JSON + dorzucony `server_timestamp` UTC ISO. `OSError` połykane do stderr — telemetria NIE rozkłada endpointu.
-- `backend/config.py` — dodany `SCRAPE_FAILURE_LOG_PATH: str = "/var/log/linkedin-msg/failures.jsonl"`. Lokalnie nadpisywalny przez `.env`.
-- `backend/main.py` — nowy endpoint `POST /api/diagnostics/scrape-failure` ze `status_code=204`, gate `verify_api_key`. Wywołuje `log_scrape_failure(report, settings.SCRAPE_FAILURE_LOG_PATH)`.
-- `backend/tests/test_diagnostics.py` — NOWY plik. 10 testów: auth (401 brak key, 403 zły key), happy path (204 + JSONL line z server_timestamp), validation (4 case'y → 422), append-only (3× POST → 3 linie w order). Fixture `tmp_log` przez `monkeypatch.setattr(settings, ...)`.
-- `extension/background.js` — dodane `extractSlugFromUrl(url)` i `async sha256Hex(str)` (WebCrypto). Forwarder `async reportScrapeFailure(payload)`: pobiera `apiUrl`+`apiKey` z settings, hashuje slug, buduje payload (client_timestamp, extension_version z `chrome.runtime.getManifest().version`, slug_hash, url, browser_ua, diagnostics, error_message), POST na `/api/diagnostics/scrape-failure` z `X-API-Key`. Wszystkie błędy połykane przez `try/catch` → `console.warn`. Handler `case "reportScrapeFailure"` w message routerze fire-and-forget'uje (NIE await'uje).
-- `extension/content.js` — w `extractViaDom` fail branch (linia ~960, tuż przed `return { success: false, ... }`) DODANE wywołanie `chrome.runtime.sendMessage({action: "reportScrapeFailure", payload: { url, diagnostics, error_message }})` z `.catch(() => {})` i `try/catch` na sync throw po orphan'ie. **NIE** w branchu `findAnyLikelyNameHeading` (fallback success), **NIE** w fallback'ach Voyager/JSON-LD/feed.
-- `extension/manifest.json` — bump `1.1.0 → 1.2.0` (minor: nowa funkcja, backward-compat).
-- `deploy/docker-compose.yml` — dodany `volumes: - /var/log/linkedin-msg:/var/log/linkedin-msg`. Komentarz wskazuje na konieczność `sudo mkdir -p /var/log/linkedin-msg` przed `compose up`.
-- `DEPLOY.md` — sekcja **7.1. Telemetria fail'i scrape (#5, od v1.2.0)** z `tail -f`, przykładowym wpisem JSON, instrukcją tworzenia katalogu, notką o braku rotation.
-
-**Pliki dotknięte (10):** `backend/main.py`, `backend/models.py`, `backend/services/diagnostics_logger.py` (NOWY), `backend/config.py`, `backend/tests/test_diagnostics.py` (NOWY), `extension/background.js`, `extension/content.js`, `extension/manifest.json`, `deploy/docker-compose.yml`, `DEPLOY.md`.
-
-**Auto-tests Dev przed handoff'em:**
-
-- `python -m pytest backend/tests/ -v` → **50/50 PASS** (40 existing + 10 nowych w `test_diagnostics.py`).
-- `node extension/tests/test_scraper.js` → **93/93 PASS**, brak regresji.
-- E2E smoke (curl → uvicorn lokalnie z `SCRAPE_FAILURE_LOG_PATH=/tmp/smoke.jsonl`):
-  - valid payload + valid key → **HTTP 204** + linia w JSONL z `server_timestamp` ✓
-  - brak X-API-Key → **HTTP 401** ✓
-  - invalid `slug_hash` (za krótki) → **HTTP 422** ✓
-
-**How to test (Tester = Marcin, smoke produkcyjny po deploy'u):**
-
-1. **Backend deploy na VPS:**
-   ```bash
-   ssh ubuntu@<vps>
-   cd ~/linkedin-msg-generator && git pull
-   sudo mkdir -p /var/log/linkedin-msg          # KRYTYCZNE — bez tego volume mount nie zadziała
-   cd deploy && docker compose up -d --build
-   curl http://127.0.0.1:8321/api/health        # status: ok
-   ```
-   Sprawdź `docker compose logs backend` — brak ImportError dla `diagnostics_logger` lub `ScrapeFailureReport`.
-
-2. **Załaduj extension 1.2.0 lokalnie:**
-   `chrome://extensions/` → reload przy LinkedIn Message Generator. Sprawdź **1.2.0** obok nazwy.
-
-3. **AC1 — happy path silent (Joanna):**
-   - Otwórz konsolę karty LinkedIn na profilu Joanny.
-   - W terminalu na VPS: `tail -f /var/log/linkedin-msg/failures.jsonl` (jeśli plik nie istnieje, `tail -F`).
-   - Klik **Pobierz**. Wiadomość scrape'uje się normalnie.
-   - **Oczekiwane:** 0 nowych linii w `failures.jsonl`. 0 logów `[LinkedIn MSG] Telemetry` w konsoli.
-
-4. **AC2 — fail path captured:**
-   - Otwórz Joannę / dowolny inny działający profil.
-   - W konsoli karty: `document.querySelector('main').remove()` przed klikiem.
-   - Klik **Pobierz** → popup pokazuje error.
-   - **Oczekiwane (≤5s):** w `tail -f` widoczna 1 nowa linia JSON. Sprawdź pola:
-     - `extension_version: "1.2.0"`
-     - `slug_hash` 64-char hex (lowercase)
-     - `url` z `/in/<slug>/`
-     - `diagnostics.h1Count` realistic (>0 bo `<h1>` istnieje, `<main>` zniknął), `hasTopCard: false`
-     - `error_message` zawiera "Timeout" lub "LinkedIn nie pokazuje"
-     - `server_timestamp` różny od `client_timestamp`
-
-5. **AC3 — extension resilience:**
-   - Na VPS: `cd deploy && docker compose stop backend`.
-   - W przeglądarce: ponowny scrape z usuniętym `<main>`.
-   - **Oczekiwane:** popup pokazuje normalny error scrape'a. W konsoli karty / SW'a `[LinkedIn MSG] Telemetry send failed: <fetch error>`. Brak crashu popup'u.
-   - Restart: `docker compose start backend`.
-
-6. **AC4 — backend kontrakt:** `pytest backend/tests/ -v` lokalnie → 50/50 PASS. (Dev to już zweryfikował, Tester może powtórzyć jeśli chce.)
-
-7. **AC5 — JSONL append-only:** wymuś 3 fail'e z rzędu (3× klik Pobierz po 3× `<main>.remove()`). `wc -l /var/log/linkedin-msg/failures.jsonl` → +3. Każda linia osobno parsowalna (`jq -c . failures.jsonl` nie wybucha).
-
-8. **AC6 — silent on fallback success:** trudne do wymuszenia ręcznie (wymaga profilu gdzie DOM zawodzi ale Voyager łapie). Smoke fallback: zwykły scrape Joanny z dobrym DOM → 0 nowych wpisów (covered by AC1). Świadomy compromise — pełna weryfikacja przez code review (branch w `extractViaDom` nie wzywa telemetrii poza fail return).
-
-9. **AC7 — auto-tests:** już wykonane przez Dev. Marcin może zrobić `cd backend && python -m pytest tests/ -v` i `cd extension && node tests/test_scraper.js` lokalnie dla potwierdzenia.
-
-10. **AC8 — deploy ready:** otwórz `DEPLOY.md` sekcja 7.1 — czytelne, czy zawiera `tail -f` + przykładowy JSON. `deploy/docker-compose.yml` ma `volumes:` z `/var/log/linkedin-msg`.
-
-11. **Smoke happy path (regresja sprintu #1):** scrape Joanny + Grzegorza, klik Generuj, klik Kopiuj. Bez regresji.
-
-**Wynik testów:** PASS / FAIL (z konkretnym opisem czego). Jeśli ALL PASS → CURRENT STATE → `Phase: Commit`. Jeśli FAIL → wracamy do Dev rework z repro steps.
-
-**Uwagi do dystrybucji 1.2.0 dla zespołu OVB (osobno, w #11):**
-- Bez wpisu `apiKey` w settings'ach extension'u, telemetria zostanie pominięta (`console.warn` → "Telemetry skipped — no API key configured"). Zespół już ma klucze (od dystrybucji 1.0.x), więc to nie problem — ale dla nowych użytkowników należy o tym pamiętać.
-- Marcin powinien spakować nowy `extension 1.2.0.rar`/`.zip` po ack'u testera.
-
-### [ARCHIWUM] Bundle: niezawodność scrape — #3 + #7 + #15 + #16 (wersja 1.1.0)
-
-Cztery taski domknięte w jednej fazie Dev (sesja 2026-05-05). Łączny commit zaplanowany ze względu na spójność tematyczną i wzajemne zależności (np. #7 reuse'uje `extractSlugFromUrl` z #3). Test manualny Marcina po reloadzie na 1.1.0 weryfikuje całość.
-
----
-
-**#3 P0 — UX stale cache w popup'ie** (Dev done w fazie wcześniejszej tej sesji, opis pełny w handoff'ach poprzednich)
-
-What changed (`extension/popup.js`):
-- Helpery `resetProfileUI()` i `extractSlugFromUrl(url)` (linie 144-172).
-- `btnScrape.catch` — `resetProfileUI()` zamiast inline'owego.
-- Init flow — preferences ZAWSZE restorowane, profile/message tylko gdy slug aktywnej karty matchuje cached.
-
----
-
-**#7 P0 — Walidacja URL profilu (slug match po scrape)**
-
-Po scrape, content.js zwraca `profile.profile_url` zawierający `window.location.href` w momencie zakończenia scrape'u. Jeśli LinkedIn SPA-naviguje pomiędzy żądaniem a odpowiedzią, ten URL może być inny niż URL aktywnej karty kiedy popup wysyłał żądanie. #7 wykrywa to mismatch i odrzuca odpowiedź z czytelnym komunikatem.
-
-What changed (`extension/popup.js`):
-- W `scrapeCurrentTab()` po pobraniu `tab` zapamiętujemy `expectedSlug = extractSlugFromUrl(tab.url)` PRZED wysłaniem żądania.
-- Po otrzymaniu response porównujemy `extractSlugFromUrl(response.profile.profile_url)` z `expectedSlug`. Mismatch → reject z "Scraper zwrócił dane innego profilu — odśwież stronę i spróbuj ponownie."
-- Reuse helpera `extractSlugFromUrl` z #3.
-
----
-
-**#15 P0 — SPA navigation reset (drop response gdy mid-scrape navigation)**
-
-Obecny `onUrlChange` tylko loguje. #15 dodaje counter `navEpoch` zwiększany przy każdym url change. Listener message'a w content.js zapamiętuje epoch przy entry; po async scrape, jeśli epoch się zmienił, wysyłana jest błędna odpowiedź z komunikatem nawigacji.
-
-What changed (`extension/content.js`):
-- Zmienna modułowa `navEpoch = 0` plus `navEpoch++` w `onUrlChange` po wykryciu zmiany URL.
-- W listener'ze `chrome.runtime.onMessage`: capture `startEpoch = navEpoch` i `startUrl` przed wywołaniem `scrapeProfileAsync()`. Po resolve, jeśli `startEpoch !== navEpoch` → `sendResponse` z error "Strona zmieniona w trakcie pobierania — odśwież i spróbuj ponownie." Plus warn w konsoli z `startUrl` vs `current`.
-
----
-
-**#16 P1 — Cleanup martwych selektorów**
-
-Zgodnie z notatką z handoff'u 2026-05-05: usuwamy tylko historyczne nazwy klas które LinkedIn już nie generuje. STRUKTURALNE prefixy `pv-top-card-*` zostają bo są nadal aktywne (potwierdzone w outerHTML Anny i Emilii).
-
-What changed (`extension/content.js`):
-- `NAME_SELECTORS`: usunięte `h1.top-card-layout__title`, `.pv-text-details__left-panel h1`. Zostawione `.pv-top-card h1`, `section.pv-top-card h1` (strukturalne prefixy aktywne).
-- `HEADLINE_SELECTORS`: usunięte `.pv-text-details__left-panel .text-body-medium`, `.pv-top-card--list .text-body-medium`, `.pv-top-card-section__headline`. Zostawione `.text-body-medium.break-words`, `.pv-top-card .text-body-medium`, `.ph5 .text-body-medium`.
-
----
-
-**Bump:** `extension/manifest.json` 1.0.9 → 1.1.0 (minor — #7, #15 zmieniają user-facing behavior).
-
-**Pliki dotknięte:** `extension/popup.js`, `extension/content.js`, `extension/manifest.json`. Brak zmian w backend.
-
-**Auto-testy:** `node tests/test_scraper.js` 93/0 PASS po wszystkich zmianach.
-
----
-
-**How to test (dla Testera = Marcin):**
-
-1. Reload extension w `chrome://extensions/` — sprawdź **1.1.0** obok nazwy.
-2. Hard-refresh karty LinkedIn (Ctrl+Shift+R).
-
-3. **#3 AC1 — fail reset:**
-   a. Scrape Joannę (success). Preview pokazuje Joannę.
-   b. Wymuś fail (offline / błąd) → kliknij Pobierz.
-   c. Po fail: preview ukryty, error widoczny, Generuj OFF.
-
-4. **#3 AC2 — mismatch reset przy otwarciu popup'u:**
-   a. Scrape Joannę. Zamknij popup.
-   b. Wejdź na profil Grzegorza (inny slug). NIE klikaj Pobierz, otwórz popup.
-   c. Sprawdź: preview ukryty, brak Joanny w UI, status NIE "Ostatnio pobrany profil".
-
-5. **#3 AC3 — match cache:**
-   a. Scrape Grzegorza. Zamknij popup.
-   b. Otwórz popup ponownie na tej samej karcie. Preview pokazuje Grzegorza.
-
-6. **#3 AC4 — non-LinkedIn:**
-   a. Scrape Joannę. Zmień kartę na google.com. Otwórz popup.
-   b. Preview ukryty, ale goal/lang/tone zachowane.
-
-7. **#7 + #15 — slug mismatch po szybkiej nawigacji:**
-   a. Otwórz Joannę. Kliknij Pobierz. **Natychmiast** kliknij link do Grzegorza w sidebarze (LinkedIn SPA-naviguje).
-   b. Oczekiwane: error "Strona zmieniona w trakcie pobierania" lub "Scraper zwrócił dane innego profilu". Preview pusty, Generuj OFF.
-   c. Następnie kliknij Pobierz z karty Grzegorza — działa, dostajesz Grzegorza.
-
-8. **#16 — czas match na Joannie:**
-   a. Otwórz konsolę karty LinkedIn na profilu Joanny.
-   b. Kliknij Pobierz, obserwuj `[LinkedIn MSG]` logi.
-   c. Smoke: scrape działa, dane Joanny są pełne (about + experience + skills).
-
-9. **Smoke happy path:** scrape Joanny + Grzegorza, klik Generuj, klik Kopiuj. Bez regresji.
-
-10. **Auto-testy** (w PowerShell żeby uniknąć bash mount cache): `cd D:\Serwer\linkedin-msg-generator\extension; node tests/test_scraper.js`. Powinno: 93 passed, 0 failed.
-
-Wynik per task (PASS/FAIL) → wracaj do Commit albo Dev rework.
+(none)
 
 ## DONE
 
+**Sprint #3 (Bulk auto-connect MVP, w toku):**
+- ✅ #18 P0 Bulk auto-connect Faza 1A — detection search results / profile / other + sekcja "Bulk Connect" w popup'ie z listą profili (`extractSearchResults`). Paragraph-first parsing z filtrem mutual connections (regex `wspóln[ay]+\s+kontakt|innych\s+wspólnych|mutual connection`). Slug match po imieniu (`a.innerText.includes(name)`) — wcześniej dla profili z mutual connections name pokazywał "Michał Stanioch i 5 innych wspólnych kontaktów" + click otwierał profil mutuala. Pending detection przez `a[aria-label^="W toku"]` (PL) / `^="Pending"` (EN) — wcześniej szukane "Oczekuje" w textContent (polski LinkedIn używa "W toku"). Manifest matches rozszerzone o `/search/results/people/*`. Bump 1.2.1 → 1.3.0 → 1.3.1 (1.3.0 miał dwa bugi wykryte w smoke teście Marcina, 1.3.1 patch fix w tym samym commitcie). Testy 134/0 (test_scraper 93, test_e2e 27, test_search_extractor 14). Commit: c9394ba.
+
+**Sprint #2 (Observability + safety net, 2026-05-05 → 2026-05-09):**
+- ✅ #5 P0 Telemetria błędów scrape — backend endpoint `/api/diagnostics/scrape-failure` + JSONL log + content.js fire-and-forget. Bump 1.2.0. Commit: 5d73c7a.
+- ✅ #12b P0 Orphan auto-reload — `isContextValid()` poller co 3s w content.js, `location.reload()` jednorazowy gdy orphaned. Czyści LinkedIn cache, flood `chrome-extension://invalid/` znika. Bump 1.2.1. Commit: 408c79d.
+- ✅ #8 P1 E2E fixtures + test_e2e.js — 4 fixture'y (Anna voyager + 3 negative cases) + 27 asercji. Wykrywa regresje DOM scrapera. NOTE: duplikuje Voyager parser z content.js — refactor w #10 BACKLOG. Commit: ef7e2bc.
+- ✅ #9 P2 Healthcheck monitoring — n8n workflow co 5 min + bash cron fallback z counter'em (alert po 2 fail'ach z rzędu). DEPLOY.md sekcja 7.2. Commit: 8091ac7.
+- ✅ #11 P2 Sprint #2 retro + dystrybucja 1.2.1 — push wszystkich commitów, smoke 5 profili, zip rozdany zespołowi OVB. Done 2026-05-09.
+
+**Sprint #1 (Niezawodność scrape'a, domknięty 2026-05-05):**
 - ✅ #1 Zebrać logi diagnostyczne
 - ✅ #2 Reprodukcja błędu na profilu Grzegorza
 - ✅ #13 Pozyskać DOM dump aktualnego LinkedIn
 - ✅ #14 Porównać DOM Joanny vs Grzegorza
-- ✅ #12 Orphan content script — content.js część w 1.0.7 (helper `isContextValid()`, guardy w `check()`, `onUrlChange`, listener). AC1/2/4/5 PASS (Joanna+Grzegorz scrape OK). AC3 częściowy — fix usuwa `chrome.runtime?.id` z content.js, ale 316 errorów `chrome-extension://invalid/` pozostaje z innego pliku (background.js / popup.js) — kontynuacja w #12b.
-- ✅ #17 Race condition na DOM rendering — pre-wait + layout detection o markery `[data-member-id]` / `.pv-top-card`, marker-gated retry w `extractViaDom`. AC1-5 PASS. Anna Rutkowska scrape'uje nawet przy klik w trakcie ładowania. Bump 1.0.8. Commit: f312f6d.
-- ✅ #3 UX stale cache w popup'ie — `resetProfileUI()` + slug-aware init flow w popup.js. Po fail scrape'a popup czyści preview/result. Po otwarciu na innej karcie cache nie pokazany jeśli slug różny. Bundle 1.1.0. Commit: 1668c56.
-- ✅ #7 Walidacja URL profilu — `scrapeCurrentTab` porównuje expected slug z returned slug, mismatch reject. Bundle 1.1.0. Commit: 1668c56.
-- ✅ #15 SPA navigation reset — navEpoch counter w content.js, listener guard'uje sendResponse na navigation mid-scrape. Bundle 1.1.0. Commit: 1668c56.
-- ✅ #16 Cleanup martwych selektorów — usunięte historyczne `top-card-layout__title`, `pv-text-details__left-panel*`, `pv-top-card--list*`, `pv-top-card-section__headline`. Strukturalne `pv-top-card-*` zostawione (aktywne 2026-05). Bundle 1.1.0. Commit: 1668c56.
+- ✅ #12 Orphan guard w content.js (helper `isContextValid()`, guardy w listener'ze). Bump 1.0.7. Commit: e5acdff. Częściowy fix — flood errors dorobiony w #12b.
+- ✅ #17 Race recovery przy timeout scrape'a w fazie shell — pre-wait + marker-gated retry. Anna Rutkowska scrape'uje nawet przy klik w trakcie ładowania. Bump 1.0.8. Commit: f312f6d.
+- ✅ #3 UX stale cache w popup'ie — `resetProfileUI()` + slug-aware init flow. Bundle 1.1.0. Commit: 1668c56.
+- ✅ #7 Walidacja URL profilu — slug match po scrape, mismatch reject. Bundle 1.1.0. Commit: 1668c56.
+- ✅ #15 SPA navigation reset — navEpoch counter w content.js. Bundle 1.1.0. Commit: 1668c56.
+- ✅ #16 Cleanup martwych selektorów — usunięte historyczne klasy. Bundle 1.1.0. Commit: 1668c56.
 - ❌ #4 [ANULOWANE] Nowy extractor — niepotrzebny, classic Ember nadal działa
 
 ## BLOCKED
 
-### #12b P0 — Diagnoza floodu `chrome-extension://invalid/` (DIAGNOSTIC FIRST) — BLOCKED na input usera
-
-**Co odblokuje:** Marcin musi dostarczyć **pełny stack trace pierwszego `chrome-extension://invalid/` errora** z DevTools karty LinkedIn (klik strzałka przy errorze → Show full stack trace → 5–10 linii tekstem) + **kolumna Initiator z Network tab** dla failed requestu. Bez tego nie da się określić branchu A/B/C/D.
-
-**Problem.** Po reloadzie extension'u w karcie LinkedIn pojawia się 200+ errorów `chrome-extension://invalid/` w konsoli (na sesji 2026-05-05 widoczne 231 issues / 66 errors). User zgłosił że to ma miejsce "z jednym aktywnym extension'em — naszym 1.0.7". Wszystkie wpisy mają źródło `d3jr0erc6y93o17nx3pgkd9o9:12275`.
-
-**Reframe (PM 2026-05-04).** Wcześniejsze założenie z #12 ("background.js / popup.js pinguje po inwalidacji service workera") nie potwierdziło się w przeglądzie kodu — w naszych plikach NIE MA żadnego pollingu, alarmów ani auto-fetch'a. Linia 12275 wskazuje na plik o tysiącach linii — nasze pliki są krótkie. Hipoteza robocza: źródło jest **spoza naszego extension'u** (LinkedIn SPA / SW / Chrome retry / ukryty inny extension).
-
-**Plan (kroki):**
-
-1. **Diagnoza źródła (Step 0 — krytyczny, NIE pomijać).**
-   - User otwiera kartę LinkedIn z DevTools console + Network tab.
-   - W chrome://extensions → kliknij Reload przy LinkedIn Message Generator.
-   - W konsoli karty: kliknij prawym na pierwszy `chrome-extension://invalid/` error → "Show full stack trace" (lub rozwiń strzałką). Skopiuj **pierwsze 10 linii stack trace'u**.
-   - W Network tab: znajdź failed request do `chrome-extension://invalid/...`. Sprawdź kolumnę **"Initiator"** — kto ten request odpalił? (skrypt LinkedIn'a? nasz? chrome-internal?)
-   - Wykonaj w konsoli karty: `chrome.runtime?.id` — zwraca undefined (= content script orphaned, OK po fix #12).
-   - Sprawdź czy linkedin.com ma zarejestrowanego Service Workera: `navigator.serviceWorker.getRegistrations().then(r => console.log(r))` — jeśli tak, to LinkedIn ma własny SW który mógł cache'ować nasz stary URL.
-   - Sprawdź chrome://extensions w trybie strict: czy faktycznie tylko nasz jest aktywny? Wyłącz wszystko ŁĄCZNIE z chrome web store, dev tools extensions (React, Redux DevTools, itd.). Jeśli flood znika gdy reszta wyłączona → to inny extension.
-
-2. **Branch na podstawie diagnozy:**
-
-   - **Branch A — źródło to nasz kod** (stack trace pokazuje plik z naszego extension'u): wróć do PM, podaj plik+linię, PM dekompozuje na konkretny fix.
-
-   - **Branch B — źródło to LinkedIn SW / cache** (stack trace pokazuje skrypt z linkedin.com lub `navigator.serviceWorker` ma zarejestrowanego SW który próbuje fetch'ować nasz stary URL): zamknij task jako "not our bug, environmental". Dodaj wpis w `CLAUDE.md → Znane problemy / kontekst`:
-     ```
-     - Po reload'zie extension'u LinkedIn cache'uje URL starego content scriptu w swoim Service Workerze.
-       Generuje to flood `chrome-extension://invalid/` w konsoli, ale jest cosmetic — scrape działa.
-       Workaround: po reload extension hard-refresh strony LinkedIn (Ctrl+Shift+R).
-     ```
-
-   - **Branch C — źródło to inny extension** (flood znika po wyłączeniu konkretnego extension'u): zamknij task. Dodaj wpis w `Znane problemy` z nazwą tamtego extension'u jako known interaction.
-
-   - **Branch D — źródło to wewnętrzny mechanism Chrome** (initiator pokazuje chrome-internal jak `extensions::messaging` lub similar): zamknij task jako "Chrome bug, not actionable". Wpis w Znane problemy z linkiem do crbug jeśli znajdziesz pasujący ticket.
-
-**Pliki (do potwierdzenia branchem):**
-- Branch A → konkretny plik z extension'a (background.js / popup.js / options.js / content.js).
-- Branch B/C/D → tylko `CLAUDE.md` (sekcja Znane problemy).
-
-**Acceptance criteria:**
-- AC1: Stack trace pierwszego `chrome-extension://invalid/` errora jest udokumentowany w `Dev notes` (z konkretnym plikiem + linią).
-- AC2: Initiator z Network taba jest udokumentowany.
-- AC3: Określony branch (A/B/C/D) z uzasadnieniem dlaczego ten a nie inny.
-- AC4 (Branch A only): patch + bump wersji w manifest.json (patch-level, 1.0.7→1.0.8). Po reload extension i hard-refresh strony LinkedIn → 0 nowych `chrome-extension://invalid/` errors w konsoli karty przez 60s nieaktywności.
-- AC4 (Branch B/C/D): wpis w `Znane problemy` w CLAUDE.md zaakceptowany. Brak zmian w kodzie. Brak bump wersji.
-
-**Ryzyka:**
-- Bez współpracy usera z DevTools nie zdiagnozujemy — Dev musi explicite poprosić Marcina o stack trace + initiator zrzucone z konsoli, najlepiej jako screenshot lub plain text.
-- Jeśli flood pochodzi z LinkedIn SW, użytkownicy zespołu OVB nie zobaczą go (nie patrzą w konsolę), więc priorytet faktyczny to P3 — ale formalnie zostawiamy P0 dopóki diagnoza nie wyjaśni że to cosmetic.
-- Jeśli to inny extension u Marcina (np. jakieś dev-tools extensions), reszta zespołu OVB i tak tego nie ma — task się "rozwiązuje sam".
-
-**How to test (Tester po zakończeniu Dev):**
-- Branch A: scrape Joanny + Grzegorza po hard-refresh + reload extension → działa, konsola czysta od `chrome-extension://invalid/` przez 60s.
-- Branch B/C/D: czytanie sekcji `Znane problemy` — czy wpis jest zrozumiały, czy zawiera workaround dla zespołu OVB.
-
----
-
-**Dev notes (sesja 2026-05-05):**
-
-W tej sesji próbowałem domknąć diagnozę razem z Marcinem przy otwartym DevTools.
-
-- AC1 (stack trace pierwszego errora): **NIE SPEŁNIONY** — Marcin nie kliknął strzałki na pierwszy error. Mam tylko widok że jest 231 issues / 66 errorów wszystkie z tego samego źródła `d3jr0erc6y93o17nx3pgkd9o9:12275`, bez stack tracu wgłąb.
-- AC2 (initiator z Network): **NIE SPEŁNIONY** — Network tab nie został przejrzany.
-- AC3 (branch A/B/C/D): **NIE SPEŁNIONY** — bez AC1+AC2 nie ma podstaw faktograficznych. Hipoteza robocza dalej Branch B (LinkedIn obfuscated bundle / SW próbuje fetch'ować stary URL po reload extension'u), bo `12275` to linia w pliku ~12k+ linii a nasze pliki mają max ~1010 — to typowy zminifikowany webpack chunk LinkedIn'a. Ale to spekulacja.
-- AC4: nieaplikowalne.
-
-**Co dodatkowego wyszło z tej sesji (poza zakresem #12b):**
-
-Marcin zgłosił równocześnie fail scrape'a na profilu Anny Rutkowskiej (`anna-rutkowska-0551b120b`). Zebrana diagnostyka z `[LinkedIn MSG] Scrape timeout`:
-```
-h1Count: 0, h1Texts: [], hasTopCard: false, hasAbout: false,
-hasExperience: false, voyagerHasProfile: false, voyagerPayloadCount: 0,
-mainClass: "d99855ad _1b8a3c95 _30d3824a _1b0f21d4 ac7b14bb _79f92d9a"
-```
-
-Pierwsza hipoteza: LinkedIn rolluje nowy frontend stack na część profili (CSS modules / styled-components, brak Voyagera). Po dorenderowaniu strony Marcin zrzucił `document.querySelector('main').outerHTML.slice(0, 2000)` — to **odrzuciło hipotezę**: w DOM są klasyczne klasy `pv-top-card`, `pv-top-card__non-self-photo-wrapper`, `ph5 pb5`, `data-member-id`, `top-card-background-hero-image`. To jest **classic Ember**, hashowane klasy (`DHANJxr...`) tylko na zewnętrznych wrapperach. Identycznie wygląda DOM Emilii Kuchty (`data-member-id="707176649"`).
-
-Wniosek: timeout to **race condition na DOM rendering** — scrape uderza w trakcie hydration Ember'a i widzi pusty `<main>`, zanim profil się dorenderuje. `waitForElement` poddaje się przed dorenderowaniem. To NIE jest #12b. Wydzielono jako nowy task **#17** w TODO.
-
-Dodatkowo potwierdzono **bug #3 w produkcji**: po fail'u Anny popup nadal pokazywał Grzegorza Błyszczka z poprzedniej sesji. Bug #3 nie jest tylko teoretyczny — jest realny user-facing problem.
-
----
-
-**Test results (sesja 2026-05-05): BLOCKED (nie FAIL)**
-
-- Test AC1: ✗ — brak danych
-- Test AC2: ✗ — brak danych
-- Test AC3: ✗ — bez AC1+AC2 nie ma na czym pracować
-- Test AC4: nieaplikowalny
-- Smoke test scrape Joanna/Grzegorz: nie wykonany (off-scope)
-- Smoke test scrape Anny: ✓ ostatecznie zadziałał po retry — ale **z innego powodu niż #12b** (race condition #17, nie flood errorów)
-
-**Werdykt:** Task jest BLOCKED, nie FAIL. Brak postępu nie wynika z błędu Dev'a — wynika z braku inputu od usera (stack trace nie został kliknięty). Task czeka na Marcina.
-
-**Pliki dotknięte:** żadne kodowe. Tylko aktualizacja CLAUDE.md (Znane problemy + nowy task #17 w TODO).
+(none — #12b rozwiązany w v1.2.1, commit 408c79d)
 
 ## BACKLOG (poza sprintem, później)
 
 - #6 Self-test scraper widget w popup (settings → diagnostyka)
 - #10 Wersjonowanie selektorów + auto-fallback chain (selectors.json + hot-update z backendu)
+
+### #21 P1 — Bulk auto-connect Faza 2: AI nota z generatora przez backend (post Sprint #3 Faza 1)
+
+**Kontekst.** Faza 1 (Connect bez noty) zastępuje Octopus Starter. Faza 2 dodaje **personalizowaną notę z generatora wiadomości** (reuse istniejący `ai_service.py` w backend). To jest "lepiej niż Octopus" — ich personalizacja jest templated `{firstName}`, nasza będzie pełna AI z kontekstem profilu (już ekstraktujemy headline + about + experience).
+
+**Decyzje produktowe wstępne (do uściślenia w PM session przed startem):**
+- Generator dostaje hard limit **200 chars** (LinkedIn regulamin dla noty Connect — 300 chars dla Premium, ale celujemy w lower common denominator).
+- Generator dostaje kontekst: name, headline, about (pierwsze 500 chars), top 3 experiences. Plus user goal/lang/tone z popup settings (już są).
+- Detection kiedy LinkedIn nie pozwala na notę (free user limit ~5/mc): jeśli modal "Add a note" nie pojawi się po Connect → fallback bez noty + log. Jeśli pojawi się ale textarea jest disabled (premium-locked) → fallback bez noty + log.
+- Pre-flight scrape profilu PRZED click Connect — bo nota wymaga kontekstu profilu, którego nie ma w search results listing (są tylko name + headline). Trade-off: każde Connect z notą = 1 scrape profilu + 1 generation = ~3-5s extra per item. Akceptowalne przy delay 45-120s między akcjami.
+- Cache wygenerowanej noty w queue item — nie generujemy 2× po retry/resume.
+
+**Open questions:**
+- Czy Marcin chce mieć możliwość **review noty przed wysłaniem** (per item lub per batch)? Czy fully auto?
+- Czy generator ma dostęp do CRM context (Krayin) z już-rozpoznanymi leadami?
+- Czy w fazie 2 dodajemy A/B mode (50% z notą, 50% bez) do tracking acceptance rate?
+
+**Estymata:** ~2 sprinty Marcin'a (2-4 dni roboty) po Faza 1 production-ready.
+
+---
+
+### #22 P2 — Bulk auto-connect Faza 3: Pagination + Selection UI (post Faza 2)
+
+**Kontekst.** Faza 1+2 obsługują tylko widoczne profile na bieżącej stronie search results. Faza 3 dodaje:
+- **Auto-pagination** przez search results (`?page=2,3,4...` lub click "Next" w UI LinkedIn).
+- **Master-select checkboxy** w popup: "Select all", "Unselect all", "Select 2nd degree only", "Unselect Pending".
+- **Per-page settings:** "Stop after N pages", "Max queue size".
+- **Cross-page dedup** (slug w queue z poprzednich stron nie dodaje się 2×).
+
+**Decyzje wstępne:**
+- Pagination przez click "Next" button w UI LinkedIn (NIE direct URL nav) — bardziej "human". User może przerwać w każdej chwili.
+- Random delay 5-15s między pages (pagination wolniejsza niż Connect click, mniej podejrzana).
+- Max pages domyślnie 5 (= ~50 profili w queue) — żeby zespół OVB nie spamował 200 ludzi w jeden batch.
+
+**Open questions:**
+- Czy faza 3 to dalej extension-only, czy potrzebujemy backend endpoint dla "kampanii" (named batches z historią)?
+- Czy export queue do CSV ma sens (do CRM Krayina import)?
+
+**Estymata:** ~1-2 sprinty Marcin'a po Faza 2.
 
 ---
 
