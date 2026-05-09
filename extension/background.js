@@ -517,6 +517,28 @@ async function bulkAddManualSent(profile, messageDraft) {
   return { success: true, slug, action: existing ? "updated" : "added" };
 }
 
+// Zwraca minimum potrzebne popup'owi do pokazania persistent "już śledzone"
+// hint'u na profilu. Null gdy slug nie istnieje albo nigdy nie był wysłany.
+async function getTrackingState(slug) {
+  if (!slug) return { success: true, item: null };
+  const state = await getBulkState();
+  const item = state.queue.find((q) => q.slug === slug);
+  if (!item || !item.messageSentAt) return { success: true, item: null };
+  return {
+    success: true,
+    item: {
+      slug: item.slug,
+      messageSentAt: item.messageSentAt,
+      followup1RemindAt: item.followup1RemindAt,
+      followup2RemindAt: item.followup2RemindAt,
+      followup1SentAt: item.followup1SentAt,
+      followup2SentAt: item.followup2SentAt,
+      followupStatus: item.followupStatus,
+      status: item.status,
+    },
+  };
+}
+
 // ── Follow-upy 3d/7d (#25 v1.7.0) ────────────────────────────────
 //
 // Architektura: storage queue items (#21) extended o 7 pól follow-up'owych.
@@ -1155,6 +1177,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         case "trackManualSent":
           return await bulkAddManualSent(message.profile, message.messageDraft);
+
+        case "getTrackingState":
+          return await getTrackingState(message.slug);
 
         case "followupListDue":
           return await bulkListDueFollowups();

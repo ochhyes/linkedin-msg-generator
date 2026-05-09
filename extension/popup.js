@@ -27,6 +27,7 @@
   const btnCopy = $("#btn-copy");
   const btnCopyTrack = $("#btn-copy-track");
   const trackStatus = $("#track-status");
+  const trackHint = $("#track-hint");
   const btnRegenerate = $("#btn-regenerate");
   const errorArea = $("#error-area");
   const errorText = $("#error-text");
@@ -301,6 +302,8 @@
       currentGenTime = null;
       resultArea.classList.add("hidden");
       saveSession();
+      // Pokaż hint jeśli profil już śledzony (manual_sent w queue).
+      refreshTrackingHint(currentProfile);
     } catch (err) {
       showError(err.message);
       // Hide stale profile/result, clear in-memory state. Without this the
@@ -398,21 +401,31 @@
           return;
         }
 
-        // Open LinkedIn messaging compose tab.
+        // KOLEJNOŚĆ MA ZNACZENIE: pokaż toast PRZED tab.create({active:true}) —
+        // tab.create natychmiast zamyka popup (focus shift). Bez delay user
+        // nie zdąży zobaczyć potwierdzenia że tracking został zapisany.
+        const action = resp.action === "updated" ? "Zaktualizowano" : "Zapisano";
+        showTrackStatus(
+          `✓ ${action}. Wiadomość w schowku — w nowej karcie zrób Ctrl+V → Send. Follow-up #1 za 3 dni, #2 za 7. Otwieram LinkedIn…`,
+          "success"
+        );
+        btnCopyTrack.textContent = "✓ Zapisano";
+        // Refresh hint zaraz, żeby gdy popup zostanie reopenowany pokazywał
+        // że profil jest already tracked. Hint czyta storage przez background.
+        refreshTrackingHint(currentProfile);
+
+        // 1.6s daje user'owi czas przeczytać komunikat (zmierzone — jeden
+        // krótki rzut oka). Po tym chrome.tabs.create przejmuje fokus na
+        // LinkedIn messaging i popup zamyka się.
+        await new Promise((r) => setTimeout(r, 1600));
+
         chrome.tabs.create({
           url: `https://www.linkedin.com/messaging/compose/?recipient=${encodeURIComponent(slug)}`,
           active: true,
         });
-
-        const action = resp.action === "updated" ? "Zaktualizowano" : "Zapisano";
-        showTrackStatus(
-          `✓ ${action}. Follow-up #1 za 3 dni, #2 za 7 dni. Wklej i wyślij w LinkedIn'ie.`,
-          "success"
-        );
       } catch (err) {
         console.warn("[LinkedIn MSG] copy+track failed:", err);
         showTrackStatus(`Błąd: ${(err && err.message) || err}`, "error");
-      } finally {
         btnCopyTrack.disabled = false;
         btnCopyTrack.textContent = origText;
       }
@@ -424,10 +437,73 @@
     trackStatus.textContent = text;
     trackStatus.classList.remove("hidden", "track-status--success", "track-status--error");
     trackStatus.classList.add(kind === "error" ? "track-status--error" : "track-status--success");
-    // Auto-hide after 6s for success, sticky dla error.
+    // Auto-hide after 8s for success, sticky dla error.
     if (kind !== "error") {
-      setTimeout(() => trackStatus.classList.add("hidden"), 6000);
+      setTimeout(() => trackStatus.classList.add("hidden"), 8000);
     }
+  }
+
+  // Persistent hint — gdy popup re-opens na profilu który JUŻ został śledzony.
+  // Czyta queue item przez background; pokazuje "✓ Wiadomość zapisana X temu,
+  // follow-up #1: <data>". Pomaga user'owi zrozumieć że tracking nadal działa
+  // (bo popup zamyka się przy chrome.tabs.create i toast znika).
+  async function refreshTrackingHint(profile) {
+    if (!trackHint) return;
+    if (!profile || !profile.profile_url) {
+      trackHint.classList.add("hidden");
+      return;
+    }
+    const slug = extractSlugFromUrl(profile.profile_url);
+    if (!slug) {
+      trackHint.classList.add("hidden");
+      return;
+    }
+    try {
+      const resp = await chrome.runtime.sendMessage({ action: "getTrackingState", slug });
+      const item = resp?.item;
+      if (!item || !item.messageSentAt) {
+        trackHint.classList.add("hidden");
+        return;
+      }
+      const ago = formatRelativeTime(item.messageSentAt);
+      const fu1 = item.followup1SentAt
+        ? "✓ wysłany"
+        : item.followup1RemindAt
+        ? formatAbsoluteDate(item.followup1RemindAt)
+        : "—";
+      const fu2 = item.followup2SentAt
+        ? "✓ wysłany"
+        : item.followup2RemindAt
+        ? formatAbsoluteDate(item.followup2RemindAt)
+        : "—";
+      const skipped = item.followupStatus === "skipped";
+      const text = skipped
+        ? `✓ Wiadomość zapisana ${ago}. Follow-upy pominięte.`
+        : `✓ Wiadomość zapisana ${ago}. Follow-up #1: ${fu1} · #2: ${fu2}`;
+      trackHint.textContent = text;
+      trackHint.classList.remove("hidden");
+    } catch (err) {
+      console.warn("[LinkedIn MSG] refreshTrackingHint failed:", err);
+      trackHint.classList.add("hidden");
+    }
+  }
+
+  function formatRelativeTime(timestamp) {
+    const diff = Date.now() - timestamp;
+    const m = Math.floor(diff / 60000);
+    const h = Math.floor(diff / 3600000);
+    const d = Math.floor(diff / 86400000);
+    if (m < 1) return "przed chwilą";
+    if (m < 60) return `${m} min temu`;
+    if (h < 24) return `${h}h temu`;
+    return `${d}d temu`;
+  }
+
+  function formatAbsoluteDate(timestamp) {
+    const d = new Date(timestamp);
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    return `${dd}.${mm}`;
   }
 
   // ── Settings ─────────────────────────────────────────────────────
@@ -1564,6 +1640,8 @@
           currentGenTime = last.genTime;
           showResult(last.message, last.genTime || 0);
         }
+        // Hint po reopenie popup'u — czy ten slug był już śledzony?
+        refreshTrackingHint(currentProfile);
       }
       // Mismatch — leave profilePreview / resultArea hidden by default.
       // currentProfile stays null, btnGenerate stays disabled. User clicks

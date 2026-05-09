@@ -554,6 +554,9 @@ body {
 .track-status--success { color: #3fb950; background: rgba(63, 185, 80, 0.08); }
 .track-status--error { color: #f85149; background: rgba(248, 81, 73, 0.08); }
 
+/* Persistent tracking hint — pokazuje gdy reopenujesz popup na profilu już śledzonym */
+.track-hint { font-size: 11px; padding: 6px 8px; border-radius: var(--radius); margin: 6px 0 0; line-height: 1.4; color: #4f8ff7; background: rgba(79, 143, 247, 0.08); }
+
 .message-item { background: var(--bg-elevated, #1a1d24); border-radius: var(--radius); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
 .message-item--skipped, .message-item--sent { opacity: 0.6; }
 .message-item__head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
