@@ -834,3 +834,31 @@ body {
 
 .followup-row__actions { display: flex; gap: 4px; flex-wrap: wrap; }
 .followup-row__actions .btn { flex: 1; min-width: 70px; font-size: 10px; padding: 4px 6px; }
+
+/* Scheduled rows (read-only, future RemindAt) — mniejszy kontrast,
+   dashed border żeby wizualnie odróżnić od due rows. */
+.followup-row--scheduled {
+  background: var(--bg);
+  border: 1px dashed var(--border);
+  padding: 6px 10px;
+  gap: 4px;
+}
+.followup-row--scheduled .followup-row__name { font-size: 12px; opacity: 0.85; }
+.followup-row__meta { font-size: 10px; color: var(--text-dim); margin: 0; }
+
+/* Empty state w sekcji "Do follow-up'u" gdy brak due (NIE hide całej sekcji). */
+.followup-empty {
+  font-size: 12px;
+  color: var(--success);
+  text-align: center;
+  padding: var(--space-3);
+  margin: 0;
+  background: var(--success-bg);
+  border-radius: var(--radius);
+}
+
+/* Neutralny badge dla "Zaplanowane" — nie alarmujący czerwony jak dla due. */
+.followup-count-badge--neutral {
+  background: var(--text-dim);
+  color: var(--bg);
+}

@@ -73,6 +73,11 @@
   const followupSection = $("#followup-section");
   const followupCountBadge = $("#followup-count-badge");
   const followupList = $("#followup-list");
+  const followupEmpty = $("#followup-empty");
+  // Follow-up Zaplanowane (#1.9.1) — przyszłe RemindAt'y, read-only.
+  const followupScheduledSection = $("#followup-scheduled-section");
+  const followupScheduledCount = $("#followup-scheduled-count");
+  const followupScheduledList = $("#followup-scheduled-list");
 
   // ── State ────────────────────────────────────────────────────────
   let currentProfile = null;
@@ -1380,14 +1385,18 @@
   const _followupDraftDebounce = new Map();
 
   /**
-   * Pyta background o aktualną listę due follow-upów i renderuje sekcję.
+   * Pyta background o pełen stan follow-upów (due + scheduled) i renderuje
+   * obie sekcje w popup'ie. Wcześniej (do 1.9.0) używaliśmy followupListDue
+   * który zwracał tylko due — user widzący chip "✓ Śledzone" w Profile tab
+   * nie widział nic w Follow-up tab dopóki RemindAt nie minął, co było
+   * dezorientujące. 1.9.1 reuse'uje followupListAll z dashboard'u.
    * Silent fail — gdy SW nie odpowiada, sekcja zostaje w poprzednim stanie.
    */
   async function loadFollowupList() {
     try {
-      const resp = await chrome.runtime.sendMessage({ action: "followupListDue" });
+      const resp = await chrome.runtime.sendMessage({ action: "followupListAll" });
       if (resp && resp.success) {
-        renderFollowupList(resp.items || []);
+        renderFollowupList(resp.due || [], resp.scheduled || []);
       }
     } catch (err) {
       console.warn("[LinkedIn MSG] loadFollowupList failed:", err);
@@ -1395,28 +1404,105 @@
   }
 
   /**
-   * Renderuje sekcję Follow-up. Gdy items.length === 0 sekcja jest
-   * całkowicie ukryta (display:none) — bez badge'a, bez nagłówka.
+   * Renderuje DWIE sekcje w Follow-up tab popup'u:
+   * - "Do follow-up'u" (due) — z buttonami akcji
+   * - "Zaplanowane" (scheduled) — read-only, info "za N dni"
+   * Tab badge pokazuje liczbę DUE (nie scheduled — bo scheduled to "potem").
    */
-  function renderFollowupList(items) {
+  function renderFollowupList(dueItems, scheduledItems) {
     if (!followupSection || !followupList) return;
-    // Tab badge (#1.9.0) — sync z liczbą due follow-upów.
+    const due = Array.isArray(dueItems) ? dueItems : [];
+    const scheduled = Array.isArray(scheduledItems) ? scheduledItems : [];
+
+    // Tab badge — sync z liczbą due (scheduled NIE wlicza, to są przyszłe).
     if (tabFollowupBadge) {
-      const count = Array.isArray(items) ? items.length : 0;
-      tabFollowupBadge.textContent = count > 0 ? (count > 99 ? "99+" : String(count)) : "";
+      tabFollowupBadge.textContent = due.length > 0 ? (due.length > 99 ? "99+" : String(due.length)) : "";
     }
-    if (!Array.isArray(items) || items.length === 0) {
-      followupSection.classList.add("hidden");
+
+    // Render DUE section.
+    renderDueFollowups(due);
+    // Render SCHEDULED section.
+    renderScheduledFollowups(scheduled);
+  }
+
+  function renderDueFollowups(items) {
+    // Sekcja "Do follow-up'u" zawsze widoczna w Follow-up tab — pokazuje
+    // listę gdy są due, lub empty state ✓ gdy brak. Wcześniej (do 1.9.0)
+    // sekcja była hidden gdy brak due — user nie widział że tab w ogóle
+    // istnieje, szukał follow-upów gdzie indziej.
+    followupSection.classList.remove("hidden");
+    if (followupCountBadge) {
+      followupCountBadge.textContent = items.length > 0 ? String(items.length) : "";
+    }
+    if (items.length === 0) {
       followupList.innerHTML = "";
-      if (followupCountBadge) followupCountBadge.textContent = "";
+      if (followupEmpty) followupEmpty.classList.remove("hidden");
       return;
     }
-    followupSection.classList.remove("hidden");
+    if (followupEmpty) followupEmpty.classList.add("hidden");
     if (followupCountBadge) followupCountBadge.textContent = String(items.length);
     followupList.innerHTML = "";
     for (const item of items) {
       followupList.appendChild(createFollowupRow(item));
     }
+  }
+
+  /**
+   * Renderuje sekcję "Zaplanowane" — przyszłe follow-upy (RemindAt > now,
+   * !sentAt). Read-only — buttony akcji NIE są pokazywane bo data jeszcze
+   * nie nadeszła. User widzi imię + tag "FU#1 za 2 dni · 12.05".
+   */
+  function renderScheduledFollowups(items) {
+    if (!followupScheduledSection || !followupScheduledList) return;
+    if (items.length === 0) {
+      followupScheduledSection.classList.add("hidden");
+      followupScheduledList.innerHTML = "";
+      if (followupScheduledCount) followupScheduledCount.textContent = "";
+      return;
+    }
+    followupScheduledSection.classList.remove("hidden");
+    if (followupScheduledCount) followupScheduledCount.textContent = String(items.length);
+    followupScheduledList.innerHTML = "";
+    for (const item of items) {
+      followupScheduledList.appendChild(createScheduledRow(item));
+    }
+  }
+
+  function createScheduledRow(item) {
+    const num = item.dueFollowup === 2 ? 2 : 1;
+    const li = document.createElement("li");
+    li.className = "followup-row followup-row--scheduled";
+    li.dataset.slug = item.slug || "";
+
+    const head = document.createElement("div");
+    head.className = "followup-row__head";
+
+    const nameEl = document.createElement("span");
+    nameEl.className = "followup-row__name";
+    nameEl.textContent = item.name || item.slug || "—";
+
+    const tag = document.createElement("span");
+    tag.className = "followup-row__tag" + (num === 2 ? " followup-row__tag--second" : "");
+    const dayLabel = item.daysUntil === 1 ? "1 dzień" : `${item.daysUntil} dni`;
+    tag.textContent = `FU#${num} za ${dayLabel}`;
+
+    head.appendChild(nameEl);
+    head.appendChild(tag);
+    li.appendChild(head);
+
+    if (item.headline) {
+      const hl = document.createElement("p");
+      hl.className = "followup-row__headline";
+      hl.textContent = item.headline;
+      li.appendChild(hl);
+    }
+
+    const meta = document.createElement("p");
+    meta.className = "followup-row__meta";
+    meta.textContent = `Pierwsza wiadomość: ${formatAbsoluteDate(item.messageSentAt)} · follow-up: ${formatAbsoluteDate(item.remindAt)}`;
+    li.appendChild(meta);
+
+    return li;
   }
 
   /**

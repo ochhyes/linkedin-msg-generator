@@ -167,7 +167,18 @@
           </div>
           <p class="followup-section__hint">Profile, do których minęły 3 lub 7 dni od pierwszej wiadomości i czas na follow-up.</p>
           <ul id="followup-list" class="followup-section__list"></ul>
-          <p class="followup-section__link"><a href="#" id="link-dashboard">→ Otwórz pełny dashboard</a></p>
+          <p id="followup-empty" class="followup-empty hidden">Nic do zrobienia teraz. ✓</p>
+        </section>
+
+        <!-- Zaplanowane (future, read-only) -->
+        <section id="followup-scheduled-section" class="followup-section hidden">
+          <div class="followup-section__header">
+            <span class="followup-section__title">Zaplanowane</span>
+            <span id="followup-scheduled-count" class="followup-count-badge followup-count-badge--neutral"></span>
+          </div>
+          <p class="followup-section__hint">Profile czekające na follow-up — sortowane od najbliższej daty.</p>
+          <ul id="followup-scheduled-list" class="followup-section__list"></ul>
+          <p class="followup-section__link"><a href="#" id="link-dashboard">→ Pełny dashboard (z historią)</a></p>
         </section>
 
         <!-- Post-Connect Messaging -->
