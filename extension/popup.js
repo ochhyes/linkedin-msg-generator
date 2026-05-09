@@ -407,10 +407,6 @@
           return;
         }
 
-        // KOLEJNOŚĆ MA ZNACZENIE: pokaż toast PRZED tab.create({active:true}) —
-        // tab.create natychmiast zamyka popup (focus shift). Bez delay user
-        // nie zdąży zobaczyć potwierdzenia że tracking został zapisany.
-        const action = resp.action === "updated" ? "Zaktualizowano" : "Zapisano";
         // Open w TLE (active: false) żeby popup ZOSTAŁ open — user widzi
         // toast i hint, sam przełączy się do nowej karty gdy będzie gotów.
         // Wcześniej (1.7.2/1.7.3) active: true zamykało popup natychmiast,
@@ -419,6 +415,8 @@
         composeUrl.searchParams.set("recipient", slug);
         chrome.tabs.create({ url: composeUrl.toString(), active: false });
 
+        // Toast format: "✓ Zapisano/Zaktualizowano. Wiadomość w schowku..."
+        // — informuje że tracking + clipboard + nowa karta zrobione.
         const action = resp.action === "updated" ? "Zaktualizowano" : "Zapisano";
         showTrackStatus(
           `✓ ${action}. Wiadomość w schowku, czat LinkedIn otwarty w tle (znajdź go w pasku kart → Ctrl+V → Send). Follow-up #1 za 3 dni, #2 za 7.`,
