@@ -1,4 +1,4 @@
-# LinkedIn MSG — instrukcja dla zespołu OVB (v1.7.2)
+# LinkedIn MSG — instrukcja dla zespołu OVB (v1.8.0)
 
 Extension Chrome dla **bulk wysyłki zaproszeń** + **AI generator wiadomości** dla nowo zaakceptowanych kontaktów. Zastępuje Octopus Starter.
 
@@ -14,15 +14,24 @@ Extension Chrome dla **bulk wysyłki zaproszeń** + **AI generator wiadomości**
 5. Pojawi się "LinkedIn MSG" na liście — sprawdź wersję `1.6.0` przy nazwie.
 6. (Opcjonalnie) Przypnij ikonę do paska Chrome — kliknij ikonę puzzla 🧩 → przy "LinkedIn MSG" klik pinezki 📌.
 
-> **Aktualizacja do nowej wersji** (np. 1.6.0 → 1.7.0):
-> 1. Rozpakuj nowy zip — **może być w nowym folderze** (np. `linkedin-msg-extension-1.7.0/`).
-> 2. W `chrome://extensions/` klik **Usuń** przy starej wersji LinkedIn MSG.
-> 3. Klik **Załaduj rozpakowane** → wybierz NOWY folder z 1.7.0.
-> 4. **Twoje dane (kolejka zaproszeń, drafty wiadomości, akceptacje) PRZEŻYJĄ** — extension ma stabilny `key` w manifest.json, więc Chrome traktuje to jako tę samą extension'ę niezależnie od folderu.
+> **Aktualizacja do nowej wersji** (np. 1.6.0 → 1.8.0)
 >
-> **Gdzie są fizycznie dane:** `C:\Users\<user>\AppData\Local\Google\Chrome\User Data\Default\Local Extension Settings\<EXTENSION_ID>\` — Chrome trzyma to NIEZALEŻNIE od folderu z plikami extension'u. Reinstall folderu nie kasuje danych. Format storage: LevelDB (binary).
+> **⚠️ ZALECANE: użyj Reload zamiast Usuń + Dodaj.** Reload zachowuje wszystkie Twoje dane, jest szybszy, mniej kliknięć.
 >
-> **Backup ręczny** (na wypadek wymiany komputera): w popup'ie `Ustawienia bulk connect` → **Eksport kolejki** (jeśli dorzucone w przyszłej wersji), lub manual przez DevTools console na karcie extension'u: `chrome.storage.local.get('bulkConnect', d => copy(JSON.stringify(d)))` — wkleja JSON do schowka, zapisz w pliku.
+> **Procedura Reload (ZALECANA):**
+> 1. Rozpakuj nowy zip do **TEGO SAMEGO folderu** co poprzedni (nadpisuje pliki). Np. masz `C:\linkedin-msg-extension\` z 1.6.0 → wypakuj 1.8.0 do tego samego folderu, kliknij "Tak, nadpisz" przy konflikcie.
+> 2. W `chrome://extensions/` przy LinkedIn MSG klik **Reload** (ikona ↻).
+> 3. Sprawdź wersję `1.8.0` przy nazwie. Gotowe.
+>
+> **Procedura Remove + Add (NIEZALECANA, tylko gdy Reload nie działa):**
+> 1. Rozpakuj nowy zip — może być w nowym folderze.
+> 2. W `chrome://extensions/` klik **Usuń** przy starej wersji.
+> 3. Klik **Załaduj rozpakowane** → wybierz nowy folder.
+> 4. **UWAGA: Twoje dane (kolejka, drafty, follow-upy) PRZEŻYJĄ** dzięki stabilnemu `key` w manifest — Chrome traktuje extension jako tę samą niezależnie od folderu. ALE jeśli używałeś wersji < 1.6.0 (sprzed `key` field), Remove + Add WYKASUJE dane.
+>
+> **Gdzie są fizycznie dane:** `C:\Users\<user>\AppData\Local\Google\Chrome\User Data\Default\Local Extension Settings\<EXTENSION_ID>\` — Chrome trzyma to niezależnie od folderu z plikami extension'u. Format: LevelDB (binary).
+>
+> **Backup ręczny** (na wypadek wymiany komputera): manual przez DevTools console na popup'ie extension'u (prawym myszą na ikonie → Inspect popup): `chrome.storage.local.get(null, d => copy(JSON.stringify(d)))` — wkleja JSON do schowka, zapisz w pliku.
 
 ---
 
@@ -160,6 +169,43 @@ Po kliknięciu **"Wysłałem"** w Kroku F, extension automatycznie planuje 2 fol
 
 > **Co z następną wiadomością po wysłaniu follow-up #1?** Jeśli osoba dalej nie odpowiada, follow-up #2 pojawi się za kolejne 4 dni (= 7 dni od pierwszej wiadomości). To jest "ostatnie zaczepienie" — po nim odpuszczamy lead.
 
+### 3.5 Dashboard follow-upów (NOWE w 1.8.0)
+
+Sekcja "Do follow-up'u" w popup'ie pokazuje TYLKO follow-upy które są DUE TERAZ. Nie widać tam:
+- Co czeka jutro / pojutrze (zaplanowane na przyszłość)
+- Historii (kogo już follow-up'owałem, kogo pominąłem)
+
+**Dashboard** to pełny widok wszystkiego — otwierany w **nowej karcie**.
+
+**Jak otworzyć:**
+- W popup'ie LinkedIn MSG, w prawym górnym rogu obok ikony ⚙️ Ustawień jest **📊 ikonka dashboard'u** (4 prostokąty układu).
+- Klik → otwiera się nowa karta `chrome-extension://...../dashboard.html`.
+
+**3 sekcje:**
+
+1. **Do follow-up'u TERAZ** (żółty pasek, badge z liczbą)
+   - Lista profili gdzie minęły 3 lub 7 dni od pierwszej wiadomości.
+   - Identyczne akcje jak w popup'ie: **Generuj follow-up** / **Skopiuj i otwórz** / **Wysłałem** / **Pomiń**.
+   - Editable textarea z auto-save (klikniesz poza nią — zapisuje).
+   - Większa przestrzeń niż w popup'ie — wygodniej dla 5+ follow-upów na raz.
+
+2. **Zaplanowane** (niebieski pasek, badge z liczbą)
+   - Profile gdzie follow-up jeszcze nie due. Read-only — pokazuje **kiedy** pojawi się (np. `Follow-up #1 za 2 dni (12.05.2026 14:30)`).
+   - Sortowane od najbliższego.
+   - Use: rano w poniedziałek widzisz że we wtorek o 14:30 pojawi się 8 follow-upów do zrobienia → planujesz pracę.
+
+3. **Historia** (szary pasek, badge z liczbą)
+   - Wysłane follow-upy (z datą + draftem który był wysłany — read-only).
+   - Pominięte profile (badge "Pominięty" — anulowałeś follow-up cycle).
+   - Sortowane od najświeższego.
+   - Use: weryfikacja "ile follow-upów wysłałem w tym tygodniu", review draftów.
+
+**Linki do profili LinkedIn:** Imię osoby w każdym wierszu jest klikalne → otwiera profil LinkedIn'a w nowej karcie. Use: szybki rzut oka na profil zanim klikniesz "Generuj follow-up" w dashboardzie.
+
+**Auto-refresh:** Dashboard sam się odświeża gdy klikniesz akcję w popup'ie (np. "Wysłałem" w sekcji "Do follow-up'u"). Nie musisz refreshować ręcznie. Plus button **↻ Odśwież** w prawym górnym jeśli chcesz force-refresh.
+
+> **Dashboard tylko z LOKALNYMI danymi.** Zawartość = `chrome.storage.local` na Twoim komputerze. Nic nie idzie do chmury, do innego użytkownika OVB, do Marcina. Jedyne co opuszcza Twój komputer to wywołania AI (`/api/generate-message`) gdy klikniesz Generuj.
+
 ---
 
 ## 4. Typowy harmonogram (przykład)
@@ -211,6 +257,18 @@ A: Tak. Generator wymaga API key, Bulk Connect (samo dodawanie do kontaktów) ni
 
 **Q: Bezpieczeństwo — czy LinkedIn zbanuje konto?**  
 A: Defaults są konserwatywne (45-120s losowe opóźnienia, 25/dzień, 9-18h). Marcin używa Octopusa od 3 lat z podobnymi limitami bez bana. Anti-bot LinkedIn'a wykrywa raczej burst'y (np. 50 zaproszeń w 5 min) niż timing'i podobne do człowieka.
+
+**Q: Po update'cie do 1.8.0 nie widzę sekcji "Do follow-up'u" w popup'ie ani 📊 ikonki Dashboard'u.**  
+A: Najpierw sprawdź wersję w `chrome://extensions/` — musi być **1.8.0**. Jeśli stara — kliknij **Reload** przy LinkedIn MSG. Ikonka Dashboard'u jest zawsze widoczna w nagłówku popup'u (obok ⚙️). Sekcja "Do follow-up'u" w popup'ie pojawia się TYLKO gdy są follow-upy due (po 3 lub 7 dniach od pierwszej wiadomości); pełny widok zaplanowanych jest w **Dashboard** (klik 📊).
+
+**Q: Wgrałem 1.8.0 i nie widzę żadnych zaplanowanych follow-upów mimo że wcześniej wysyłałem wiadomości.**  
+A: Follow-upy są planowane DOPIERO przy klik **"Wysłałem"** (w sekcji "Wiadomości po-Connect") albo **"📨 Kopiuj + śledź"** (manual outreach) **w wersji 1.7.0+**. Wiadomości wysłane przed 1.7.0 NIE mają zaplanowanych follow-upów (storage nie miał wtedy tych pól). Workaround: nie ma — odpuszczamy stare leady. Następne wiadomości będą miały follow-upy automatycznie.
+
+**Q: AI follow-up brzmi tak samo jak pierwsza wiadomość (re-pitch tej samej oferty).**  
+A: AI dostaje treść Twojej pierwszej wiadomości jako kontekst i instrukcję "łagodne nawiązanie, NIE re-pitch". Jeśli mimo to brzmi powtórzenie — **edytuj draft w textarea** zanim Skopiujesz. Auto-save zapisuje. Albo zgłoś przykład Marcinowi do tunowania promptu.
+
+**Q: URL nowej karty z czatem ma dziwne `%25c5%2582` w slugu i otwiera ogólne /messaging zamiast czatu z osobą.**  
+A: Bug 1.7.x — naprawiony w **1.8.0**. Sprawdź wersję, jeśli stara — Reload.
 
 ---
 

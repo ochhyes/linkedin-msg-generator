@@ -223,10 +223,10 @@ Nie łącz dwóch ról w jednej sesji bez zgody usera. Loop ma sens dlatego że 
 # CURRENT STATE
 
 ```
-Sprint:        #4 — Follow-upy 3d/7d — ZAMKNIĘTY 2026-05-09 z v1.7.0
-Phase:         (post-sprint — czeka next sprint planning lub feedback z dystrybucji 1.7.0)
-Active task:   (none — #25 done, sprint zamknięty)
-Last commit:   (planowany w tej sesji) — feat: follow-upy 3d/7d (#25, v1.7.0)
+Sprint:        #5 — Stabilizacja + dystrybucja 1.8.0
+Phase:         Tester (Marcin smoke 1.8.0) || Dev (INSTRUKCJA.md update done)
+Active task:   #28 — Stabilizacja + dystrybucja 1.8.0 (5 tasks z planu PM)
+Last commit:   56d08d6 — feat: dashboard follow-upów + slug encoding fix (#27, v1.8.0)
 Updated:       2026-05-09
 ```
 
@@ -348,7 +348,29 @@ Faza 2 (#21 AI nota) i Faza 3 (#22 pagination + selection) w BACKLOG'u jako plac
 
 ## IN PROGRESS
 
-(none — #25 P0 done, Sprint #4 zamknięty 1.7.0)
+### #28 — Sprint #5: Stabilizacja + dystrybucja 1.8.0 (operacyjny)
+
+**Driver:** Sprint #4 wypuścił 5 commitów (1.7.0 → 1.8.0) w jednej sesji z 4 hotfixami. Świeże feature, ryzyko ukrytych edge case'ów. Stabilizujemy zanim dystrybuujemy zespołowi OVB.
+
+**Tasks:**
+- ⏳ **Task 1 — Smoke test 1.8.0** (Marcin, gating): URL prawidłowy, hint pokazuje, dashboard działa, polskie znaki w slug'u OK
+- ✅ **Task 2 — INSTRUKCJA.md update**: header 1.8.0, sekcja 3.5 Dashboard, "Aktualizacja" preferuje Reload, FAQ +4 nowe Q&A (1.8.0-specific)
+- ⏳ **Task 3 — Commit INSTRUKCJA.md + CLAUDE.md cleanup** (planowany w tej sesji)
+- ⏳ **Task 4 — Push origin/master + regen extension.zip 1.8.0** (Marcin manual): 5 commitów behind, zip do regen
+- ⏳ **Task 5 — Dystrybucja zespołowi OVB** (Marcin manual): zip + INSTRUKCJA + ostrzeżenie "Reload, NIE Remove+Add"
+- ⏳ **Task 6 — 3-5-dniowy production smoke** (Marcin manual): real-life follow-upy, każdy bug → patch 1.8.x
+
+**Definition of Done:**
+- Smoke test 1.8.0 ALL PASS
+- INSTRUKCJA.md commit'owana
+- 5 commitów na origin/master
+- Extension 1.8.0.zip dystrybuowany
+- 3 dni bez nowych issue → 1.8.0 stable
+
+**Risks:**
+- Smoke wykryje nowy bug → kolejny patch przed dystrybucją
+- Backward compat dla messages sprzed 1.7.0 — świadomie out-of-scope (FAQ wyjaśnia, akceptowalne)
+- Marcin nie zechce 3-5 dni czekania → dystrybucja wcześniej, większe ryzyko production hotfixa
 
 ---
 
@@ -465,7 +487,19 @@ popup → background: {action: "followupSkip", slug}
 ## DONE
 
 **Sprint #4 (Follow-upy 3d/7d — zamknięty 2026-05-09 z v1.7.0):**
-- ✅ #25 P0 Follow-upy 3d/7d po pierwszej wiadomości — CRM lifecycle dla outreach. Storage queue items rozszerzone o 7 nowych pól (`followup{1,2}{RemindAt,Draft,SentAt}`, `followupStatus`). Hook idempotent w istniejącym `bulkMarkMessageSent` (background.js:441) — przy oznaczeniu "Wysłałem" automatycznie planuje follow-up #1 (now+3d) i #2 (now+7d). chrome.alarms `followup_check_due` co 6h + `chrome.storage.onChanged` listener dla live badge update. `chrome.action.setBadgeText` z licznikiem due ("99+" cap). Sekcja "Do follow-up'u" w popup'ie nad "Wiadomości po-Connect" — DOM-constructor row per profil z 4 buttonami (Generuj follow-up / Skopiuj i otwórz / Wysłałem / Pomiń) + editable textarea z auto-save debounce 500ms. AI generation reuse'uje istniejący `goal="followup"` (backend ZERO zmian) + augmentowany `sender_context` zawierający poprzednią wiadomość + numer follow-up'u + instrukcję "łagodne nawiązanie, NIE re-pitch". Bump 1.6.0 → 1.7.0. Implementacja przez 3 subagenty paralelnie (A background.js, B popup html/css/js, C test_followup.js NEW 35 asercji) + main loop integration (clipboard fix w popup.js + manifest bump + INSTRUKCJA.md Krok G + harmonogram). Testy: 320/0 (52 backend + 268 extension: 93 scraper + 27 e2e + 14 search_extractor + 45 bulk_connect + 54 message_pipeline + 35 followup). Commit: planowany w tej sesji.
+- ✅ #25 P0 Follow-upy 3d/7d po pierwszej wiadomości — CRM lifecycle dla outreach. Storage queue items rozszerzone o 7 nowych pól (`followup{1,2}{RemindAt,Draft,SentAt}`, `followupStatus`). Hook idempotent w istniejącym `bulkMarkMessageSent` (background.js:441) — przy oznaczeniu "Wysłałem" automatycznie planuje follow-up #1 (now+3d) i #2 (now+7d). chrome.alarms `followup_check_due` co 6h + `chrome.storage.onChanged` listener dla live badge update. `chrome.action.setBadgeText` z licznikiem due ("99+" cap). Sekcja "Do follow-up'u" w popup'ie nad "Wiadomości po-Connect" — DOM-constructor row per profil z 4 buttonami (Generuj follow-up / Skopiuj i otwórz / Wysłałem / Pomiń) + editable textarea z auto-save debounce 500ms. AI generation reuse'uje istniejący `goal="followup"` (backend ZERO zmian) + augmentowany `sender_context` zawierający poprzednią wiadomość + numer follow-up'u + instrukcję "łagodne nawiązanie, NIE re-pitch". Bump 1.6.0 → 1.7.0. Implementacja przez 3 subagenty paralelnie (A background.js, B popup html/css/js, C test_followup.js NEW 35 asercji) + main loop integration (clipboard fix w popup.js + manifest bump + INSTRUKCJA.md Krok G + harmonogram). Testy: 320/0 (52 backend + 268 extension: 93 scraper + 27 e2e + 14 search_extractor + 45 bulk_connect + 54 message_pipeline + 35 followup). Commit: 8cac4c2.
+
+**Sprint #4 (Follow-upy 3d/7d + Manual outreach + Dashboard — zamknięty 2026-05-09 z v1.8.0, 5 commitów):**
+- ✅ #25 P0 Follow-upy 3d/7d po pierwszej wiadomości (v1.7.0). Storage queue items rozszerzone o 7 nowych pól (`followup{1,2}{RemindAt,Draft,SentAt}`, `followupStatus`). Hook idempotent w `bulkMarkMessageSent` (background.js:441) — pierwszy "Wysłałem" planuje #1=now+3d, #2=now+7d. chrome.alarms `followup_check_due` co 6h + `chrome.storage.onChanged` listener dla badge update. `chrome.action.setBadgeText` z licznikiem due ("99+" cap). Sekcja "Do follow-up'u" w popup'ie nad "Wiadomości po-Connect". AI generation reuse istniejący `goal="followup"` z augmented `sender_context` zawierającym treść poprzedniej wiadomości — backend ZERO zmian. Implementacja: 3 subagenty paralelnie (A background.js, B popup html/css/js, C test_followup.js NEW 35 asercji) + main loop integration. Commit: 8cac4c2.
+- ✅ Hotfix bulk-connect hidden na fresh install bez `lastSession` (v1.7.1). Pre-existing bug z #18 1.3.x ujawniony przez Remove + Load Unpacked Marcina — `if (!last) return` w popup.js init blokował dotarcie do `bulkConnect.classList.remove("hidden")`. Fix: przeniesione Bulk Connect detection + loadBulkState + loadFollowupList PRZED return'em. Commit: 0a60723.
+- ✅ #26 Manual outreach tracking (v1.7.2). Nowy button "📨 Kopiuj + śledź" w głównym flow popup'u (Profile → Generuj → ...). `bulkAddManualSent(profile, messageDraft)` tworzy queue item z `status="manual_sent"` (nowy stan, automatycznie excluded z `bulkCheckAccepts` i `bulkConnectTick` przez istniejące filtry status="sent"/"pending"), `messageStatus="sent"`, `messageDraft`, `scrapedProfile` + wywołuje `bulkMarkMessageSent` dla schedulingu follow-upów. Commit: 07d957d.
+- ✅ UX fix dla "Kopiuj + śledź" (v1.7.3). Marcin reportował że toast nie pokazuje się — bo `chrome.tabs.create({active: true})` natychmiast zamykało popup (focus shift). Naprawa próbna 1.7.3: toast + setTimeout 1.6s przed tab.create — okazała się NIESKUTECZNA (popup zamykał się gdziekolwiek między klik a tab.create). Plus persistent track-hint w popup'ie (helper `refreshTrackingHint` + `getTrackingState` w background) — pokazuje "✓ Wiadomość zapisana X temu, follow-up #1: DD.MM..." po reopenie popup'u na profilu już śledzonym. Commit: 64709c4.
+- ✅ #27 Dashboard follow-upów + slug encoding fix (v1.8.0). Trzy bugi naprawione razem:
+  - **Bug A (URL double-encoded):** `extractSlugFromUrl` w popup.js i background.js rozjechały się — popup robił `.toLowerCase()` na encoded slugu (`rados%c5%82aw-...`), background nie (`rados%C5%82aw-...`). Mismatch %C5 vs %c5 powodował że storage lookup zawodził. Plus `chrome.tabs.create({url: ...?recipient=${encodeURIComponent(slug)}})` na encoded slug = double encoding (LinkedIn pokazywał ogólne /messaging zamiast czatu). Fix: oba `extractSlugFromUrl` zwracają `decodeURIComponent(m[1]).toLowerCase()`. URL builders używają `URL.searchParams.set` (encode raz, niezawodne). Migracja `migrateSlugEncoding()` przy SW onInstalled + onStartup — decode'uje legacy encoded slug-i z 1.7.x + dedup duplikatów po normalizacji.
+  - **Bug B (hint nie pokazywał się):** konsekwencja Bug A — slug w storage nie matchował slug'a z popup'a po fresh scrape. Po fix encoding'u — match działa.
+  - **Bug C (popup zamyka się przed toastem):** `chrome.tabs.create({active: false})` — nowa karta otwiera się W TLE, popup zostaje open, user widzi toast i sam przełącza kartę gdy gotowy. Toast text update'owany żeby explicite mówił "...czat LinkedIn otwarty w tle (znajdź go w pasku kart → Ctrl+V → Send)".
+  - **Dashboard NEW:** `extension/dashboard.html` + `dashboard.css` + `dashboard.js` (~580 linii). Full-page widok w nowej karcie z 3 sekcjami: TERAZ (due, pełna funkcjonalność z buttonami) / Zaplanowane (read-only, "za N dni") / Historia (sent + skipped). Dispatcher `bulkListAllFollowups()` w background. Button 📊 w popup header zawsze widoczny. Auto-refresh przez `chrome.storage.onChanged`. Linki do profili LinkedIn target=_blank.
+  - Commit: 56d08d6.
 
 **Sprint #3 (Bulk auto-connect MVP — zamknięty 2026-05-09 z v1.6.0):**
 - ✅ #22 P1 Auto-pagination URL-based + page-aware worker — fix known issue z 1.4.1. `URL` constructor + `searchParams.set("page", N)` zachowuje wszystkie LinkedIn'owe query params (keywords, origin, network=["S"], spellCorrectionEnabled, prioritizeMessage). `bulkAutoFillByUrl(maxProfiles)` orchestrowane w background.js: navigates aktywną kartą `?page=N`, scrapuje, dorzuca z `pageNumber` field. `bulkConnectTick` page-aware: pre-click navigate karty na `item.pageNumber` jeśli różna od current. Po auto-fill karta zostaje na ostatniej stronie; przy klik Start worker loop sam navigates per profil (pierwszy item = page 1). Helpers: `getPageFromUrl`, `setPageInUrl`, `waitForTabComplete`. 16 nowych asercji w test_bulk_connect.js (URL composition + query param preservation + pageNumber default). Bump 1.5.0 → 1.6.0. Commit: planowany w tej sesji.
