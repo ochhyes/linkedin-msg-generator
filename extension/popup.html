@@ -29,35 +29,102 @@
       </button>
     </header>
 
-    <!-- Main View -->
+    <!-- Sticky toast (transient notifications) -->
+    <div id="toast" class="toast hidden" role="status" aria-live="polite">
+      <span id="toast-text" class="toast__text"></span>
+      <button id="toast-close" class="toast__close" aria-label="Zamknij">×</button>
+    </div>
+
+    <!-- Main view -->
     <div id="view-main">
 
-      <!-- Status bar -->
-      <div id="status-bar" class="status-bar status-bar--idle">
-        <span id="status-text">Kliknij "Pobierz profil" aby zacząć</span>
-      </div>
+      <!-- Tabs -->
+      <nav class="tabs" role="tablist">
+        <button id="tab-profile" class="tab tab--active" role="tab" data-tab="profile">Profil</button>
+        <button id="tab-bulk" class="tab" role="tab" data-tab="bulk">Bulk</button>
+        <button id="tab-followup" class="tab" role="tab" data-tab="followup">
+          Follow-upy <span id="tab-followup-badge" class="tab__badge"></span>
+        </button>
+      </nav>
 
-      <!-- Profile preview -->
-      <div id="profile-preview" class="profile-card hidden">
-        <div class="profile-card__name" id="profile-name"></div>
-        <div class="profile-card__headline" id="profile-headline"></div>
-        <div class="profile-card__meta" id="profile-meta"></div>
-      </div>
+      <!-- Tab: Profile -->
+      <div id="tab-content-profile" class="tab-content" data-tab="profile">
 
-      <!-- Bulk Connect (#18) -->
-      <section id="bulk-connect" class="bulk-connect hidden">
-        <div class="bulk-connect__header">
-          <span class="bulk-connect__title">Bulk Connect</span>
-          <button id="btn-refresh-list" class="btn btn--small btn--outline">Odśwież</button>
-        </div>
-        <p id="bulk-info" class="bulk-connect__info"></p>
-        <ul id="profiles-list" class="bulk-connect__list"></ul>
-        <div class="bulk-connect__add-row" id="bulk-add-row" hidden>
-          <button id="btn-add-queue" class="btn btn--small btn--primary">Dodaj zaznaczone</button>
-          <button id="btn-bulk-fill" class="btn btn--small btn--outline" title="Pobiera profile z kolejnych stron LinkedIn'a (klik 'Następne'), aż zapełni kolejkę do dailyCap.">Wypełnij do limitu</button>
+        <!-- Profile preview (z chip wewnątrz) -->
+        <div id="profile-preview" class="profile-card hidden">
+          <div class="profile-card__name" id="profile-name"></div>
+          <div class="profile-card__headline" id="profile-headline"></div>
+          <div class="profile-card__meta" id="profile-meta"></div>
+          <div id="track-chip" class="track-chip hidden"></div>
         </div>
 
-        <div id="queue-section" class="bulk-queue hidden">
+        <!-- Empty state gdy brak profilu -->
+        <div id="profile-empty" class="empty-state">
+          <p>Otwórz profil LinkedIn (linkedin.com/in/...) i kliknij <strong>Pobierz profil</strong> niżej.</p>
+        </div>
+
+        <!-- Konfiguracja generatora (collapsible) -->
+        <details id="config-section" class="config">
+          <summary>Konfiguracja generatora</summary>
+          <div class="controls">
+            <div class="control-row">
+              <label for="select-goal">Cel</label>
+              <select id="select-goal">
+                <option value="recruitment" selected>Rekrutacja</option>
+                <option value="networking">Networking</option>
+                <option value="sales">Sprzedaż</option>
+                <option value="followup">Follow-up</option>
+              </select>
+            </div>
+            <div class="control-row">
+              <label for="select-lang">Język</label>
+              <select id="select-lang">
+                <option value="pl" selected>Polski</option>
+                <option value="en">English</option>
+              </select>
+            </div>
+            <div class="control-row">
+              <label for="input-tone">Ton (opcjonalnie)</label>
+              <input type="text" id="input-tone" placeholder="np. swobodny, luźny...">
+            </div>
+          </div>
+        </details>
+
+        <!-- Result area -->
+        <div id="result-area" class="result hidden">
+          <div class="result__header">
+            <span class="result__label">Wiadomość</span>
+            <span class="result__meta" id="result-meta"></span>
+          </div>
+          <textarea id="result-text" rows="6" readonly></textarea>
+        </div>
+
+        <!-- Error (permanent, dla blocking issues) -->
+        <div id="error-area" class="error hidden">
+          <span id="error-text"></span>
+        </div>
+
+      </div>
+
+      <!-- Tab: Bulk -->
+      <div id="tab-content-bulk" class="tab-content hidden" data-tab="bulk">
+
+        <!-- Bulk Connect -->
+        <section id="bulk-connect" class="bulk-connect">
+          <div class="bulk-connect__header">
+            <span class="bulk-connect__title">Profile na search results</span>
+            <button id="btn-refresh-list" class="btn btn--small btn--outline">Odśwież</button>
+          </div>
+          <p id="bulk-info" class="bulk-connect__info"></p>
+          <ul id="profiles-list" class="bulk-connect__list"></ul>
+          <div class="bulk-connect__add-row" id="bulk-add-row" hidden>
+            <button id="btn-add-queue" class="btn btn--small btn--primary">Dodaj zaznaczone</button>
+            <button id="btn-bulk-fill" class="btn btn--small btn--outline" title="Pobiera profile z kolejnych stron LinkedIn'a, aż zapełni kolejkę do dailyCap.">Wypełnij do limitu</button>
+          </div>
+        </section>
+
+        <!-- Queue (oddzielnie) -->
+        <section id="queue-section" class="bulk-queue hidden">
           <div class="bulk-queue__header">
             <span class="bulk-queue__title">Kolejka</span>
             <span id="bulk-status" class="bulk-queue__status"></span>
@@ -72,19 +139,38 @@
             <button id="btn-bulk-clear" class="btn btn--small btn--outline">Wyczyść kolejkę</button>
           </div>
           <p id="bulk-error" class="bulk-queue__error hidden"></p>
-        </div>
+        </section>
 
-        <!-- Follow-up reminders 3d/7d (#25) -->
-        <section id="followup-section" class="followup-section hidden">
+        <!-- Bulk settings collapsible -->
+        <details id="bulk-settings" class="bulk-settings">
+          <summary>Ustawienia bulk connect</summary>
+          <div class="bulk-settings__grid">
+            <label>Min delay (s)<input type="number" id="set-bulk-delaymin" min="10" max="600"></label>
+            <label>Max delay (s)<input type="number" id="set-bulk-delaymax" min="10" max="600"></label>
+            <label>Daily cap<input type="number" id="set-bulk-cap" min="1" max="200"></label>
+            <label>Godz. start<input type="number" id="set-bulk-hstart" min="0" max="23"></label>
+            <label>Godz. end<input type="number" id="set-bulk-hend" min="0" max="23"></label>
+          </div>
+          <button id="btn-bulk-save-settings" class="btn btn--small btn--outline">Zapisz</button>
+        </details>
+
+      </div>
+
+      <!-- Tab: Follow-upy -->
+      <div id="tab-content-followup" class="tab-content hidden" data-tab="followup">
+
+        <!-- Follow-up reminders -->
+        <section id="followup-section" class="followup-section">
           <div class="followup-section__header">
             <span class="followup-section__title">Do follow-up'u</span>
             <span id="followup-count-badge" class="followup-count-badge"></span>
           </div>
           <p class="followup-section__hint">Profile, do których minęły 3 lub 7 dni od pierwszej wiadomości i czas na follow-up.</p>
           <ul id="followup-list" class="followup-section__list"></ul>
+          <p class="followup-section__link"><a href="#" id="link-dashboard">→ Otwórz pełny dashboard</a></p>
         </section>
 
-        <!-- Post-Connect Messaging Pipeline (#21) -->
+        <!-- Post-Connect Messaging -->
         <section id="message-pipeline" class="message-pipeline hidden">
           <div class="message-pipeline__header">
             <span class="message-pipeline__title">Wiadomości po-Connect</span>
@@ -98,45 +184,10 @@
           <ul id="message-list" class="message-pipeline__list"></ul>
         </section>
 
-        <details id="bulk-settings" class="bulk-settings">
-          <summary>Ustawienia bulk connect</summary>
-          <div class="bulk-settings__grid">
-            <label>Min delay (s)<input type="number" id="set-bulk-delaymin" min="10" max="600"></label>
-            <label>Max delay (s)<input type="number" id="set-bulk-delaymax" min="10" max="600"></label>
-            <label>Daily cap<input type="number" id="set-bulk-cap" min="1" max="200"></label>
-            <label>Godz. start<input type="number" id="set-bulk-hstart" min="0" max="23"></label>
-            <label>Godz. end<input type="number" id="set-bulk-hend" min="0" max="23"></label>
-          </div>
-          <button id="btn-bulk-save-settings" class="btn btn--small btn--outline">Zapisz</button>
-        </details>
-      </section>
-
-      <!-- Controls -->
-      <div class="controls">
-        <div class="control-row">
-          <label for="select-goal">Cel</label>
-          <select id="select-goal">
-            <option value="recruitment" selected>Rekrutacja</option>
-            <option value="networking">Networking</option>
-            <option value="sales">Sprzedaż</option>
-            <option value="followup">Follow-up</option>
-          </select>
-        </div>
-        <div class="control-row">
-          <label for="select-lang">Język</label>
-          <select id="select-lang">
-            <option value="pl" selected>Polski</option>
-            <option value="en">English</option>
-          </select>
-        </div>
-        <div class="control-row">
-          <label for="input-tone">Ton (opcjonalnie)</label>
-          <input type="text" id="input-tone" placeholder="np. swobodny, luźny...">
-        </div>
       </div>
 
-      <!-- Action buttons -->
-      <div class="actions">
+      <!-- Sticky bottom action bar -->
+      <div id="action-bar" class="action-bar">
         <button id="btn-scrape" class="btn btn--secondary">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
             <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/>
@@ -149,37 +200,20 @@
           </svg>
           Generuj wiadomość
         </button>
+        <button id="btn-copy" class="btn btn--small hidden">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          </svg>
+          Kopiuj
+        </button>
+        <button id="btn-copy-track" class="btn btn--primary hidden" title="Kopiuje wiadomość, otwiera czat LinkedIn i planuje follow-up #1 za 3 dni, #2 za 7 dni">
+          📨 Kopiuj + śledź
+        </button>
+        <button id="btn-regenerate" class="btn btn--outline btn--small hidden">
+          ↻ Nowa wersja
+        </button>
       </div>
 
-      <!-- Result -->
-      <div id="result-area" class="result hidden">
-        <div class="result__header">
-          <span class="result__label">Wiadomość</span>
-          <span class="result__meta" id="result-meta"></span>
-        </div>
-        <textarea id="result-text" rows="6" readonly></textarea>
-        <div class="result__actions">
-          <button id="btn-copy" class="btn btn--small">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-            </svg>
-            Kopiuj
-          </button>
-          <button id="btn-copy-track" class="btn btn--small btn--primary" title="Kopiuje wiadomość, otwiera czat LinkedIn i planuje follow-up #1 za 3 dni, #2 za 7 dni">
-            📨 Kopiuj + śledź
-          </button>
-          <button id="btn-regenerate" class="btn btn--small btn--outline">
-            ↻ Nowa wersja
-          </button>
-        </div>
-        <p id="track-hint" class="track-hint hidden"></p>
-        <p id="track-status" class="track-status hidden"></p>
-      </div>
-
-      <!-- Error -->
-      <div id="error-area" class="error hidden">
-        <span id="error-text"></span>
-      </div>
     </div>
 
     <!-- Settings View -->
@@ -207,7 +241,6 @@
         <button id="btn-save-settings" class="btn btn--primary">Zapisz</button>
         <button id="btn-back" class="btn btn--secondary">Wróć</button>
       </div>
-
       <div class="settings__footer">
         <button id="btn-open-options" class="btn-link">Personalizacja stylu AI →</button>
       </div>

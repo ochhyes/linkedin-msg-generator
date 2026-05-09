@@ -24,18 +24,45 @@
   --radius-sm: 6px;
   --font: "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
   --transition: 150ms ease;
+  /* Spacing scale (v1.9.0) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  /* Layout heights (v1.9.0) */
+  --header-height: 49px;
+  --tabs-height: 40px;
+  --action-bar-height: 60px;
+  --toast-height: 0px;
 }
 
 body {
   width: 380px;
   min-height: 200px;
   max-height: 600px;
-  overflow-y: auto;
+  overflow: hidden;
   background: var(--bg);
   color: var(--text);
   font-family: var(--font);
   font-size: 13px;
   line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-height: 600px;
+}
+
+#view-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 .hidden { display: none !important; }
@@ -48,6 +75,7 @@ body {
   padding: 12px 16px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-card);
+  flex-shrink: 0;
 }
 
 .header__brand {
@@ -83,22 +111,127 @@ body {
   background: var(--bg-input);
 }
 
-/* ── Status Bar ─────────────────────────────────────────────────── */
-.status-bar {
-  padding: 8px 16px;
-  font-size: 12px;
+/* ── Tabs (v1.9.0) ──────────────────────────────────────────────── */
+.tabs {
+  display: flex;
   border-bottom: 1px solid var(--border);
-  transition: background var(--transition);
+  background: var(--bg-card);
+  flex-shrink: 0;
 }
 
-.status-bar--idle { color: var(--text-dim); }
-.status-bar--loading { color: var(--warning); background: rgba(251, 191, 36, 0.05); }
-.status-bar--success { color: var(--success); background: var(--success-bg); }
-.status-bar--error { color: var(--error); background: var(--error-bg); }
+.tab {
+  flex: 1;
+  padding: 12px 8px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-dim);
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: color var(--transition), border-color var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.tab:hover { color: var(--text); }
+
+.tab--active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.tab__badge {
+  display: inline-block;
+  background: var(--error);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 10px;
+  min-width: 18px;
+  text-align: center;
+  line-height: 1.4;
+}
+.tab__badge:empty { display: none; }
+
+/* ── Tab content (v1.9.0) ───────────────────────────────────────── */
+.tab-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-3) var(--space-4);
+  min-height: 0;
+}
+
+.tab-content.hidden { display: none; }
+
+/* ── Toast (v1.9.0) — sticky pod headerem ────────────────────────── */
+.toast {
+  position: relative;
+  padding: var(--space-2) var(--space-4);
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.toast.hidden { display: none; }
+
+.toast--success {
+  background: var(--success-bg);
+  border-bottom-color: var(--success);
+  color: var(--success);
+}
+
+.toast--error {
+  background: var(--error-bg);
+  border-bottom-color: var(--error);
+  color: var(--error);
+}
+
+.toast__text {
+  flex: 1;
+  line-height: 1.4;
+}
+
+.toast__close {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 var(--space-2);
+  line-height: 1;
+  opacity: 0.7;
+}
+
+.toast__close:hover { opacity: 1; }
+
+/* ── Action bar (v1.9.0) — sticky bottom ─────────────────────────── */
+.action-bar {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-card);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.action-bar .btn { flex: 1; }
+.action-bar .btn.hidden { display: none; }
 
 /* ── Profile Card ───────────────────────────────────────────────── */
 .profile-card {
-  margin: 12px 16px;
+  margin: 0 0 var(--space-3);
   padding: 12px;
   background: var(--bg-card);
   border: 1px solid var(--border);
@@ -130,6 +263,74 @@ body {
   border-top: 1px solid var(--border);
   line-height: 1.4;
   font-style: italic;
+}
+
+/* ── Track chip (v1.9.0) — w profile-card ────────────────────────── */
+.track-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: var(--space-2);
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 999px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  border: 1px solid rgba(79, 143, 247, 0.3);
+}
+
+.track-chip.hidden { display: none; }
+
+/* ── Empty state (v1.9.0) ────────────────────────────────────────── */
+.empty-state {
+  text-align: center;
+  padding: var(--space-5) var(--space-4);
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.empty-state strong { color: var(--text); font-weight: 600; }
+
+/* ── Config section (v1.9.0) — collapsible ───────────────────────── */
+.config {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.config summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  user-select: none;
+  padding: var(--space-1) 0;
+}
+
+.config summary:hover { color: var(--text); }
+
+.config[open] summary { color: var(--accent); margin-bottom: var(--space-2); }
+
+.config .controls { padding: 0; }
+
+/* ── Followup section link (v1.9.0) ──────────────────────────────── */
+.followup-section__link {
+  margin-top: var(--space-3);
+  text-align: center;
+  font-size: 12px;
+}
+
+.followup-section__link a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.followup-section__link a:hover {
+  text-decoration: underline;
 }
 
 .settings__footer {
@@ -269,7 +470,7 @@ body {
 
 /* ── Result ─────────────────────────────────────────────────────── */
 .result {
-  margin: 0 16px 12px;
+  margin: var(--space-3) 0 0;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -366,7 +567,7 @@ body {
 
 /* ── Bulk Connect (#18) ─────────────────────────────────────────── */
 .bulk-connect {
-  margin: 12px 16px;
+  margin: 0 0 var(--space-3);
   padding: 10px 12px;
   background: #1a1d24;
   border: 1px solid var(--border);
@@ -549,14 +750,6 @@ body {
 .message-pipeline__status--error { color: #f85149; }
 .message-pipeline__list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; max-height: 360px; overflow-y: auto; }
 
-/* Manual outreach tracking status (#26 v1.7.2) — toast po klik Kopiuj+śledź */
-.track-status { font-size: 11px; padding: 6px 8px; border-radius: var(--radius); margin: 6px 0 0; line-height: 1.4; }
-.track-status--success { color: #3fb950; background: rgba(63, 185, 80, 0.08); }
-.track-status--error { color: #f85149; background: rgba(248, 81, 73, 0.08); }
-
-/* Persistent tracking hint — pokazuje gdy reopenujesz popup na profilu już śledzonym */
-.track-hint { font-size: 11px; padding: 6px 8px; border-radius: var(--radius); margin: 6px 0 0; line-height: 1.4; color: #4f8ff7; background: rgba(79, 143, 247, 0.08); }
-
 .message-item { background: var(--bg-elevated, #1a1d24); border-radius: var(--radius); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
 .message-item--skipped, .message-item--sent { opacity: 0.6; }
 .message-item__head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
@@ -572,7 +765,7 @@ body {
 
 /* ── Follow-up reminders 3d/7d (#25 v1.7.0) ──────────────────────── */
 
-.followup-section { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.followup-section { margin: 0 0 var(--space-3); padding-top: 12px; border-top: 1px solid var(--border); }
 .followup-section__header { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
 .followup-section__title { font-size: 13px; font-weight: 600; color: var(--text); }
 .followup-section__hint { font-size: 11px; color: var(--text-dim); margin: 4px 0 8px; }

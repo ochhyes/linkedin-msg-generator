@@ -10,8 +10,6 @@
 
   // ── DOM refs ─────────────────────────────────────────────────────
   const $ = (sel) => document.querySelector(sel);
-  const statusBar = $("#status-bar");
-  const statusText = $("#status-text");
   const profilePreview = $("#profile-preview");
   const profileName = $("#profile-name");
   const profileHeadline = $("#profile-headline");
@@ -26,8 +24,6 @@
   const resultMeta = $("#result-meta");
   const btnCopy = $("#btn-copy");
   const btnCopyTrack = $("#btn-copy-track");
-  const trackStatus = $("#track-status");
-  const trackHint = $("#track-hint");
   const btnRegenerate = $("#btn-regenerate");
   const errorArea = $("#error-area");
   const errorText = $("#error-text");
@@ -111,17 +107,121 @@
     }
   }
 
+  // ── Tabs (#1.9.0) ────────────────────────────────────────────────
+
+  const tabButtons = {
+    profile: $("#tab-profile"),
+    bulk: $("#tab-bulk"),
+    followup: $("#tab-followup"),
+  };
+  const tabContents = {
+    profile: $("#tab-content-profile"),
+    bulk: $("#tab-content-bulk"),
+    followup: $("#tab-content-followup"),
+  };
+  const actionBar = $("#action-bar");
+  const tabFollowupBadge = $("#tab-followup-badge");
+
+  let _activeTab = "profile";
+
+  function switchTab(name) {
+    if (!tabContents[name]) return;
+    _activeTab = name;
+    for (const k of Object.keys(tabButtons)) {
+      tabButtons[k]?.classList.toggle("tab--active", k === name);
+      tabContents[k]?.classList.toggle("hidden", k !== name);
+    }
+    // Action bar tylko w Profile tab.
+    if (actionBar) actionBar.classList.toggle("hidden", name !== "profile");
+    renderActionBar();
+    // Bulk tab requires profiles list refresh — load on switch.
+    if (name === "bulk") {
+      loadProfilesList();
+    }
+  }
+
+  // Auto-select tab po URL active tab.
+  async function autoSelectTab() {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const url = tab?.url || "";
+      if (/\/search\/results\/people\//i.test(url)) {
+        switchTab("bulk");
+      } else if (/\/in\//i.test(url)) {
+        switchTab("profile");
+      } else {
+        switchTab("profile");
+      }
+    } catch (_) {
+      switchTab("profile");
+    }
+  }
+
+  // Click handlers.
+  for (const [name, btn] of Object.entries(tabButtons)) {
+    if (btn) btn.addEventListener("click", () => switchTab(name));
+  }
+
+  // Follow-up badge update — wczytaj liczbę due i pokaż w tab badge.
+  async function updateFollowupTabBadge() {
+    if (!tabFollowupBadge) return;
+    try {
+      const resp = await chrome.runtime.sendMessage({ action: "followupListDue" });
+      const count = resp?.items?.length || 0;
+      tabFollowupBadge.textContent = count > 0 ? (count > 99 ? "99+" : String(count)) : "";
+    } catch (_) {
+      tabFollowupBadge.textContent = "";
+    }
+  }
+
+  // ── Toast (#1.9.0) — replace status-bar + track-status ────────────
+
+  const toastEl = $("#toast");
+  const toastText = $("#toast-text");
+  const toastClose = $("#toast-close");
+  let _toastTimer = null;
+
+  function showToast(text, kind = "success", ttl = 5000) {
+    if (!toastEl || !toastText) return;
+    if (_toastTimer) {
+      clearTimeout(_toastTimer);
+      _toastTimer = null;
+    }
+    toastText.textContent = text;
+    toastEl.classList.remove("hidden", "toast--success", "toast--error");
+    toastEl.classList.add(kind === "error" ? "toast--error" : "toast--success");
+    if (ttl > 0) {
+      _toastTimer = setTimeout(hideToast, ttl);
+    }
+  }
+
+  function hideToast() {
+    if (!toastEl) return;
+    toastEl.classList.add("hidden");
+    if (_toastTimer) {
+      clearTimeout(_toastTimer);
+      _toastTimer = null;
+    }
+  }
+
+  if (toastClose) toastClose.addEventListener("click", hideToast);
+
   // ── UI Helpers ───────────────────────────────────────────────────
 
+  // Legacy shim (#1.9.0): status bar removed, replaced by toast. Function
+  // remains jako shim żeby istniejące wywołania nie crashowały. Nowe
+  // wywołania powinny używać showToast bezpośrednio. "loading" / "idle"
+  // mapują na no-op (button spinner wystarcza jako loading indicator).
   function setStatus(text, type = "idle") {
-    statusText.textContent = text;
-    statusBar.className = `status-bar status-bar--${type}`;
+    if (type === "success") showToast(text, "success");
+    else if (type === "error") showToast(text, "error", 0);
+    // loading / idle / default — no-op
   }
 
   function showError(msg) {
     errorText.textContent = msg;
     errorArea.classList.remove("hidden");
-    setStatus("Błąd", "error");
+    showToast(msg, "error", 0);
   }
 
   function hideError() {
@@ -172,6 +272,8 @@
     }
 
     profilePreview.classList.remove("hidden");
+    updateProfileEmptyState();
+    renderActionBar();
   }
 
   function showResult(message, timeSec) {
@@ -179,12 +281,13 @@
     resultText.readOnly = false; // Let user edit
     resultMeta.textContent = `${timeSec}s · ${message.length} znaków`;
     resultArea.classList.remove("hidden");
+    renderActionBar();
   }
 
   /**
    * Reset profile-related UI and state to a "no profile loaded" baseline.
    * Hides profile preview + result area, clears in-memory caches, disables
-   * Generuj. Does NOT touch errorArea, statusBar, or user preferences
+   * Generuj. Does NOT touch errorArea, toast, or user preferences
    * (goal/lang/tone) — those are deliberately preserved across resets.
    *
    * Used in two places (#3): (1) failed scrape, (2) popup init when the
@@ -197,6 +300,103 @@
     currentMessage = null;
     currentGenTime = null;
     btnGenerate.disabled = true;
+    updateProfileEmptyState();
+    renderActionBar();
+  }
+
+  // ── Profile empty state (#1.9.0) ─────────────────────────────────
+
+  const profileEmpty = $("#profile-empty");
+
+  function updateProfileEmptyState() {
+    if (!profileEmpty) return;
+    // Hidden gdy profile-preview NIE jest hidden (czyli profil jest).
+    const previewVisible =
+      profilePreview && !profilePreview.classList.contains("hidden");
+    profileEmpty.classList.toggle("hidden", previewVisible);
+  }
+
+  // ── Track chip (#1.9.0) — replace refreshTrackingHint ────────────
+
+  const trackChip = $("#track-chip");
+
+  async function renderTrackChip(profile) {
+    if (!trackChip) return;
+    if (!profile || !profile.profile_url) {
+      trackChip.classList.add("hidden");
+      return;
+    }
+    const slug = extractSlugFromUrl(profile.profile_url);
+    if (!slug) {
+      trackChip.classList.add("hidden");
+      return;
+    }
+    try {
+      const resp = await chrome.runtime.sendMessage({ action: "getTrackingState", slug });
+      const item = resp?.item;
+      if (!item || !item.messageSentAt) {
+        trackChip.classList.add("hidden");
+        return;
+      }
+      const ago = formatRelativeTime(item.messageSentAt);
+      const fu1 = item.followup1SentAt
+        ? "✓ wysłany"
+        : item.followup1RemindAt
+        ? formatAbsoluteDate(item.followup1RemindAt)
+        : "—";
+      const skipped = item.followupStatus === "skipped";
+      if (skipped) {
+        trackChip.textContent = `✓ Wiadomość zapisana ${ago} · follow-upy pominięte`;
+      } else {
+        trackChip.textContent = `✓ Śledzone · ${ago} · FU#1: ${fu1}`;
+      }
+      trackChip.classList.remove("hidden");
+    } catch (err) {
+      console.warn("[LinkedIn MSG] renderTrackChip failed:", err);
+      trackChip.classList.add("hidden");
+    }
+  }
+
+  // ── Action bar (#1.9.0) — context-dependent buttons in sticky bottom ─
+
+  function renderActionBar() {
+    if (!actionBar || _activeTab !== "profile") {
+      if (actionBar) actionBar.classList.add("hidden");
+      return;
+    }
+    actionBar.classList.remove("hidden");
+
+    const hasProfile = !!currentProfile;
+    const hasMessage = !!currentMessage;
+
+    // Profile mode states:
+    // 1. No profile → [Pobierz profil] (full width)
+    // 2. Profile, no message → [Pobierz ↻] secondary + [Generuj] primary
+    // 3. Profile + message → [Kopiuj+śledź] primary + [Skopiuj] outline + [↻] icon
+    const show = (id, visible) => {
+      const el = document.getElementById(id);
+      if (el) el.classList.toggle("hidden", !visible);
+    };
+
+    if (!hasProfile) {
+      show("btn-scrape", true);
+      show("btn-generate", false);
+      show("btn-copy", false);
+      show("btn-copy-track", false);
+      show("btn-regenerate", false);
+    } else if (!hasMessage) {
+      show("btn-scrape", true);
+      show("btn-generate", true);
+      show("btn-copy", false);
+      show("btn-copy-track", false);
+      show("btn-regenerate", false);
+    } else {
+      show("btn-scrape", false);
+      show("btn-generate", false);
+      show("btn-copy", true);
+      show("btn-copy-track", true);
+      show("btn-regenerate", true);
+    }
   }
 
   /**
@@ -296,20 +496,20 @@
   btnScrape.addEventListener("click", async () => {
     hideError();
     setLoading(btnScrape, true);
-    setStatus("Pobieram dane profilu...", "loading");
 
     try {
       currentProfile = await scrapeCurrentTab();
       showProfile(currentProfile);
-      setStatus("Profil pobrany", "success");
+      showToast("Profil pobrany", "success");
       btnGenerate.disabled = false;
       // Reset previous message — new profile = new context
       currentMessage = null;
       currentGenTime = null;
       resultArea.classList.add("hidden");
+      renderActionBar();
       saveSession();
-      // Pokaż hint jeśli profil już śledzony (manual_sent w queue).
-      refreshTrackingHint(currentProfile);
+      // Chip jeśli profil już śledzony (manual_sent w queue).
+      renderTrackChip(currentProfile);
     } catch (err) {
       showError(err.message);
       // Hide stale profile/result, clear in-memory state. Without this the
@@ -327,7 +527,6 @@
 
     hideError();
     setLoading(btnGenerate, true);
-    setStatus("Generuję wiadomość...", "loading");
 
     try {
       const result = await sendToBackground({
@@ -343,7 +542,8 @@
       currentMessage = result.message;
       currentGenTime = result.generation_time_s;
       showResult(result.message, result.generation_time_s);
-      setStatus("Wiadomość gotowa", "success");
+      showToast("Wiadomość gotowa", "success");
+      renderActionBar();
       saveSession();
     } catch (err) {
       showError(err.message);
@@ -378,12 +578,12 @@
     btnCopyTrack.addEventListener("click", async () => {
       const message = resultText.value;
       if (!currentProfile || !message) {
-        showTrackStatus("Brak profilu lub wiadomości", "error");
+        showToast("Brak profilu lub wiadomości", "error", 0);
         return;
       }
       const slug = extractSlugFromUrl(currentProfile.profile_url);
       if (!slug) {
-        showTrackStatus("Nie mogę zidentyfikować profilu (brak slug w URL)", "error");
+        showToast("Nie mogę zidentyfikować profilu (brak slug w URL)", "error", 0);
         return;
       }
 
@@ -403,12 +603,12 @@
         });
 
         if (!resp?.success) {
-          showTrackStatus(`Błąd: ${resp?.error || "unknown"}`, "error");
+          showToast(`Błąd: ${resp?.error || "unknown"}`, "error", 0);
           return;
         }
 
         // Open w TLE (active: false) żeby popup ZOSTAŁ open — user widzi
-        // toast i hint, sam przełączy się do nowej karty gdy będzie gotów.
+        // toast i chip, sam przełączy się do nowej karty gdy będzie gotów.
         // Wcześniej (1.7.2/1.7.3) active: true zamykało popup natychmiast,
         // toast nigdy nie był widoczny mimo delay'u (Marcin reportował).
         const composeUrl = new URL("https://www.linkedin.com/messaging/compose/");
@@ -418,12 +618,12 @@
         // Toast format: "✓ Zapisano/Zaktualizowano. Wiadomość w schowku..."
         // — informuje że tracking + clipboard + nowa karta zrobione.
         const action = resp.action === "updated" ? "Zaktualizowano" : "Zapisano";
-        showTrackStatus(
+        showToast(
           `✓ ${action}. Wiadomość w schowku, czat LinkedIn otwarty w tle (znajdź go w pasku kart → Ctrl+V → Send). Follow-up #1 za 3 dni, #2 za 7.`,
           "success"
         );
         btnCopyTrack.textContent = "✓ Zapisano";
-        refreshTrackingHint(currentProfile);
+        renderTrackChip(currentProfile);
 
         // Re-enable button po 2s — jakby user chciał ponowić (np. zmienił
         // generację) — drugi klik update'uje messageDraft, idempotent hook
@@ -434,67 +634,11 @@
         }, 2000);
       } catch (err) {
         console.warn("[LinkedIn MSG] copy+track failed:", err);
-        showTrackStatus(`Błąd: ${(err && err.message) || err}`, "error");
+        showToast(`Błąd: ${(err && err.message) || err}`, "error", 0);
         btnCopyTrack.disabled = false;
         btnCopyTrack.textContent = origText;
       }
     });
-  }
-
-  function showTrackStatus(text, kind) {
-    if (!trackStatus) return;
-    trackStatus.textContent = text;
-    trackStatus.classList.remove("hidden", "track-status--success", "track-status--error");
-    trackStatus.classList.add(kind === "error" ? "track-status--error" : "track-status--success");
-    // Auto-hide after 8s for success, sticky dla error.
-    if (kind !== "error") {
-      setTimeout(() => trackStatus.classList.add("hidden"), 8000);
-    }
-  }
-
-  // Persistent hint — gdy popup re-opens na profilu który JUŻ został śledzony.
-  // Czyta queue item przez background; pokazuje "✓ Wiadomość zapisana X temu,
-  // follow-up #1: <data>". Pomaga user'owi zrozumieć że tracking nadal działa
-  // (bo popup zamyka się przy chrome.tabs.create i toast znika).
-  async function refreshTrackingHint(profile) {
-    if (!trackHint) return;
-    if (!profile || !profile.profile_url) {
-      trackHint.classList.add("hidden");
-      return;
-    }
-    const slug = extractSlugFromUrl(profile.profile_url);
-    if (!slug) {
-      trackHint.classList.add("hidden");
-      return;
-    }
-    try {
-      const resp = await chrome.runtime.sendMessage({ action: "getTrackingState", slug });
-      const item = resp?.item;
-      if (!item || !item.messageSentAt) {
-        trackHint.classList.add("hidden");
-        return;
-      }
-      const ago = formatRelativeTime(item.messageSentAt);
-      const fu1 = item.followup1SentAt
-        ? "✓ wysłany"
-        : item.followup1RemindAt
-        ? formatAbsoluteDate(item.followup1RemindAt)
-        : "—";
-      const fu2 = item.followup2SentAt
-        ? "✓ wysłany"
-        : item.followup2RemindAt
-        ? formatAbsoluteDate(item.followup2RemindAt)
-        : "—";
-      const skipped = item.followupStatus === "skipped";
-      const text = skipped
-        ? `✓ Wiadomość zapisana ${ago}. Follow-upy pominięte.`
-        : `✓ Wiadomość zapisana ${ago}. Follow-up #1: ${fu1} · #2: ${fu2}`;
-      trackHint.textContent = text;
-      trackHint.classList.remove("hidden");
-    } catch (err) {
-      console.warn("[LinkedIn MSG] refreshTrackingHint failed:", err);
-      trackHint.classList.add("hidden");
-    }
   }
 
   function formatRelativeTime(timestamp) {
@@ -549,6 +693,15 @@
     });
   }
 
+  // Link "→ Otwórz pełny dashboard" w sekcji follow-upów (#1.9.0).
+  const linkDashboard = $("#link-dashboard");
+  if (linkDashboard) {
+    linkDashboard.addEventListener("click", (e) => {
+      e.preventDefault();
+      chrome.tabs.create({ url: chrome.runtime.getURL("dashboard.html"), active: true });
+    });
+  }
+
   btnSaveSettings.addEventListener("click", async () => {
     const settings = {
       apiUrl: setApiUrl.value.trim(),
@@ -561,7 +714,7 @@
       await sendToBackground({ action: "saveSettings", settings });
       viewSettings.classList.add("hidden");
       viewMain.classList.remove("hidden");
-      setStatus("Ustawienia zapisane", "success");
+      showToast("Ustawienia zapisane", "success");
     } catch (err) {
       showError("Nie udało się zapisać ustawień: " + err.message);
     }
@@ -740,9 +893,13 @@
     const hasQueue = state.queue && state.queue.length > 0;
     queueSection.classList.toggle("hidden", !hasQueue);
     // Add row (Dodaj zaznaczone + Wypełnij do limitu) widoczny tylko gdy
-    // bulk-connect section (lista profili) jest unhide'owana.
+    // Bulk tab jest aktywny (tab-content-bulk widoczny). Po refactorze 1.9.0
+    // bulk-connect nie ma już własnego .hidden — visibility kontroluje tab.
     if (bulkAddRow) {
-      bulkAddRow.hidden = !document.querySelector("#bulk-connect:not(.hidden)");
+      const bulkTabActive = !document.querySelector(
+        "#tab-content-bulk.hidden"
+      );
+      bulkAddRow.hidden = !bulkTabActive;
     }
 
     // Status badge: ● Aktywne / Pauza / Oczekuje.
@@ -908,6 +1065,8 @@
       else stopCountdownTimer();
       // Follow-up section (#25) — refresh listy due po każdej zmianie queue.
       loadFollowupList();
+      // Tab badge (#1.9.0) — count due follow-upów może się zmienić.
+      updateFollowupTabBadge();
     }
   });
 
@@ -1241,6 +1400,11 @@
    */
   function renderFollowupList(items) {
     if (!followupSection || !followupList) return;
+    // Tab badge (#1.9.0) — sync z liczbą due follow-upów.
+    if (tabFollowupBadge) {
+      const count = Array.isArray(items) ? items.length : 0;
+      tabFollowupBadge.textContent = count > 0 ? (count > 99 ? "99+" : String(count)) : "";
+    }
     if (!Array.isArray(items) || items.length === 0) {
       followupSection.classList.add("hidden");
       followupList.innerHTML = "";
@@ -1599,18 +1763,17 @@
       // Fresh install, defaults are fine
     }
 
-    // Bulk Connect detection (#18) — reveal section niezależnie od session
-    // restore'u. Bez tego fresh install bez `lastSession` w storage zostawia
-    // bulk-connect hidden, mimo że user jest na search results page.
-    //
-    // Bug #32 fix (v1.8.2): SDUI search results pages czasem nie wstrzykują
-    // content scriptu mimo manifest matches (LinkedIn'owy React + history
-    // manipulation). Gdy sendMessage rzuca "Receiving end does not exist",
-    // wymuszamy injection programmatic (chrome.scripting.executeScript) i
-    // retry. Ten sam pattern jest w scrapeCurrentTab(~236).
+    // Tab autoselect (#1.9.0) — switch to bulk on /search/results/people/,
+    // profile elsewhere. Replaces 1.8.2 bulk-connect manual unhide flow:
+    // tab-content-bulk handles visibility, no need to unhide bulk-connect.
+    await autoSelectTab();
+
+    // Bulk Connect detection fallback (#18 + #32 v1.8.2): jeśli URL nie
+    // dopasowuje się do regexu (np. SDUI nadpisał historią), pytamy content
+    // script o page type. Force-injectujemy gdy listener nie istnieje.
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (tab?.id && tab.url && /linkedin\.com/.test(tab.url)) {
+      if (tab?.id && tab.url && /linkedin\.com/.test(tab.url) && _activeTab !== "bulk") {
         let detection = null;
         try {
           detection = await chrome.tabs.sendMessage(tab.id, { action: "detectPageType" });
@@ -1630,8 +1793,7 @@
           }
         }
         if (detection?.type === "search_results") {
-          bulkConnect.classList.remove("hidden");
-          loadProfilesList();
+          switchTab("bulk");
           if (btnAddQueue) btnAddQueue.hidden = false;
         }
       }
@@ -1643,6 +1805,9 @@
     // jest persistowane i może mieć aktywne items niezależnie od profilu.
     loadBulkState();
     loadFollowupList();
+    updateFollowupTabBadge();
+    renderActionBar();
+    updateProfileEmptyState();
 
     // Then overlay last session state (takes precedence dla profile preview)
     const last = await loadSession();
@@ -1673,15 +1838,18 @@
         currentProfile = last.profile;
         showProfile(currentProfile);
         btnGenerate.disabled = false;
-        setStatus("Ostatnio pobrany profil", "success");
+        // Brak toastu na restore — nie chcemy fire'ować notyfikacji za każdym
+        // razem gdy popup się otwiera na tym samym profilu. User widzi profil
+        // w preview, to wystarczy. Toast tylko po Pobierz/Generuj.
 
         if (last.message) {
           currentMessage = last.message;
           currentGenTime = last.genTime;
           showResult(last.message, last.genTime || 0);
         }
-        // Hint po reopenie popup'u — czy ten slug był już śledzony?
-        refreshTrackingHint(currentProfile);
+        renderActionBar();
+        // Chip po reopenie popup'u — czy ten slug był już śledzony?
+        renderTrackChip(currentProfile);
       }
       // Mismatch — leave profilePreview / resultArea hidden by default.
       // currentProfile stays null, btnGenerate stays disabled. User clicks
