@@ -226,3 +226,12 @@ class ScrapeFailureReport(BaseModel):
         max_length=1000,
         description="Komunikat błędu pokazany użytkownikowi w popup'ie.",
     )
+    event_type: str = Field(
+        default="scrape_failure",
+        max_length=64,
+        description=(
+            "Typ zdarzenia: 'scrape_failure' (domyślne, telemetria #5) "
+            "lub 'bulk_connect_click_failure' (telemetria #19 Faza 1B). "
+            "Default backward-compat z klientami < 1.4.0."
+        ),
+    )

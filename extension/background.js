@@ -148,6 +148,7 @@ async function reportScrapeFailure(payload) {
       browser_ua: (navigator.userAgent || "unknown").slice(0, 500),
       diagnostics: payload.diagnostics || {},
       error_message: payload.error_message || null,
+      event_type: payload.event_type || "scrape_failure",
     };
 
     const resp = await fetch(apiUrl, {
@@ -170,6 +171,226 @@ async function reportScrapeFailure(payload) {
     console.warn("[LinkedIn MSG] Telemetry send failed:", err && err.message);
   }
 }
+
+// ── Bulk Connect: queue + worker loop + alarms keep-alive (#19) ──────
+//
+// Worker loop jest setTimeout-based (NIE setInterval — MV3 SW kill zostawi
+// orphan timer). chrome.alarms.create({periodInMinutes: 0.4}) trzyma SW
+// przy życiu podczas long queue'a (~37 min dla 25 zaproszeń × 90s avg).
+
+const BULK_DEFAULTS = {
+  queue: [],
+  config: {
+    delayMin: 45,
+    delayMax: 120,
+    dailyCap: 25,
+    workingHoursStart: 9,
+    workingHoursEnd: 18,
+  },
+  stats: { sentToday: 0, sentTotal: 0, lastResetDate: "" },
+  active: false,
+  errorMsg: null,
+  // Wall-clock timestamp (ms) kiedy zaplanowany kolejny tick. Popup używa
+  // do live countdown timer'a "Następne za X". null gdy active=false.
+  nextTickAt: null,
+  // Wall-clock timestamp (ms) ostatnio wykonanego tick'a — dla diagnostyki
+  // w popup'ie (np. "Ostatnia akcja 30s temu").
+  lastTickAt: null,
+};
+
+const BULK_ALARM_NAME = "bulkKeepAlive";
+const BULK_TICK_TIMEOUT_MS = 30000; // czekamy max 30s na content.js response
+
+async function getBulkState() {
+  const data = await chrome.storage.local.get("bulkConnect");
+  return { ...BULK_DEFAULTS, ...(data.bulkConnect || {}) };
+}
+
+async function setBulkState(patch) {
+  const current = await getBulkState();
+  const next = { ...current, ...patch };
+  await chrome.storage.local.set({ bulkConnect: next });
+  return next;
+}
+
+function todayDateString() {
+  return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+}
+
+async function resetDailyCounterIfNeeded() {
+  const state = await getBulkState();
+  const today = todayDateString();
+  if (state.stats.lastResetDate !== today) {
+    await setBulkState({
+      stats: { ...state.stats, sentToday: 0, lastResetDate: today },
+    });
+  }
+}
+
+async function addToQueue(profiles) {
+  if (!Array.isArray(profiles) || profiles.length === 0) {
+    const state = await getBulkState();
+    return { success: true, queueSize: state.queue.length };
+  }
+  const state = await getBulkState();
+  const existingSlugs = new Set(state.queue.map((q) => q.slug));
+  const fresh = profiles
+    .filter((p) => p && p.slug && !existingSlugs.has(p.slug))
+    .map((p) => ({
+      slug: p.slug,
+      name: p.name || "",
+      headline: p.headline || "",
+      status: "pending",
+      timestamp: null,
+      error: null,
+    }));
+  const next = await setBulkState({ queue: [...state.queue, ...fresh] });
+  return { success: true, queueSize: next.queue.length, added: fresh.length };
+}
+
+async function updateQueueItem(slug, patch) {
+  const state = await getBulkState();
+  const queue = state.queue.map((q) =>
+    q.slug === slug ? { ...q, ...patch } : q
+  );
+  return await setBulkState({ queue });
+}
+
+async function findLinkedInSearchTab() {
+  // chrome.tabs.query nie supportuje wildcard *.linkedin.com/search w pojedynczym
+  // wzorcu w MV3 — szukamy obu domen.
+  const tabs = await chrome.tabs.query({
+    url: ["*://*.linkedin.com/search/results/people/*"],
+  });
+  return tabs[0] || null;
+}
+
+function inWorkingHours(config) {
+  const hour = new Date().getHours();
+  return hour >= config.workingHoursStart && hour < config.workingHoursEnd;
+}
+
+async function bulkConnectTick() {
+  await resetDailyCounterIfNeeded();
+  const state = await getBulkState();
+
+  if (!state.active) return; // user kliknął Stop lub guards wyłączyły.
+
+  // Guards.
+  if (!inWorkingHours(state.config)) {
+    await setBulkState({
+      active: false,
+      errorMsg: `Outside working hours (${state.config.workingHoursStart}:00–${state.config.workingHoursEnd}:00). Resume manually.`,
+    });
+    await chrome.alarms.clear(BULK_ALARM_NAME);
+    await setBulkState({ nextTickAt: null });
+    return;
+  }
+
+  if (state.stats.sentToday >= state.config.dailyCap) {
+    await setBulkState({
+      active: false,
+      errorMsg: `Daily cap reached (${state.config.dailyCap}). Resets at midnight.`,
+    });
+    await chrome.alarms.clear(BULK_ALARM_NAME);
+    await setBulkState({ nextTickAt: null });
+    return;
+  }
+
+  const pending = state.queue.find((q) => q.status === "pending");
+  if (!pending) {
+    await setBulkState({ active: false, errorMsg: null });
+    await chrome.alarms.clear(BULK_ALARM_NAME);
+    await setBulkState({ nextTickAt: null });
+    return;
+  }
+
+  const tab = await findLinkedInSearchTab();
+  if (!tab) {
+    await setBulkState({
+      active: false,
+      errorMsg: "Lost LinkedIn search tab. Reopen /search/results/people/ and resume.",
+    });
+    await chrome.alarms.clear(BULK_ALARM_NAME);
+    await setBulkState({ nextTickAt: null });
+    return;
+  }
+
+  // Send click message do content script. Timeout 30s żeby zawsze
+  // przejść do następnego ticku (LinkedIn może mieć slow DOM).
+  let response;
+  try {
+    response = await Promise.race([
+      chrome.tabs.sendMessage(tab.id, {
+        action: "bulkConnectClick",
+        slug: pending.slug,
+      }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("bulk_tick_timeout")), BULK_TICK_TIMEOUT_MS)
+      ),
+    ]);
+  } catch (err) {
+    response = { success: false, error: err && err.message || "send_failed" };
+  }
+
+  // Update queue item.
+  const now = Date.now();
+  let newStatus, errorVal = null;
+  if (response.success) {
+    newStatus = "sent";
+  } else if (response.skip) {
+    newStatus = "skipped";
+    errorVal = response.skip;
+  } else {
+    newStatus = "failed";
+    errorVal = response.error || "unknown_error";
+  }
+  await updateQueueItem(pending.slug, { status: newStatus, timestamp: now, error: errorVal });
+
+  // Update stats.
+  const after = await getBulkState();
+  const newStats = { ...after.stats };
+  if (newStatus === "sent") {
+    newStats.sentToday += 1;
+    newStats.sentTotal += 1;
+  }
+  await setBulkState({ stats: newStats });
+
+  // Schedule next tick — random delay między delayMin a delayMax.
+  const delay =
+    (after.config.delayMin +
+      Math.random() * (after.config.delayMax - after.config.delayMin)) *
+    1000;
+  await setBulkState({ lastTickAt: now, nextTickAt: Date.now() + delay });
+  setTimeout(bulkConnectTick, delay);
+}
+
+async function startBulkConnect() {
+  // Pierwszy tick za 100ms — popup widzi countdown od razu.
+  await setBulkState({
+    active: true,
+    errorMsg: null,
+    nextTickAt: Date.now() + 100,
+    lastTickAt: null,
+  });
+  // Keep-alive alarm (24s period < 30s SW idle limit).
+  await chrome.alarms.create(BULK_ALARM_NAME, { periodInMinutes: 0.4 });
+  bulkConnectTick();
+  return { success: true };
+}
+
+async function stopBulkConnect() {
+  await setBulkState({ active: false, errorMsg: null, nextTickAt: null });
+  await chrome.alarms.clear(BULK_ALARM_NAME);
+  return { success: true };
+}
+
+// Dummy listener — sam fakt registracji + alarm trzyma MV3 SW przy życiu.
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === BULK_ALARM_NAME) {
+    // No-op. Alarm tu tylko żeby SW był wakeup'owany co 24s.
+  }
+});
 
 // ── API Calls ────────────────────────────────────────────────────────
 
@@ -247,6 +468,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           reportScrapeFailure(message.payload || {});
           return { success: true };
 
+        case "bulkConnectStart":
+          return await startBulkConnect();
+
+        case "bulkConnectStop":
+          return await stopBulkConnect();
+
+        case "bulkConnectAddToQueue":
+          return await addToQueue(message.profiles || []);
+
+        case "getBulkState":
+          return await getBulkState();
+
         default:
           throw new Error(`Nieznana akcja: ${message.action}`);
       }
@@ -264,6 +497,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 chrome.runtime.onInstalled.addListener(async (details) => {
   if (details.reason === "install") {
     await saveSettings(DEFAULT_SETTINGS);
+    await chrome.storage.local.set({ bulkConnect: BULK_DEFAULTS });
     console.log("[LinkedIn MSG] Extension installed, defaults saved.");
   }
 });

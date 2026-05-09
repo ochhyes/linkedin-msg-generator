@@ -1249,6 +1249,206 @@
     return results;
   }
 
+  // ── Bulk Connect: auto-click w Shadow DOM modal'u (#19, Faza 1B) ──
+  //
+  // LinkedIn intercepts klik na <a href="/preload/search-custom-invite/...">
+  // i otwiera modal w Shadow DOM (interop-outlet host). Bez Shadow DOM nav
+  // document.querySelector('[role=dialog]') łapie LinkedIn'owe reklamowe
+  // dialogs (Opcje reklamy, Nie chcę widzieć) — false positives.
+
+  async function waitFor(check, timeout, pollMs) {
+    const interval = pollMs || 100;
+    const start = Date.now();
+    while (Date.now() - start < timeout) {
+      const result = check();
+      if (result) return result;
+      await new Promise((r) => setTimeout(r, interval));
+    }
+    return null;
+  }
+
+  async function waitForShadow(check, timeout) {
+    return await waitFor(check, timeout, 100);
+  }
+
+  function findLiBySlug(slug) {
+    if (!slug) return null;
+    // Najpierw szukaj poprzez attribute selector (najprecyzyjniejsze).
+    const linkSel = `a[href*="/in/${slug}/"]`;
+    const link = document.querySelector(linkSel);
+    if (!link) return null;
+    // Wspinanie się do najbliższego <li> lub [role="listitem"].
+    return link.closest('[role="listitem"], li');
+  }
+
+  /**
+   * Auto-click "Wyślij bez notatki" dla profilu po slug'u.
+   * Resp shape: {success: true} | {success: false, error} | {skip: '...'}.
+   *
+   * Krytyczne (per dump 2026-05-09):
+   *  - Connect link to <a> (NIE button), klik intercepted przez LinkedIn.
+   *  - Modal w Shadow DOM via interop-outlet host.
+   *  - Send button = .artdeco-modal__actionbar button.artdeco-button--primary
+   *    (positional + variant koloru; i18n-free).
+   *  - Pending verify = a[aria-label^="W toku"] (PL) | "Pending" (EN).
+   *  - Klik na "W toku" = withdraw flow → MUSI być filtrowany przed click'iem!
+   */
+  async function bulkConnectClick(slug) {
+    const li = findLiBySlug(slug);
+    if (!li) return { success: false, error: "li_not_found" };
+
+    // Skip jeśli już pending — klik na "W toku" otwiera withdraw flow.
+    const pendingLink = li.querySelector(
+      'a[aria-label^="W toku"], a[aria-label^="Pending"]'
+    );
+    if (pendingLink) return { skip: "already_pending" };
+
+    // Connect link (PL aria-label, EN fallback).
+    const connectLink =
+      li.querySelector(
+        'a[href*="search-custom-invite"][aria-label^="Zaproś użytkownika"]'
+      ) ||
+      li.querySelector(
+        'a[href*="search-custom-invite"][aria-label^="Invite "]'
+      ) ||
+      li.querySelector('a[href*="search-custom-invite"]');
+    if (!connectLink) return { skip: "not_connectable" };
+
+    connectLink.click();
+
+    // Symulacja czytania modal'a (300-800ms).
+    await new Promise((r) => setTimeout(r, 300 + Math.random() * 500));
+
+    // Wait for shadow DOM modal.
+    const dlg = await waitForShadow(() => {
+      const host = document.querySelector(
+        '[data-testid="interop-shadowdom"]'
+      );
+      return (
+        (host && host.shadowRoot && host.shadowRoot.querySelector(".send-invite")) ||
+        null
+      );
+    }, 3000);
+
+    if (!dlg) {
+      // Modal-less flow fall-through — niektóre profile LinkedIn skipuje modal,
+      // wysyła od razu. Verify pending badge się pojawia.
+      const ok = await waitFor(
+        () =>
+          li.querySelector(
+            'a[aria-label^="W toku"], a[aria-label^="Pending"]'
+          ),
+        3000
+      );
+      if (ok) return { success: true, modalLess: true };
+      return {
+        success: false,
+        error: "modal_did_not_appear_and_no_pending",
+      };
+    }
+
+    // Send without note button — primary by-color (i18n-free) + aria-label fallback.
+    const sendBtn =
+      dlg.querySelector(
+        ".artdeco-modal__actionbar button.artdeco-button--primary"
+      ) ||
+      dlg.querySelector('button[aria-label="Wyślij bez notatki"]') ||
+      dlg.querySelector('button[aria-label="Send without a note"]');
+    if (!sendBtn) return { success: false, error: "send_button_missing" };
+
+    sendBtn.click();
+
+    // Symulacja czytania potwierdzenia (1-2s).
+    await new Promise((r) => setTimeout(r, 1000 + Math.random() * 1000));
+
+    // Verify pending badge pojawiła się w głównym DOM (modal zamknięty,
+    // <li> profilu re-renderowany z "W toku" link zamiast "Połącz").
+    const pending = await waitFor(
+      () =>
+        li.querySelector(
+          'a[aria-label^="W toku"], a[aria-label^="Pending"]'
+        ),
+      3000
+    );
+    if (!pending) return { success: false, error: "pending_not_visible" };
+
+    return { success: true };
+  }
+
+  // ── Auto-pagination: scrape multiple search result pages (#19/v1.4.1) ──
+  //
+  // LinkedIn pokazuje 10 profili na stronę. User chce wypełnić queue do
+  // dailyCap (np. 25) — wymaga klik "Następne" + scrape kolejnych stron.
+  // Zwraca cumulative listę Connect-able profili (skipuje Pending/Message),
+  // dedup po slug. Stop'uje gdy max osiągnięty, brak next button, lub
+  // page load timeout. Wszystko w jednym round-trip do popup'u.
+
+  async function bulkAutoExtract(maxProfiles, maxPages) {
+    const collected = [];
+    const seenSlugs = new Set();
+    const cap = Math.max(1, maxProfiles || 25);
+    const pages = Math.max(1, Math.min(maxPages || 10, 20));
+
+    function pickConnectable(profiles) {
+      let added = 0;
+      for (const p of profiles) {
+        if (!p || !p.slug || seenSlugs.has(p.slug)) continue;
+        if (p.buttonState !== "Connect") continue; // skip Pending/Message/Follow/Unknown
+        seenSlugs.add(p.slug);
+        collected.push(p);
+        added++;
+        if (collected.length >= cap) return { full: true, added };
+      }
+      return { full: false, added };
+    }
+
+    for (let page = 0; page < pages; page++) {
+      // Defensive: poczekaj aż lista się załaduje (zwłaszcza po page change).
+      await waitFor(() => extractSearchResults().length > 0, 5000);
+
+      const pageProfiles = extractSearchResults();
+      const before = pickConnectable(pageProfiles);
+      if (before.full) {
+        return { success: true, profiles: collected, stopped: "max_reached", page };
+      }
+
+      // Find next page button. LinkedIn SDUI: aria-label="Następne" (PL) /
+      // "Next" (EN). Jest też ".artdeco-pagination__button--next" jako fallback.
+      const nextBtn =
+        document.querySelector('button[aria-label="Następne"]') ||
+        document.querySelector('button[aria-label="Next"]') ||
+        document.querySelector(".artdeco-pagination__button--next") ||
+        null;
+      if (!nextBtn || nextBtn.disabled || nextBtn.getAttribute("aria-disabled") === "true") {
+        return { success: true, profiles: collected, stopped: "no_more_pages", page };
+      }
+
+      // Snapshot first slug ZANIM klikniemy — wait condition.
+      const beforeFirstSlug = pageProfiles[0]?.slug || null;
+
+      try {
+        nextBtn.click();
+      } catch (_) {
+        return { success: true, profiles: collected, stopped: "next_click_failed", page };
+      }
+
+      // Wait for SPA navigation: pierwszy profil w extractSearchResults() ma inny slug.
+      const changed = await waitFor(() => {
+        const cur = extractSearchResults();
+        return cur.length > 0 && cur[0]?.slug && cur[0].slug !== beforeFirstSlug;
+      }, 8000);
+
+      if (!changed) {
+        return { success: true, profiles: collected, stopped: "page_load_timeout", page };
+      }
+
+      // DOM settle pause — LinkedIn dorenderowuje przyciski po lazy load.
+      await new Promise((r) => setTimeout(r, 500));
+    }
+
+    return { success: true, profiles: collected, stopped: "max_pages_reached" };
+  }
+
   // ── Message Listener ─────────────────────────────────────────────
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -1306,6 +1506,62 @@
           error: err && err.message ? err.message : String(err),
         });
       }
+    } else if (message.action === "bulkConnectClick") {
+      // ASYNC response — bulkConnectClick używa setTimeout/await na DOM/Shadow.
+      bulkConnectClick(message.slug)
+        .then((result) => {
+          if (!isContextValid()) return;
+          // Telemetria w fail path — fire-and-forget, nie blokuje response'a.
+          if (!result.success && !result.skip) {
+            try {
+              chrome.runtime
+                .sendMessage({
+                  action: "reportScrapeFailure",
+                  payload: {
+                    url: window.location.href,
+                    diagnostics: {
+                      slug: message.slug,
+                      error_code: result.error,
+                    },
+                    error_message:
+                      result.error || "unknown_bulk_connect_failure",
+                    event_type: "bulk_connect_click_failure",
+                  },
+                })
+                .catch(() => {
+                  /* swallow — telemetria nie może blokować */
+                });
+            } catch (_) {
+              /* same */
+            }
+          }
+          sendResponse(result);
+        })
+        .catch((err) => {
+          if (!isContextValid()) return;
+          sendResponse({
+            success: false,
+            error: `bulk_connect_exception: ${(err && err.message) || err}`,
+          });
+        });
+      return true; // Keep channel open for async response.
+    } else if (message.action === "bulkAutoExtract") {
+      // ASYNC — chodzi przez kilka stron LinkedIn search results, klika
+      // "Następne", scrapuje, dedup'uje. Patrz bulkAutoExtract().
+      bulkAutoExtract(message.maxProfiles, message.maxPages)
+        .then((result) => {
+          if (!isContextValid()) return;
+          sendResponse(result);
+        })
+        .catch((err) => {
+          if (!isContextValid()) return;
+          sendResponse({
+            success: false,
+            profiles: [],
+            error: `bulk_auto_extract_exception: ${(err && err.message) || err}`,
+          });
+        });
+      return true; // Keep channel open for async response.
     }
   });
 

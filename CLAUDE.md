@@ -98,6 +98,7 @@ Commity zmieniające tylko `backend/`, `deploy/` lub dokumentację — NIE bumpu
 - Modal "Połącz" w Shadow DOM (zdiagnozowany 2026-05-09 dla PM #19): klik na `<a href="/preload/search-custom-invite/?vanityName=...">` w search results NIE nawiguje — LinkedIn intercepts i otwiera modal client-side w shadow root pojedynczego hosta `<div id="interop-outlet" data-testid="interop-shadowdom">`. Modal ma `role="dialog"`, `aria-labelledby="send-invite-modal"`, klasa `.send-invite`. **`document.querySelector('[role="dialog"]')` z głównego DOM łapie INNE LinkedIn'owe dialogs** (Opcje reklamy, Nie chcę widzieć) — false positives. Wymagane przejście przez `host.shadowRoot.querySelector('.send-invite')`. Buttony w modal'u: X close (`button[data-test-modal-close-btn]`), "Dodaj notatkę" (`button.artdeco-button--secondary`), "Wyślij bez notatki" (`button.artdeco-button--primary`). Hashed klasy na liście wyników są **identyczne dla "Połącz" i "W toku"** — stan zakodowany wyłącznie w `aria-label` + `text` + `href`. Pełny dump w `extension/tests/fixtures/preload_modal_dump.md` (input dla PM #19).
 - Pending invite (search results) wykrywany przez `a[aria-label^="W toku"]` (PL) lub `a[aria-label^="Pending"]` (EN), NIE przez tekst "Oczekuje" (poprzedni 1.3.0 fixował to w 1.3.1 — polski LinkedIn używa "W toku"). Klik na taki link otwiera withdraw flow, NIE invite modal — bulk connect MUSI filter'ować takie profile inaczej zamiast zapraszać będzie wycofywać.
 - Mutual connections w SDUI search results (zdiagnozowane 2026-05-09 w 1.3.1 patch): LinkedIn dla niektórych 2nd-degree profili dorzuca `<p>` typu "Michał Stanioch i 5 innych wspólnych kontaktów" przed `<p>` z imieniem. Naiwny extractor (`paragraphs[0]` jako name) bierze tą frazę zamiast nazwiska osoby. Plus link `<a href="/in/<slug>/">` mutual connection siedzi w obrębie tego samego `<li>` co główny profil — pierwszy link w `<li>` może prowadzić do mutuala, nie do osoby z wiersza. Mitygacja w `extractSearchResults`: filter `/wspóln[ay]+\s+kontakt|innych\s+wspólnych|mutual connection/i` przed wyborem name + slug match po imieniu (`a.innerText.includes(name)`).
+- Auto-pagination "Wypełnij do limitu" w 1.4.1 zatrzymuje się po pierwszej stronie (zaobserwowane 2026-05-09 w smoke teście Marcina). Selektory next button (`button[aria-label="Następne"]`, `button[aria-label="Next"]`, `.artdeco-pagination__button--next`) nie matchują w live LinkedIn'ie SDUI. Workaround do czasu fixu (#22): user manualnie scrolluje przez kolejne strony LinkedIn'a, na każdej klika "Dodaj zaznaczone" — queue rośnie kumulatywnie (dedup po slug). Fix wymaga DOM dump'u paginacji od Marcina + update selektorów.
 
 ---
 
@@ -222,10 +223,10 @@ Nie łącz dwóch ról w jednej sesji bez zgody usera. Loop ma sens dlatego że 
 # CURRENT STATE
 
 ```
-Sprint:        #3 — Bulk auto-connect MVP Faza 1 (Faza 1A done, PM #19 next)
-Phase:         PM (#19 rewrite pod Shadow DOM dump)
-Active task:   #19 P0 — przepisanie planu Faza 1B z modal dump'em (preload_modal_dump.md)
-Last commit:   c9394ba — feat: bulk connect detection + lista profili (#18, v1.3.1)
+Sprint:        #3 — Bulk auto-connect MVP Faza 1+2 (Faza 1A+1B done, czeka PM next task)
+Phase:         PM (next task — #21 AI nota / #22 pagination fix / nowy task)
+Active task:   (none — wybór z BACKLOG'u lub nowy task)
+Last commit:   8b71b25 — chore: workflow loop cleanup po #18 + modal dump dla PM #19
 Updated:       2026-05-09
 ```
 
@@ -332,152 +333,11 @@ Faza 2 (#21 AI nota) i Faza 3 (#22 pagination + selection) w BACKLOG'u jako plac
 >
 > **Środowisko pracy:** Sprint #3 lecimy w VS Code z Claude Code (subagent layer dla parallel work na DOM extraction / state management / testów). Cowork zostaje dla ad-hoc decyzji.
 
-### #18 ✅ DONE — Bulk auto-connect Faza 1A. Detection + lista profili. Commit c9394ba. Pełny opis w sekcji DONE poniżej.
-
-(Pełny plan PM zachowany w git history — commit c9394ba zawiera ~120 linii planu w CLAUDE.md przed cleanup'em. Dla cienia historycznego — dla refrencji w PM #19 jeśli potrzeba przypomnieć decyzje produktowe.)
-
----
-
-### #19 P0 — Bulk auto-connect Faza 1B: Auto-click + Throttling + State + Cap
-
-> **⚠ PLAN OUTDATED — wymaga PM rewrite (next session).** Plan poniżej zakłada modal w głównym DOM (`<dialog>` z `button[aria-label="Send without a note"]`). Recon 2026-05-09 (po commitcie c9394ba) wykazał **modal w Shadow DOM** (`#interop-outlet` host) — `document.querySelector('[role="dialog"]')` z głównego DOM łapie LinkedIn'owe reklamowe dialogs (false positives). Plus na liście wyników wszystkie akcje to `<a>` (NIE `<button>`), Pending state ma `aria-label^="W toku"` (PL) — klik na "W toku" to withdraw flow, nie invite. Pełny dump: `extension/tests/fixtures/preload_modal_dump.md` (15 KB, sanitized HTML + selektory + skeleton kodu). Następna PM session przepisze ten plan pod Shadow DOM z dumpem jako referencja.
-
-**Kontekst.** Faza 1A daje listę i UX. Faza 1B dorzuca **auto-click "Wyślij bez notatki"** z throttlingiem, daily cap, stop button, persisted state w `chrome.storage.local`. To moment w którym extension funkcjonalnie zastępuje Octopusa Starter dla zespołu OVB. Po Fazie 1B Marcin może wyłączyć subscription Octopusa.
-
-**Decyzje PM:**
-
-1. **Click przez content.js w aktywnej karcie LinkedIn.** Background.js orchestruje queue + timing + state, ale fizyczny click jest w content.js (DOM access). Background wysyła message `case "bulkConnectClick"` z `{slug}`, content znajduje `<li>` po slug'u, klika Connect, czeka na modal "Send without a note", klika, weryfikuje sukces.
-2. **Modal handling.** LinkedIn po click "Connect" pokazuje modal `<dialog>` z dwoma opcjami: "Add a note" / "Send without a note". Content script klika "Send without a note" po random delay 300-800ms (symulacja człowieka). Czasami LinkedIn pomija modal (np. dla 2nd degree z kompletnym profilem) — wtedy click wystarczył, modal nie ma. Detection: `await waitForElement('button[aria-label*="Send without"]', 2000)` — jeśli timeout 2s → assume modal-less flow, verify `button[aria-label*="Pending"]` w DOM.
-3. **Throttling configurable, defaults konserwatywne.** Settings w popup (collapse "Bulk Connect Settings"):
-   - `delayMin: 45` (sec)
-   - `delayMax: 120` (sec)
-   - `dailyCap: 25` (invitations/day)
-   - `workingHoursStart: 9` (hour 0-23)
-   - `workingHoursEnd: 18`
-   Random delay między akcjami: `Math.random() * (delayMax - delayMin) + delayMin` (uniform — Gaussian to over-engineering w MVP).
-4. **State w `chrome.storage.local`.** Schema:
-   ```
-   {
-     bulkConnect: {
-       queue: [{slug, name, headline, status: "pending"|"sent"|"failed"|"skipped", timestamp?, error?}],
-       config: {delayMin, delayMax, dailyCap, workingHoursStart, workingHoursEnd},
-       stats: {sentToday: 0, sentTotal: 0, lastResetDate: "2026-05-09"},
-       active: false  // true gdy worker loop chodzi
-     }
-   }
-   ```
-   Reset `sentToday` przy pierwszym tick'u nowego dnia (`new Date().toDateString() !== lastResetDate`).
-5. **Worker loop w background.js.** `setTimeout`-based (NIE `setInterval` — MV3 SW kill zostawi orphan timer). Loop:
-   - Read state.
-   - Jeśli `active === false` → exit.
-   - Jeśli current hour poza working hours → `active = false`, popup widzi "Outside working hours, paused".
-   - Jeśli `sentToday >= dailyCap` → `active = false`, popup widzi "Daily cap reached".
-   - Find first pending w queue. Jeśli brak → `active = false`, popup widzi "Queue empty".
-   - Send `case "bulkConnectClick"` do content script.
-   - Wait dla response (success/failure).
-   - Update queue item status. Update sentToday + sentTotal.
-   - Wait random delay (delayMin–delayMax).
-   - Repeat.
-6. **MV3 SW idle keep-alive.** Long queue (25 zaproszeń × 90s avg = ~37 min) przekroczy 30s SW idle limit. Standard MV3 trick: `chrome.alarms.create("bulkKeepAlive", { periodInMinutes: 0.4 })` (24s) + dummy listener `chrome.alarms.onAlarm.addListener(() => {})`. Trzyma SW przy życiu. Disable alarm gdy `active === false`.
-7. **Stop button w popup.** Widoczny gdy `active === true`. Click → message `case "bulkConnectStop"` → background flag `active = false`. Worker loop kończy przy najbliższym tick'u (≤5s).
-8. **Resume po popup reopen.** Popup po otwarciu czyta state. Jeśli `queue` ma pending items i `active === false` → pokazuje "Queue paused. Resume?" button. Click → `active = true`, worker loop start.
-9. **Skip "Follow" buttons.** Jeśli card pokazuje Follow zamiast Connect (3rd+ premium-only profile), status = "skipped", error = "follow_only_profile". Nie próbuje click.
-10. **Telemetria fail'i auto-click.** Reuse forwarder z #5 (`reportScrapeFailure` w background.js). Każdy fail click'a (button nie znaleziony, modal nie pojawił się i Pending nie pokazany, content script error) → telemetry POST z extended payload `event_type: "bulk_connect_click_failure"`. Wymaga drobnego rozszerzenia `ScrapeFailureReport` w `backend/models.py` o pole `event_type: str` (default `"scrape_failure"` dla backward compat).
-11. **Bump 1.3.0 → 1.4.0** (minor — nowa funkcja, backward-compat).
-
-**Plan implementacji (Dev — kroki):**
-
-1. **Backend: rozszerz `ScrapeFailureReport`.** W `backend/models.py` dodaj pole `event_type: str = "scrape_failure"` (Pydantic v2, default value). Update test'a `test_diagnostics.py` o case z `event_type="bulk_connect_click_failure"` → 204 + linia w JSONL z polem.
-2. **Popup HTML — settings + queue + controls.** W sekcji bulk-connect dodaj:
-   - Checkbox per profil w liście (default checked dla Connect-able).
-   - Button `<button id="btnAddToQueue">Add selected to queue</button>`.
-   - Sekcja `<div id="queueState">` z listą queue items (slug, name, status badge).
-   - `<button id="btnStartQueue">Start</button>`, `<button id="btnStopQueue" hidden>Stop</button>`.
-   - Progress bar `<div id="bulkProgress">{sent}/{total} (today: {sentToday}/{dailyCap})</div>`.
-   - Collapse `<details id="bulkSettings">` z 5 inputami (number) + button `Save settings`.
-3. **Popup JS — handlers.**
-   - `addToQueue(profiles)` → push do `chrome.storage.local.bulkConnect.queue` (concat, dedupe po slug).
-   - `startQueue()` → `chrome.runtime.sendMessage({action: "bulkConnectStart"})`.
-   - `stopQueue()` → `chrome.runtime.sendMessage({action: "bulkConnectStop"})`.
-   - `renderQueue()` → renderuje queue z statusami (pending → szary, sent → zielony, failed → czerwony, skipped → żółty). Wywołane na każdy `chrome.storage.onChanged` event dla `bulkConnect`.
-   - `loadSettings()`, `saveSettings()` → input ↔ `bulkConnect.config`.
-4. **Background JS — worker loop.**
-   - `case "bulkConnectStart"` → set `active=true`, set keep-alive alarm, start `bulkConnectTick()`.
-   - `case "bulkConnectStop"` → set `active=false`, clear alarm.
-   - `bulkConnectTick()` async:
-     - Read state.
-     - Guards (active, working hours, daily cap, empty queue).
-     - Pick first pending → query active LinkedIn tab (`chrome.tabs.query({url: "*://*.linkedin.com/search/*"})`). Jeśli brak → `active=false`, error "No LinkedIn search tab open".
-     - Send `case "bulkConnectClick"` z `{slug}` do content script tej karty.
-     - Await response (timeout 30s).
-     - Update queue item, stats. Persist.
-     - Calculate delay. `setTimeout(bulkConnectTick, delay)`.
-   - `case "bulkKeepAlive"` alarm listener → no-op (just keeps SW alive).
-5. **Content JS — `case "bulkConnectClick"`.**
-   - `queryLi = document.querySelector('li:has(a[href*="/in/${slug}/"])')` (CSS `:has` — supported Chrome 105+, OK).
-   - Jeśli brak → return `{success: false, error: "li_not_found"}`.
-   - `connectButton = queryLi.querySelector('button[aria-label*="Invite" i], button[aria-label*="Connect" i]')`.
-   - Jeśli brak → `{success: false, error: "connect_button_not_found"}`.
-   - Sprawdź czy nie Follow: jeśli `aria-label` zawiera "Follow" → `{success: false, error: "follow_only_profile", skipped: true}`.
-   - `connectButton.click()`.
-   - Wait `await new Promise(r => setTimeout(r, 300 + Math.random()*500))` (300-800ms losowo).
-   - `sendButton = await waitForElement('button[aria-label*="Send without" i]', 2000)`. Jeśli brak (modal-less flow) → skip click.
-   - Jeśli `sendButton` → `sendButton.click()`.
-   - Wait `await new Promise(r => setTimeout(r, 1000 + Math.random()*1000))`.
-   - Verify success: `queryLi.querySelector('button[aria-label*="Pending" i]')` istnieje → `{success: true}`. Else → `{success: false, error: "pending_not_visible_after_send"}`.
-6. **Content JS — telemetria w fail path.** Każdy `{success: false}` z `bulkConnectClick` → `chrome.runtime.sendMessage({action: "reportScrapeFailure", payload: {url, diagnostics: {slug, error}, error_message: error, event_type: "bulk_connect_click_failure"}}).catch(() => {})`.
-7. **Background JS — `extractSlugFromUrl` reuse.** Już istnieje od #5 (kopia z popup'u). Brak duplikacji.
-8. **Bump `extension/manifest.json`:** `1.3.0 → 1.4.0`.
-9. **Tests fixture'owe.** `extension/tests/test_bulk_connect.js` — mockuje DOM (load fixture'a search_results_basic.html z #18), simuluje click handler bezpośrednio (bez full background flow), asercje na poprawność selektora `<li>` po slug'u + button detection.
-
-**Acceptance criteria:**
-
-- **AC1.** Otwórz search results, popup → wybierz 3 profile (checkbox) → "Add to queue" → queue pokazuje 3 pending items z imionami i slug'ami.
-- **AC2.** Click "Start" → po ≤2 min (delay 45-120s) pierwszy profil ma status "sent" w queue. Verify w LinkedIn UI: badge "Pending" widoczny przy tym profilu w search results po refresh.
-- **AC3.** Drugi profil zaczyna się w `delayMin`-`delayMax` po pierwszym (verify timing przez `timestamp` field w queue items: `t2 - t1` mieści się w 45-120s ±5s margin).
-- **AC4.** Click "Stop" w trakcie → loop kończy w ≤5s. Pozostałe pending items zostają pending. Active tab w LinkedIn nie ma click'a po Stop.
-- **AC5.** Hit daily cap (testowo: ustaw `dailyCap=2`, dodaj 5 do queue, start) → po 2nd sent, queue paused, popup pokazuje "Daily cap reached. Resets at midnight."
-- **AC6.** Outside working hours (testowo: ustaw `workingHoursStart=9, workingHoursEnd=10`, system time 23:00) → click Start → popup pokazuje "Outside working hours (9:00-10:00). Resume manually." Queue paused.
-- **AC7.** Stop, zamknij popup, otwórz ponownie → queue widoczne z poprzednimi statusami (state persisted w `chrome.storage.local`). Resume button widoczny.
-- **AC8.** Fail click (testowo: w konsoli karty `document.querySelectorAll('button[aria-label*="Invite"]').forEach(b => b.remove())` przed start) → status="failed" z error w queue. Telemetry POST do `/api/diagnostics/scrape-failure` z `event_type="bulk_connect_click_failure"` (verify w `tail -f /var/log/linkedin-msg/failures.jsonl` na VPS lub lokalnie).
-- **AC9.** SW idle resilience: dodaj 25 do queue, start, czekaj 5 min bez interakcji, sprawdź że queue dalej leci (keep-alive alarm trzyma SW).
-- **AC10.** Resume po SW kill (testowo: w `chrome://extensions/` kliknij "service worker" link, w DevTools background `chrome.runtime.reload()` przerywa SW) → popup po reopen pokazuje "Queue paused. Resume?" — click resume kontynuuje od pierwszego pending.
-- **AC11.** Brak regresji — scrape Joanny działa, sprint #2 fixture'y zielone, `node tests/test_scraper.js` 93/0 PASS, `node tests/test_search_extractor.js` z #18 dalej zielony.
-- **AC12.** Manual smoke produkcyjny przez Marcina: 5 zaproszeń wysłanych z search results na keyword'zie testowym (np. "ovb doradca finansowy"). Wszystkie odebrane przez LinkedIn (badge Pending widoczny po refresh). Telemetria nie zgłasza fail'i. Octopus subscription gotowy do wyłączenia po 7 dniach smoke z aktualnego konta.
-
-**Pliki dotknięte:**
-- `backend/models.py` (pole `event_type` w `ScrapeFailureReport`)
-- `backend/tests/test_diagnostics.py` (case dla `event_type` field)
-- `extension/popup.html` (settings, queue, controls)
-- `extension/popup.js` (handlers, render, settings)
-- `extension/popup.css` (styling progress bar + queue items)
-- `extension/background.js` (worker loop, alarms, message handlers)
-- `extension/content.js` (`bulkConnectClick` handler + telemetria w fail path)
-- `extension/manifest.json` (bump 1.4.0, dodać `"alarms"` do permissions)
-- `extension/tests/test_bulk_connect.js` (NOWY)
-
-**Ryzyka:**
-
-- **LinkedIn modal "Send without a note" zmienia label po locale.** "Send without a note" (en), "Wyślij bez notatki" (pl), różne wersje. Selektor musi obsłużyć kilka wariantów: `aria-label*="Send without" i, aria-label*="bez notatki" i`. Ewentualnie fallback po pozycji ("primary" button w modal'u).
-- **Modal-less flow.** Czasami LinkedIn wysyła Connect bez modal'a (np. 2nd degree z kompletnym profilem zaproszony przez Premium użytkownika). Detection: timeout 2s na modal → assume sent → verify Pending. Jeśli Pending też nie ma → fail.
-- **MV3 SW kill mid-loop.** Mimo keep-alive alarm'u, Chrome może w skrajnych przypadkach zabić SW (np. user wyłączy/włączy laptop). Resume mechanism (AC10) handluje to. Akceptujemy utratę tick'a, nie utratę queue.
-- **Race condition: user scroll'uje search results, lista DOM się zmienia, stary slug już nie ma `<li>`.** Click failuje, status=failed. Decyzja MVP: NIE retry, NIE skip-and-continue z notification. Marcin patrzy na queue, widzi failed, ręcznie usuwa lub robi refresh listy.
-- **LinkedIn anti-bot pattern detection.** Mimo konserwatywnych defaults, jeśli zespół OVB użyje agresywnych settings (delay 30s, cap 50/day), możliwy soft-ban. Settings są po stronie usera — Marcin edukuje zespół że defaults są OK i nie kombinują.
-- **Queue dedup.** User może 2× kliknąć "Add to queue" dla tego samego profilu. Implementacja: dedup po `slug` w `addToQueue`.
-- **Tab close mid-queue.** User zamyka kartę LinkedIn podczas queue → background nie znajdzie tab'a → `active=false`, error w popup'ie "Lost LinkedIn tab. Reopen and resume."
-
-**Anti-patterns:**
-
-- NIE wysyłać noty w Fazie 1B. Faza 2 będzie integrowała AI z generatorem.
-- NIE używać `setInterval` w worker loop — MV3 SW kill. `setTimeout` w loop'ie + keep-alive alarm.
-- NIE robić click w nowej karcie ani w background tabie — wszystko w aktywnej karcie LinkedIn search results page user'a.
-- NIE robić retry na fail click bez user'owego ack. Retry policy = manual.
-- NIE robić queue persistence po stronie backendu. Lokalnie w `chrome.storage.local` (decyzja produktowa).
-- NIE łączyć z Faza 2 (AI nota) w tym sprincie. Osobna minor bump i osobny task #21.
+### #19 ✅ DONE — Bulk auto-connect Faza 1B. Auto-click Shadow DOM modal + worker loop + UX countdown + auto-pagination (z known issue #22 nadal nieidealne). Commit: planowany. Pełny opis w sekcji DONE.
 
 ## IN PROGRESS
 
-(none — #18 zamknięty commitem c9394ba, czeka PM #19 rewrite pod Shadow DOM)
+(none — #19 zamknięty, czeka PM next task w Sprint #3)
 
 ## READY FOR TEST
 
@@ -486,6 +346,7 @@ Faza 2 (#21 AI nota) i Faza 3 (#22 pagination + selection) w BACKLOG'u jako plac
 ## DONE
 
 **Sprint #3 (Bulk auto-connect MVP, w toku):**
+- ✅ #19 P0 Bulk auto-connect Faza 1B — auto-click "Wyślij bez notatki" w Shadow DOM modal'u (`interop-outlet.shadowRoot.querySelector('.send-invite')`) + queue persisted w `chrome.storage.local` + worker loop setTimeout-based + alarms keep-alive (24s) + throttling (delayMin=45/delayMax=120/dailyCap=25/workingHours=9-18) + skip-pending filter (klik na "W toku" otwiera withdraw flow) + telemetria fail'i (`event_type="bulk_connect_click_failure"`). UX: status badge ● Aktywne (pulse) / Pauza / Bezczynne + live countdown "Następne dodanie za 1m 23s · ostatnia akcja Xs temu". Auto-pagination (button "Wypełnij do limitu") z known issue: zatrzymuje się po pierwszej stronie zamiast iść przez page 2/3/4 (selektor next button nie matchuje SDUI w live LinkedIn'ie — fix wcielony w #22 BACKLOG). Bump 1.3.1 → 1.4.0 → 1.4.1. Testy 175/0 (12 backend + 163 extension). Implementacja przez 5 subagentów paralelnie (A backend, B content.js, C background.js, D popup, E test_bulk_connect.js). Commit: planowany w tej sesji.
 - ✅ #18 P0 Bulk auto-connect Faza 1A — detection search results / profile / other + sekcja "Bulk Connect" w popup'ie z listą profili (`extractSearchResults`). Paragraph-first parsing z filtrem mutual connections (regex `wspóln[ay]+\s+kontakt|innych\s+wspólnych|mutual connection`). Slug match po imieniu (`a.innerText.includes(name)`) — wcześniej dla profili z mutual connections name pokazywał "Michał Stanioch i 5 innych wspólnych kontaktów" + click otwierał profil mutuala. Pending detection przez `a[aria-label^="W toku"]` (PL) / `^="Pending"` (EN) — wcześniej szukane "Oczekuje" w textContent (polski LinkedIn używa "W toku"). Manifest matches rozszerzone o `/search/results/people/*`. Bump 1.2.1 → 1.3.0 → 1.3.1 (1.3.0 miał dwa bugi wykryte w smoke teście Marcina, 1.3.1 patch fix w tym samym commitcie). Testy 134/0 (test_scraper 93, test_e2e 27, test_search_extractor 14). Commit: c9394ba.
 
 **Sprint #2 (Observability + safety net, 2026-05-05 → 2026-05-09):**
@@ -537,24 +398,28 @@ Faza 2 (#21 AI nota) i Faza 3 (#22 pagination + selection) w BACKLOG'u jako plac
 
 ---
 
-### #22 P2 — Bulk auto-connect Faza 3: Pagination + Selection UI (post Faza 2)
+### #22 P1 — Bulk auto-connect Faza 3: Auto-pagination FIX + Selection UI (post Faza 2)
 
-**Kontekst.** Faza 1+2 obsługują tylko widoczne profile na bieżącej stronie search results. Faza 3 dodaje:
-- **Auto-pagination** przez search results (`?page=2,3,4...` lub click "Next" w UI LinkedIn).
-- **Master-select checkboxy** w popup: "Select all", "Unselect all", "Select 2nd degree only", "Unselect Pending".
-- **Per-page settings:** "Stop after N pages", "Max queue size".
-- **Cross-page dedup** (slug w queue z poprzednich stron nie dodaje się 2×).
+**Status (2026-05-09):** Częściowo wcielony w 1.4.1 jako button "Wypełnij do limitu" + `bulkAutoExtract` w content.js. **Known issue:** zatrzymuje się po pierwszej stronie (10 profili). Selektory next button (`button[aria-label="Następne"]`, `button[aria-label="Next"]`, `.artdeco-pagination__button--next`) nie matchują w live LinkedIn'ie SDUI — wymaga DOM dump'u paginacji + nowych selektorów.
 
-**Decyzje wstępne:**
-- Pagination przez click "Next" button w UI LinkedIn (NIE direct URL nav) — bardziej "human". User może przerwać w każdej chwili.
-- Random delay 5-15s między pages (pagination wolniejsza niż Connect click, mniej podejrzana).
+**TODO dla #22 fix:**
+1. **DOM recon paginacji.** Marcin musi dostarczyć dump `<main>` lub footer'a strony 1 search results z widocznym paginacją (numery stron + "Następne" button). Obecna fixture `search_results_people.html` nie zawiera paginacji (jest scroll'owana w środek listy?). Format: `document.querySelector('main')?.outerHTML` lub `document.querySelector('[class*="pagination"]')?.outerHTML`. Dump w `extension/tests/fixtures/search_results_pagination.html`.
+2. **Update selektora.** Po recon — fix selektorów `bulkAutoExtract` w `content.js` (linie ~1430-1440). Możliwe że SDUI używa: `button` z hashed klasami, `<a>` zamiast `<button>`, `[aria-label*="strona"]` lub coś z `data-tracking-control-name`.
+3. **Test fixture'owy.** Dodać do `test_bulk_connect.js` asercję na `bulkAutoExtract` z mock fixturem paginacji.
+4. **Master-select checkboxy** w popup: "Select all" / "Unselect all" / "Select 2nd degree only" / "Unselect Pending".
+5. **Per-page settings:** `Stop after N pages` (default 5), `Max queue size` (override dailyCap z queue side).
+6. **Cross-page dedup** — już jest (Set seenSlugs w bulkAutoExtract).
+
+**Decyzje:**
+- Pagination przez click "Next" w UI LinkedIn (już tak jest) — NIE direct URL nav.
+- Random delay 5-15s między pages — TODO dorzucić do `bulkAutoExtract` (obecnie 500ms tylko).
 - Max pages domyślnie 5 (= ~50 profili w queue) — żeby zespół OVB nie spamował 200 ludzi w jeden batch.
 
 **Open questions:**
-- Czy faza 3 to dalej extension-only, czy potrzebujemy backend endpoint dla "kampanii" (named batches z historią)?
+- Czy fixture paginacji + master-select = osobny task albo razem #22?
 - Czy export queue do CSV ma sens (do CRM Krayina import)?
 
-**Estymata:** ~1-2 sprinty Marcin'a po Faza 2.
+**Estymata:** ~0.5 sprintu Marcin'a (wystarczy DOM recon + selektor fix + 1 test). Master-select to kolejne ~0.5.
 
 ---
 

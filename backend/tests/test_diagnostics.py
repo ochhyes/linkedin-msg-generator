@@ -176,3 +176,42 @@ class TestDiagnosticsAppendOnly:
         assert entries[2]["error_message"] == "Fail #2"
         # Każda linia osobno parsowalna jako JSON (sanity)
         assert all("server_timestamp" in e for e in entries)
+
+
+class TestDiagnosticsEventType:
+    """Pole event_type (#19 Faza 1B) — domyślne 'scrape_failure', opcjonalnie 'bulk_connect_click_failure'."""
+
+    def test_bulk_connect_event_type(self, tmp_log):
+        # Klient v1.4.0+ wysyła explicit event_type dla fail'i auto-click'a
+        resp = client.post(
+            "/api/diagnostics/scrape-failure",
+            headers=HEADERS,
+            json=_valid_payload(
+                event_type="bulk_connect_click_failure",
+                error_message="modal_did_not_appear",
+            ),
+        )
+        assert resp.status_code == 204
+        assert resp.content == b""
+
+        lines = tmp_log.read_text(encoding="utf-8").splitlines()
+        assert len(lines) == 1
+        entry = json.loads(lines[-1])
+        assert entry["event_type"] == "bulk_connect_click_failure"
+        assert entry["error_message"] == "modal_did_not_appear"
+
+    def test_event_type_default_backward_compat(self, tmp_log):
+        # Klient < 1.4.0 nie wysyła event_type — Pydantic default = "scrape_failure"
+        payload = _valid_payload()
+        payload.pop("event_type", None)  # gwarancja że klucza nie ma w payload
+        resp = client.post(
+            "/api/diagnostics/scrape-failure",
+            headers=HEADERS,
+            json=payload,
+        )
+        assert resp.status_code == 204
+
+        lines = tmp_log.read_text(encoding="utf-8").splitlines()
+        assert len(lines) == 1
+        entry = json.loads(lines[-1])
+        assert entry["event_type"] == "scrape_failure"

@@ -493,3 +493,45 @@ body {
 .badge--unknown {
   color: var(--text-dim);
 }
+
+/* ── Bulk Connect — queue + controls + settings (#19) ── */
+
+.bulk-connect__add { width: 100%; margin: 8px 0 0; }
+
+.bulk-queue { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.bulk-queue__header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.bulk-queue__title { font-size: 13px; font-weight: 600; color: var(--text); }
+.bulk-queue__progress { font-size: 11px; color: var(--text-dim); }
+.bulk-queue__status { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 500; flex-shrink: 0; }
+.bulk-queue__status--active { background: rgba(46, 160, 67, 0.2); color: #3fb950; }
+.bulk-queue__status--active::before { content: "● "; animation: bulk-pulse 1.5s ease-in-out infinite; }
+.bulk-queue__status--paused { background: rgba(187, 128, 9, 0.2); color: #d29922; }
+.bulk-queue__status--idle { background: rgba(139, 148, 158, 0.2); color: #8b949e; }
+.bulk-queue__countdown { font-size: 11px; color: var(--text); margin: 4px 0 8px; padding: 6px 8px; background: rgba(46, 160, 67, 0.08); border-radius: var(--radius); border-left: 2px solid #3fb950; }
+@keyframes bulk-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+.bulk-connect__add-row { display: flex; gap: 6px; margin-top: 8px; }
+.bulk-connect__add-row .btn { flex: 1; }
+.bulk-queue__list { list-style: none; max-height: 180px; overflow-y: auto; padding: 0; margin: 0 0 8px; display: flex; flex-direction: column; gap: 4px; }
+.bulk-queue__item { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: var(--radius); background: var(--bg-elevated, #1a1d24); font-size: 11px; }
+.bulk-queue__item-name { flex: 1; min-width: 0; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bulk-queue__item-status { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 500; flex-shrink: 0; }
+.bulk-queue__item-status--pending { background: rgba(139, 148, 158, 0.2); color: #8b949e; }
+.bulk-queue__item-status--sent { background: rgba(46, 160, 67, 0.2); color: #3fb950; }
+.bulk-queue__item-status--failed { background: rgba(248, 81, 73, 0.2); color: #f85149; }
+.bulk-queue__item-status--skipped { background: rgba(187, 128, 9, 0.2); color: #d29922; }
+.bulk-queue__controls { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+.bulk-queue__controls .btn { flex: 1; min-width: 60px; }
+.bulk-queue__error { font-size: 11px; color: #f85149; padding: 6px 8px; background: rgba(248, 81, 73, 0.08); border-radius: var(--radius); margin: 0; }
+
+.btn--danger { background: rgba(248, 81, 73, 0.15); color: #f85149; border: 1px solid rgba(248, 81, 73, 0.3); }
+.btn--danger:hover { background: rgba(248, 81, 73, 0.25); }
+
+.bulk-settings { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.bulk-settings summary { cursor: pointer; font-size: 12px; font-weight: 500; color: var(--text-dim); user-select: none; }
+.bulk-settings summary:hover { color: var(--text); }
+.bulk-settings__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0; }
+.bulk-settings__grid label { display: flex; flex-direction: column; gap: 2px; font-size: 10px; color: var(--text-dim); }
+.bulk-settings__grid input { padding: 4px 6px; font-size: 12px; background: var(--bg-elevated, #1a1d24); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); }
+
+/* Checkbox per profil w bulk connect list */
+.bulk-connect__row-checkbox { width: 14px; height: 14px; flex-shrink: 0; cursor: pointer; }

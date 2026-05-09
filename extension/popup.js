@@ -42,6 +42,27 @@
   const bulkInfo = $("#bulk-info");
   const profilesList = $("#profiles-list");
   const btnRefreshList = $("#btn-refresh-list");
+  // Bulk queue (#19) refs
+  const btnAddQueue = $("#btn-add-queue");
+  const bulkAddRow = $("#bulk-add-row");
+  const btnBulkFill = $("#btn-bulk-fill");
+  const bulkStatus = $("#bulk-status");
+  const bulkCountdown = $("#bulk-countdown");
+  const queueSection = $("#queue-section");
+  const queueList = $("#queue-list");
+  const bulkProgress = $("#bulk-progress");
+  const btnBulkStart = $("#btn-bulk-start");
+  const btnBulkStop = $("#btn-bulk-stop");
+  const btnBulkResume = $("#btn-bulk-resume");
+  const btnBulkClear = $("#btn-bulk-clear");
+  const bulkError = $("#bulk-error");
+  const bulkSettings = $("#bulk-settings");
+  const setBulkDelayMin = $("#set-bulk-delaymin");
+  const setBulkDelayMax = $("#set-bulk-delaymax");
+  const setBulkCap = $("#set-bulk-cap");
+  const setBulkHStart = $("#set-bulk-hstart");
+  const setBulkHEnd = $("#set-bulk-hend");
+  const btnBulkSaveSettings = $("#btn-bulk-save-settings");
 
   // ── State ────────────────────────────────────────────────────────
   let currentProfile = null;
@@ -423,6 +444,16 @@
       li.className = "bulk-connect__row" + (disabled ? " bulk-connect__row--disabled" : "");
       if (slug) li.dataset.slug = slug;
 
+      // Checkbox per profil (#19): zaznaczamy domyślnie tylko Connect-able.
+      // Disabled rows mają opacity:0.5+pointer-events:none na całym row,
+      // więc checkbox i tak będzie nieklikalny przez gray-out.
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.className = "bulk-connect__row-checkbox";
+      if (slug) checkbox.dataset.slug = slug;
+      checkbox.checked = !disabled;
+      li.appendChild(checkbox);
+
       const textCol = document.createElement("div");
       textCol.className = "bulk-connect__row-text";
 
@@ -477,7 +508,10 @@
   }
 
   // Delegated click handler: open the clicked profile in a background tab.
+  // Checkbox click przepuszczamy (default toggle behavior) — zaznaczanie
+  // do batch'a nie powinno otwierać profilu w nowej karcie.
   profilesList.addEventListener("click", (e) => {
+    if (e.target && e.target.tagName === "INPUT") return;
     const row = e.target.closest(".bulk-connect__row");
     if (!row) return;
     if (row.classList.contains("bulk-connect__row--disabled")) return;
@@ -487,6 +521,322 @@
   });
 
   btnRefreshList.addEventListener("click", loadProfilesList);
+
+  // ── Bulk queue render + handlers (#19) ────────────────────────────
+
+  // Cache ostatnio pobranego stanu — przydatne gdyby coś chciało go
+  // odczytać synchronicznie. Trzymane w IIFE (popup ma jeden scope).
+  let _lastBulkState = null;
+
+  /**
+   * Pobiera bulkState z background workera i renderuje UI.
+   * Silent fail — jeśli SW nie odpowiada, po prostu nic się nie dzieje.
+   */
+  async function loadBulkState() {
+    try {
+      const state = await chrome.runtime.sendMessage({ action: "getBulkState" });
+      _lastBulkState = state;
+      renderBulkUI(state);
+      // Toggle countdown w zależności od active flag — ważne przy popup reopen
+      // gdy worker chodzi w tle (storage.onChanged nie fire'uje przy fresh load).
+      if (state?.active) startCountdownTimer();
+      else stopCountdownTimer();
+    } catch (err) {
+      console.warn("[LinkedIn MSG] getBulkState failed:", err);
+    }
+  }
+
+  /**
+   * Renderuje całe queue UI: settings inputs, queue list, progress, controls,
+   * error message. Wywoływane po loadBulkState() oraz przy storage.onChanged.
+   */
+  function renderBulkUI(state) {
+    if (!state) return;
+
+    // Settings inputs.
+    if (setBulkDelayMin) setBulkDelayMin.value = state.config.delayMin;
+    if (setBulkDelayMax) setBulkDelayMax.value = state.config.delayMax;
+    if (setBulkCap) setBulkCap.value = state.config.dailyCap;
+    if (setBulkHStart) setBulkHStart.value = state.config.workingHoursStart;
+    if (setBulkHEnd) setBulkHEnd.value = state.config.workingHoursEnd;
+
+    // Queue.
+    const hasQueue = state.queue && state.queue.length > 0;
+    queueSection.classList.toggle("hidden", !hasQueue);
+    // Add row (Dodaj zaznaczone + Wypełnij do limitu) widoczny tylko gdy
+    // bulk-connect section (lista profili) jest unhide'owana.
+    if (bulkAddRow) {
+      bulkAddRow.hidden = !document.querySelector("#bulk-connect:not(.hidden)");
+    }
+
+    // Status badge: ● Aktywne / Pauza / Oczekuje.
+    if (bulkStatus) {
+      bulkStatus.classList.remove(
+        "bulk-queue__status--active",
+        "bulk-queue__status--paused",
+        "bulk-queue__status--idle"
+      );
+      if (state.active) {
+        bulkStatus.classList.add("bulk-queue__status--active");
+        bulkStatus.textContent = "Aktywne";
+      } else if (hasQueue && state.queue.some((q) => q.status === "pending")) {
+        bulkStatus.classList.add("bulk-queue__status--paused");
+        bulkStatus.textContent = "Pauza";
+      } else {
+        bulkStatus.classList.add("bulk-queue__status--idle");
+        bulkStatus.textContent = "Bezczynne";
+      }
+    }
+
+    if (hasQueue) {
+      queueList.innerHTML = "";
+      for (const item of state.queue) {
+        const li = document.createElement("li");
+        li.className = "bulk-queue__item";
+        const name = document.createElement("span");
+        name.className = "bulk-queue__item-name";
+        name.textContent = item.name || item.slug;
+        const status = document.createElement("span");
+        status.className = `bulk-queue__item-status bulk-queue__item-status--${item.status}`;
+        status.textContent = ({
+          pending: "oczekuje",
+          sent: "wysłane",
+          failed: "błąd",
+          skipped: "pominięto",
+        })[item.status] || item.status;
+        if (item.status === "failed" && item.error) status.title = item.error;
+        if (item.status === "skipped" && item.error) status.title = item.error;
+        li.appendChild(name);
+        li.appendChild(status);
+        queueList.appendChild(li);
+      }
+
+      // Progress.
+      const sent = state.queue.filter((q) => q.status === "sent").length;
+      const total = state.queue.length;
+      bulkProgress.textContent = `${sent}/${total}  ·  dziś ${state.stats.sentToday}/${state.config.dailyCap}`;
+
+      // Controls visibility.
+      const hasPending = state.queue.some((q) => q.status === "pending");
+      const hasSent = state.queue.some((q) => q.status === "sent");
+      btnBulkStart.hidden = !hasPending || state.active || hasSent;
+      btnBulkStop.hidden = !state.active;
+      btnBulkResume.hidden = state.active || !hasPending || !hasSent;
+    }
+
+    // Error message.
+    if (state.errorMsg) {
+      bulkError.textContent = state.errorMsg;
+      bulkError.classList.remove("hidden");
+    } else {
+      bulkError.classList.add("hidden");
+    }
+  }
+
+  /**
+   * Zbiera zaznaczone profile z listy i wysyła do background'u jako batch.
+   * Po sukcesie odznacza checkboxy (UX: clear selection po commit'cie).
+   */
+  async function handleAddToQueue() {
+    if (!profilesList) return;
+    const checkboxes = profilesList.querySelectorAll('input[type="checkbox"]:checked');
+    const profiles = Array.from(checkboxes).map((cb) => {
+      const li = cb.closest("li");
+      const slug = cb.dataset.slug;
+      const nameEl = li?.querySelector(".bulk-connect__row-name");
+      const headlineEl = li?.querySelector(".bulk-connect__row-headline");
+      return {
+        slug,
+        name: nameEl?.textContent || "",
+        headline: headlineEl?.textContent || "",
+      };
+    }).filter((p) => p.slug);
+
+    if (profiles.length === 0) return;
+
+    try {
+      const resp = await chrome.runtime.sendMessage({
+        action: "bulkConnectAddToQueue",
+        profiles,
+      });
+      if (resp?.success) {
+        await loadBulkState();
+        // Uncheck wszystkie po dodaniu (UX: clear selection po komitcie).
+        checkboxes.forEach((cb) => { cb.checked = false; });
+      }
+    } catch (err) {
+      console.warn("[LinkedIn MSG] addToQueue failed:", err);
+    }
+  }
+
+  async function handleBulkStart() {
+    await chrome.runtime.sendMessage({ action: "bulkConnectStart" });
+    await loadBulkState();
+  }
+
+  async function handleBulkStop() {
+    await chrome.runtime.sendMessage({ action: "bulkConnectStop" });
+    await loadBulkState();
+  }
+
+  /**
+   * Czyści całą kolejkę. Najpierw stop'uje worker (jeśli leci), potem
+   * zapisuje czysty queue + null errorMsg bezpośrednio przez storage.local.
+   * Decyzja: nie ma osobnego action'u w background.js dla "clear" — popup
+   * pisze do storage bezpośrednio, a background obserwuje storage.onChanged.
+   */
+  async function handleBulkClear() {
+    if (!confirm("Wyczyścić całą kolejkę? Statusy zostaną utracone.")) return;
+    // Stop najpierw, potem clear queue (bezpośrednio przez storage.local.set).
+    await chrome.runtime.sendMessage({ action: "bulkConnectStop" });
+    const state = await chrome.runtime.sendMessage({ action: "getBulkState" });
+    await chrome.storage.local.set({
+      bulkConnect: { ...state, queue: [], errorMsg: null },
+    });
+    await loadBulkState();
+  }
+
+  /**
+   * Walidacja wartości settings'ów (clamp do sensownych zakresów),
+   * potem zapis do storage. Background obserwuje storage.onChanged
+   * i podchwyci config przy najbliższym tick'u.
+   */
+  async function handleBulkSaveSettings() {
+    const config = {
+      delayMin: Math.max(10, parseInt(setBulkDelayMin.value) || 45),
+      delayMax: Math.max(10, parseInt(setBulkDelayMax.value) || 120),
+      dailyCap: Math.max(1, parseInt(setBulkCap.value) || 25),
+      workingHoursStart: Math.max(0, Math.min(23, parseInt(setBulkHStart.value) || 9)),
+      workingHoursEnd: Math.max(0, Math.min(23, parseInt(setBulkHEnd.value) || 18)),
+    };
+    if (config.delayMax < config.delayMin) config.delayMax = config.delayMin;
+    if (config.workingHoursEnd <= config.workingHoursStart) config.workingHoursEnd = config.workingHoursStart + 1;
+
+    const state = await chrome.runtime.sendMessage({ action: "getBulkState" });
+    await chrome.storage.local.set({ bulkConnect: { ...state, config } });
+    await loadBulkState();
+  }
+
+  // Re-render queue at any storage change. Plus countdown timer toggle.
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && changes.bulkConnect) {
+      const newState = changes.bulkConnect.newValue;
+      _lastBulkState = newState;
+      renderBulkUI(newState);
+      if (newState?.active) startCountdownTimer();
+      else stopCountdownTimer();
+    }
+  });
+
+  // Wire up event listeners.
+  if (btnAddQueue) btnAddQueue.addEventListener("click", handleAddToQueue);
+  if (btnBulkStart) btnBulkStart.addEventListener("click", handleBulkStart);
+  if (btnBulkStop) btnBulkStop.addEventListener("click", handleBulkStop);
+  if (btnBulkResume) btnBulkResume.addEventListener("click", handleBulkStart); // Resume = Start
+  if (btnBulkClear) btnBulkClear.addEventListener("click", handleBulkClear);
+  if (btnBulkSaveSettings) btnBulkSaveSettings.addEventListener("click", handleBulkSaveSettings);
+  if (btnBulkFill) btnBulkFill.addEventListener("click", handleAutoFillQueue);
+
+  // ── Countdown timer (#19/v1.4.1) ─────────────────────────────────
+  //
+  // Live update co 1s pokazujący czas do następnego ticku worker loop'u
+  // ("Następne za 1m 23s"). Bez tego user nie wie czy bulk faktycznie
+  // chodzi w tle (popup może być schowany przez większość delay'a).
+
+  let _countdownInterval = null;
+
+  function formatCountdown(ms) {
+    if (ms <= 0) return "za chwilę…";
+    const totalSec = Math.ceil(ms / 1000);
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    if (m > 0) return `za ${m}m ${s}s`;
+    return `za ${s}s`;
+  }
+
+  function updateCountdownView() {
+    if (!bulkCountdown || !_lastBulkState) return;
+    const s = _lastBulkState;
+    if (s.active && s.nextTickAt) {
+      const remaining = s.nextTickAt - Date.now();
+      bulkCountdown.classList.remove("hidden");
+      const lastInfo = s.lastTickAt
+        ? `  ·  ostatnia akcja ${Math.floor((Date.now() - s.lastTickAt) / 1000)}s temu`
+        : "";
+      bulkCountdown.textContent = `Następne dodanie ${formatCountdown(remaining)}${lastInfo}`;
+    } else {
+      bulkCountdown.classList.add("hidden");
+    }
+  }
+
+  function startCountdownTimer() {
+    stopCountdownTimer();
+    _countdownInterval = setInterval(updateCountdownView, 1000);
+    updateCountdownView();
+  }
+
+  function stopCountdownTimer() {
+    if (_countdownInterval) {
+      clearInterval(_countdownInterval);
+      _countdownInterval = null;
+    }
+  }
+
+  // ── Auto-fill kolejki przez paginację LinkedIn'a (#22 wcielona w 1.4.1) ──
+
+  async function handleAutoFillQueue() {
+    if (!btnBulkFill) return;
+    btnBulkFill.disabled = true;
+    btnBulkFill.textContent = "Pobieranie…";
+    try {
+      const state = await chrome.runtime.sendMessage({ action: "getBulkState" });
+      const inQueue = state.queue.filter((q) => q.status === "pending").length;
+      const remaining = state.config.dailyCap - inQueue;
+      if (remaining <= 0) {
+        if (bulkError) {
+          bulkError.textContent = "Kolejka pełna do limitu dziennego.";
+          bulkError.classList.remove("hidden");
+        }
+        return;
+      }
+
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) return;
+
+      const resp = await chrome.tabs.sendMessage(tab.id, {
+        action: "bulkAutoExtract",
+        maxProfiles: remaining,
+        maxPages: 10,
+      });
+
+      if (resp?.profiles?.length) {
+        await chrome.runtime.sendMessage({
+          action: "bulkConnectAddToQueue",
+          profiles: resp.profiles,
+        });
+        await loadBulkState();
+        if (bulkError) {
+          bulkError.textContent = `Dodano ${resp.profiles.length} profili (stop: ${resp.stopped || "ok"}).`;
+          bulkError.classList.remove("hidden");
+          setTimeout(() => bulkError.classList.add("hidden"), 4000);
+        }
+      } else {
+        if (bulkError) {
+          bulkError.textContent = `Brak profili do dodania (stop: ${resp?.stopped || resp?.error || "unknown"}).`;
+          bulkError.classList.remove("hidden");
+        }
+      }
+    } catch (err) {
+      console.warn("[LinkedIn MSG] autoFill failed:", err);
+      if (bulkError) {
+        bulkError.textContent = `Błąd: ${err && err.message || err}`;
+        bulkError.classList.remove("hidden");
+      }
+    } finally {
+      btnBulkFill.disabled = false;
+      btnBulkFill.textContent = "Wypełnij do limitu";
+    }
+  }
 
   // ── Init ─────────────────────────────────────────────────────────
 
@@ -553,10 +903,17 @@
         if (detection?.type === "search_results") {
           bulkConnect.classList.remove("hidden");
           loadProfilesList();
+          // Bulk-connect widoczny → "Dodaj zaznaczone do kolejki" musi być widoczny.
+          if (btnAddQueue) btnAddQueue.hidden = false;
         }
       }
     } catch (_) {
       // not on linkedin or content script not ready — silent
     }
+
+    // Bulk queue state (#19): zawsze ładujemy — queue jest persistowane w
+    // storage.local i user może mieć aktywną kolejkę z poprzedniej sesji
+    // nawet jeśli akurat jest na stronie profilu / feed'a.
+    loadBulkState();
   })();
 })();

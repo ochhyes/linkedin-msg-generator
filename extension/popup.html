@@ -47,6 +47,39 @@
         </div>
         <p id="bulk-info" class="bulk-connect__info"></p>
         <ul id="profiles-list" class="bulk-connect__list"></ul>
+        <div class="bulk-connect__add-row" id="bulk-add-row" hidden>
+          <button id="btn-add-queue" class="btn btn--small btn--primary">Dodaj zaznaczone</button>
+          <button id="btn-bulk-fill" class="btn btn--small btn--outline" title="Pobiera profile z kolejnych stron LinkedIn'a (klik 'Następne'), aż zapełni kolejkę do dailyCap.">Wypełnij do limitu</button>
+        </div>
+
+        <div id="queue-section" class="bulk-queue hidden">
+          <div class="bulk-queue__header">
+            <span class="bulk-queue__title">Kolejka</span>
+            <span id="bulk-status" class="bulk-queue__status"></span>
+            <span id="bulk-progress" class="bulk-queue__progress"></span>
+          </div>
+          <p id="bulk-countdown" class="bulk-queue__countdown hidden"></p>
+          <ul id="queue-list" class="bulk-queue__list"></ul>
+          <div class="bulk-queue__controls">
+            <button id="btn-bulk-start" class="btn btn--small btn--primary" hidden>Start</button>
+            <button id="btn-bulk-stop" class="btn btn--small btn--danger" hidden>Stop</button>
+            <button id="btn-bulk-resume" class="btn btn--small btn--primary" hidden>Resume</button>
+            <button id="btn-bulk-clear" class="btn btn--small btn--outline">Wyczyść kolejkę</button>
+          </div>
+          <p id="bulk-error" class="bulk-queue__error hidden"></p>
+        </div>
+
+        <details id="bulk-settings" class="bulk-settings">
+          <summary>Ustawienia bulk connect</summary>
+          <div class="bulk-settings__grid">
+            <label>Min delay (s)<input type="number" id="set-bulk-delaymin" min="10" max="600"></label>
+            <label>Max delay (s)<input type="number" id="set-bulk-delaymax" min="10" max="600"></label>
+            <label>Daily cap<input type="number" id="set-bulk-cap" min="1" max="200"></label>
+            <label>Godz. start<input type="number" id="set-bulk-hstart" min="0" max="23"></label>
+            <label>Godz. end<input type="number" id="set-bulk-hend" min="0" max="23"></label>
+          </div>
+          <button id="btn-bulk-save-settings" class="btn btn--small btn--outline">Zapisz</button>
+        </details>
       </section>
 
       <!-- Controls -->
