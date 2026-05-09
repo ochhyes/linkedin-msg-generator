@@ -63,6 +63,13 @@
   const setBulkHStart = $("#set-bulk-hstart");
   const setBulkHEnd = $("#set-bulk-hend");
   const btnBulkSaveSettings = $("#btn-bulk-save-settings");
+  // Message pipeline (#21) refs
+  const messagePipeline = $("#message-pipeline");
+  const messagePipelineCount = $("#message-pipeline-count");
+  const messagePipelineStatus = $("#message-pipeline-status");
+  const btnCheckAccepts = $("#btn-check-accepts");
+  const btnGenerateAllMsg = $("#btn-generate-all-msg");
+  const messageList = $("#message-list");
 
   // ── State ────────────────────────────────────────────────────────
   let currentProfile = null;
@@ -631,6 +638,9 @@
     } else {
       bulkError.classList.add("hidden");
     }
+
+    // Post-Connect messaging pipeline (#21).
+    renderMessagePipeline(state);
   }
 
   /**
@@ -728,6 +738,267 @@
     }
   });
 
+  // ── Post-Connect Messaging Pipeline (#21) ────────────────────────
+
+  /**
+   * Renderuje sekcję "Wiadomości po-Connect": lista accepted profili z
+   * draftami, edytowalna textarea per item, buttony Generuj/Kopiuj/Pomiń.
+   * Sekcja widoczna tylko gdy queue zawiera co najmniej jeden item z
+   * `acceptedAt` — bez akceptów nie ma czego pokazać.
+   */
+  function renderMessagePipeline(state) {
+    if (!messagePipeline || !state) return;
+    const queue = state.queue || [];
+    const accepted = queue.filter((q) => q.acceptedAt);
+
+    // Hide gdy brak accepted.
+    if (accepted.length === 0) {
+      messagePipeline.classList.add("hidden");
+      return;
+    }
+    messagePipeline.classList.remove("hidden");
+
+    // Counter (akcept · wysł. · pom. · do zrobienia).
+    const sent = accepted.filter((q) => q.messageStatus === "sent").length;
+    const skipped = accepted.filter((q) => q.messageStatus === "skipped").length;
+    const pending = accepted.length - sent - skipped;
+    messagePipelineCount.textContent =
+      `${accepted.length} akcept · ${sent} wysł. · ${skipped} pom. · ${pending} do zrobienia`;
+
+    // "Generuj wszystkie" widoczny tylko gdy są accepted bez draftu.
+    const needsGen = accepted.filter(
+      (q) => !q.messageDraft && q.messageStatus !== "skipped" && q.messageStatus !== "sent"
+    );
+    btnGenerateAllMsg.hidden = needsGen.length === 0;
+    if (!btnGenerateAllMsg.hidden) {
+      btnGenerateAllMsg.textContent = `Generuj wszystkie (${needsGen.length})`;
+    }
+
+    // Render listy.
+    messageList.innerHTML = "";
+    for (const item of accepted) {
+      const li = document.createElement("li");
+      li.className = `message-item message-item--${item.messageStatus || "none"}`;
+      li.dataset.slug = item.slug;
+
+      const head = document.createElement("div");
+      head.className = "message-item__head";
+      const name = document.createElement("span");
+      name.className = "message-item__name";
+      name.textContent = item.name || item.slug;
+      const status = document.createElement("span");
+      const statusClass =
+        item.messageStatus && item.messageStatus !== "none" ? item.messageStatus : "accepted";
+      status.className = `message-item__status message-item__status--${statusClass}`;
+      status.textContent = ({
+        "none": "do zrobienia",
+        "draft": "draft",
+        "approved": "zatw.",
+        "sent": "wysłane",
+        "skipped": "pominięte",
+      })[item.messageStatus] || "zaakcept.";
+      head.appendChild(name);
+      head.appendChild(status);
+
+      const draftArea = document.createElement("textarea");
+      draftArea.className = "message-item__draft";
+      draftArea.placeholder = item.messageDraft === null
+        ? "Klik 'Generuj' żeby wygenerować draft…"
+        : "";
+      draftArea.value = item.messageDraft || "";
+      draftArea.dataset.slug = item.slug;
+      if (item.messageStatus === "sent" || item.messageStatus === "skipped") {
+        draftArea.disabled = true;
+      }
+
+      const actions = document.createElement("div");
+      actions.className = "message-item__actions";
+
+      if (item.messageStatus !== "sent" && item.messageStatus !== "skipped") {
+        const btnGen = document.createElement("button");
+        btnGen.className = "btn btn--small btn--outline";
+        btnGen.textContent = item.messageDraft ? "Regeneruj" : "Generuj";
+        btnGen.dataset.action = "generate";
+        btnGen.dataset.slug = item.slug;
+        actions.appendChild(btnGen);
+
+        const btnCopy = document.createElement("button");
+        btnCopy.className = "btn btn--small btn--primary";
+        btnCopy.textContent = "Skopiuj i otwórz";
+        btnCopy.dataset.action = "copy-open";
+        btnCopy.dataset.slug = item.slug;
+        btnCopy.disabled = !item.messageDraft;
+        actions.appendChild(btnCopy);
+
+        const btnSkip = document.createElement("button");
+        btnSkip.className = "btn btn--small btn--outline";
+        btnSkip.textContent = "Pomiń";
+        btnSkip.dataset.action = "skip";
+        btnSkip.dataset.slug = item.slug;
+        actions.appendChild(btnSkip);
+      }
+
+      li.appendChild(head);
+      li.appendChild(draftArea);
+      li.appendChild(actions);
+      messageList.appendChild(li);
+    }
+  }
+
+  /**
+   * Wywołuje background.bulkCheckAccepts — otwiera w tle karty LinkedIn
+   * dla pending invites i sprawdza czy któreś zostały zaakceptowane.
+   */
+  async function handleCheckAccepts() {
+    if (!btnCheckAccepts) return;
+    btnCheckAccepts.disabled = true;
+    btnCheckAccepts.textContent = "Sprawdzam…";
+    if (messagePipelineStatus) {
+      messagePipelineStatus.className = "message-pipeline__status";
+      messagePipelineStatus.textContent =
+        "Otwieram zakładki LinkedIn — to potrwa kilka–kilkadziesiąt sekund…";
+    }
+    try {
+      const resp = await chrome.runtime.sendMessage({ action: "bulkCheckAccepts" });
+      if (resp?.success) {
+        if (messagePipelineStatus) {
+          messagePipelineStatus.className = "message-pipeline__status message-pipeline__status--success";
+          messagePipelineStatus.textContent =
+            `Zeskanowano ${resp.scanned}, zaakceptowanych: ${resp.accepted}` +
+            (resp.skipped_recent ? ` (${resp.skipped_recent} pominięto — sprawdzone < 4h temu)` : "");
+        }
+        await loadBulkState();
+      } else {
+        if (messagePipelineStatus) {
+          messagePipelineStatus.className = "message-pipeline__status message-pipeline__status--error";
+          messagePipelineStatus.textContent = `Błąd: ${resp?.error || "unknown"}`;
+        }
+      }
+    } catch (err) {
+      if (messagePipelineStatus) {
+        messagePipelineStatus.className = "message-pipeline__status message-pipeline__status--error";
+        messagePipelineStatus.textContent = `Błąd: ${(err && err.message) || err}`;
+      }
+    } finally {
+      btnCheckAccepts.disabled = false;
+      btnCheckAccepts.textContent = "Sprawdź akceptacje";
+    }
+  }
+
+  /**
+   * Generuje draft dla pojedynczego accepted profilu. Background scrape'uje
+   * profil (jeśli jeszcze nie ma w storage) i woła generator AI.
+   */
+  async function handleGenerateMessage(slug) {
+    if (messagePipelineStatus) {
+      messagePipelineStatus.className = "message-pipeline__status";
+      messagePipelineStatus.textContent = `Generuję dla ${slug}…`;
+    }
+    const options = {
+      goal: selectGoal?.value || "networking",
+      language: selectLang?.value || "pl",
+      tone: (inputTone?.value || "").trim() || null,
+    };
+    try {
+      const resp = await chrome.runtime.sendMessage({
+        action: "bulkGenerateMessage",
+        slug,
+        options,
+      });
+      if (resp?.success) {
+        if (messagePipelineStatus) {
+          messagePipelineStatus.className = "message-pipeline__status message-pipeline__status--success";
+          messagePipelineStatus.textContent = `Wygenerowano draft dla ${slug}.`;
+        }
+        await loadBulkState();
+      } else {
+        if (messagePipelineStatus) {
+          messagePipelineStatus.className = "message-pipeline__status message-pipeline__status--error";
+          messagePipelineStatus.textContent = `Generowanie ${slug} nieudane: ${resp?.error || "unknown"}`;
+        }
+      }
+    } catch (err) {
+      if (messagePipelineStatus) {
+        messagePipelineStatus.className = "message-pipeline__status message-pipeline__status--error";
+        messagePipelineStatus.textContent = `Błąd: ${(err && err.message) || err}`;
+      }
+    }
+  }
+
+  /**
+   * Generuje drafty dla wszystkich accepted bez draftu, sekwencyjnie.
+   * Sekwencyjnie (NIE Promise.all) bo backend ma rate limity i UX progress
+   * łatwiejszy do śledzenia.
+   */
+  async function handleGenerateAll() {
+    if (!_lastBulkState) return;
+    const accepted = (_lastBulkState.queue || []).filter(
+      (q) =>
+        q.acceptedAt &&
+        !q.messageDraft &&
+        q.messageStatus !== "skipped" &&
+        q.messageStatus !== "sent"
+    );
+    if (accepted.length === 0) return;
+    btnGenerateAllMsg.disabled = true;
+    let done = 0;
+    for (const item of accepted) {
+      btnGenerateAllMsg.textContent = `Generowanie ${++done}/${accepted.length}…`;
+      await handleGenerateMessage(item.slug);
+    }
+    btnGenerateAllMsg.disabled = false;
+    btnGenerateAllMsg.textContent = "Generuj wszystkie";
+    if (messagePipelineStatus) {
+      messagePipelineStatus.className = "message-pipeline__status message-pipeline__status--success";
+      messagePipelineStatus.textContent = `Wygenerowano ${accepted.length} wiadomości.`;
+    }
+  }
+
+  /**
+   * Kopiuje draft do schowka, otwiera tab LinkedIn'a z compose'em (recipient
+   * pre-filled przez slug w URL'u), i mark'uje jako sent w storage.
+   * User wkleja Ctrl+V w już-otwartej karcie i klika Wyślij ręcznie.
+   */
+  async function handleCopyAndOpen(slug) {
+    if (!_lastBulkState) return;
+    const item = _lastBulkState.queue.find((q) => q.slug === slug);
+    if (!item || !item.messageDraft) return;
+    try {
+      await navigator.clipboard.writeText(item.messageDraft);
+      chrome.tabs.create({
+        url: `https://www.linkedin.com/messaging/compose/?recipient=${encodeURIComponent(slug)}`,
+        active: true,
+      });
+      await chrome.runtime.sendMessage({ action: "bulkMarkMessageSent", slug });
+      if (messagePipelineStatus) {
+        messagePipelineStatus.className = "message-pipeline__status message-pipeline__status--success";
+        messagePipelineStatus.textContent =
+          `Skopiowano do schowka. Wklej (Ctrl+V) w otwartej karcie LinkedIn'a i kliknij Wyślij.`;
+      }
+      await loadBulkState();
+    } catch (err) {
+      if (messagePipelineStatus) {
+        messagePipelineStatus.className = "message-pipeline__status message-pipeline__status--error";
+        messagePipelineStatus.textContent = `Błąd kopiowania: ${(err && err.message) || err}`;
+      }
+    }
+  }
+
+  async function handleSkipMessage(slug) {
+    await chrome.runtime.sendMessage({ action: "bulkSkipMessage", slug });
+    await loadBulkState();
+  }
+
+  /**
+   * Auto-save edycji draftu po blur. Decyzja: blur > input + debounce —
+   * mniej wywołań background.bulkUpdateMessageDraft, prościej, user w popupie
+   * zwykle klika gdzieś poza textarea zanim chce kontynuować flow.
+   * NIE wywołujemy loadBulkState — storage.onChanged i tak podchwyci zmianę.
+   */
+  async function handleDraftEdit(slug, draft) {
+    await chrome.runtime.sendMessage({ action: "bulkUpdateMessageDraft", slug, draft });
+  }
+
   // Wire up event listeners.
   if (btnAddQueue) btnAddQueue.addEventListener("click", handleAddToQueue);
   if (btnBulkStart) btnBulkStart.addEventListener("click", handleBulkStart);
@@ -736,6 +1007,36 @@
   if (btnBulkClear) btnBulkClear.addEventListener("click", handleBulkClear);
   if (btnBulkSaveSettings) btnBulkSaveSettings.addEventListener("click", handleBulkSaveSettings);
   if (btnBulkFill) btnBulkFill.addEventListener("click", handleAutoFillQueue);
+
+  // Message pipeline (#21) listeners.
+  if (btnCheckAccepts) btnCheckAccepts.addEventListener("click", handleCheckAccepts);
+  if (btnGenerateAllMsg) btnGenerateAllMsg.addEventListener("click", handleGenerateAll);
+
+  // Delegated click handler dla actions w message-list (Generuj/Kopiuj/Pomiń).
+  if (messageList) {
+    messageList.addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-action]");
+      if (!btn) return;
+      const slug = btn.dataset.slug;
+      const action = btn.dataset.action;
+      if (action === "generate") handleGenerateMessage(slug);
+      else if (action === "copy-open") handleCopyAndOpen(slug);
+      else if (action === "skip") handleSkipMessage(slug);
+    });
+
+    // Auto-save draft po blur (capture phase, bo blur nie bubbles).
+    messageList.addEventListener(
+      "blur",
+      (e) => {
+        if (e.target.tagName === "TEXTAREA" && e.target.dataset.slug) {
+          const slug = e.target.dataset.slug;
+          const draft = e.target.value;
+          handleDraftEdit(slug, draft);
+        }
+      },
+      true
+    );
+  }
 
   // ── Countdown timer (#19/v1.4.1) ─────────────────────────────────
   //
@@ -787,7 +1088,7 @@
   async function handleAutoFillQueue() {
     if (!btnBulkFill) return;
     btnBulkFill.disabled = true;
-    btnBulkFill.textContent = "Pobieranie…";
+    btnBulkFill.textContent = "Pobieranie z kolejnych stron…";
     try {
       const state = await chrome.runtime.sendMessage({ action: "getBulkState" });
       const inQueue = state.queue.filter((q) => q.status === "pending").length;
@@ -800,29 +1101,29 @@
         return;
       }
 
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab?.id) return;
-
-      const resp = await chrome.tabs.sendMessage(tab.id, {
-        action: "bulkAutoExtract",
+      // #22 v1.6.0: pagination orchestrowany przez background.js (URL-based,
+      // zachowuje wszystkie query params LinkedIn'a). Background navigates
+      // aktywną kartą przez ?page=N, scrapuje, dorzuca z pageNumber field.
+      const resp = await chrome.runtime.sendMessage({
+        action: "bulkAutoFillByUrl",
         maxProfiles: remaining,
-        maxPages: 10,
       });
 
-      if (resp?.profiles?.length) {
-        await chrome.runtime.sendMessage({
-          action: "bulkConnectAddToQueue",
-          profiles: resp.profiles,
-        });
+      if (resp?.success && resp?.added > 0) {
         await loadBulkState();
         if (bulkError) {
-          bulkError.textContent = `Dodano ${resp.profiles.length} profili (stop: ${resp.stopped || "ok"}).`;
+          bulkError.textContent = `Dodano ${resp.added} profili (zeskanowano ${resp.pagesScanned || 0} stron, ostatnia: ${resp.finalPage || "?"}).`;
           bulkError.classList.remove("hidden");
-          setTimeout(() => bulkError.classList.add("hidden"), 4000);
+          setTimeout(() => bulkError.classList.add("hidden"), 5000);
+        }
+      } else if (resp?.success) {
+        if (bulkError) {
+          bulkError.textContent = `Brak nowych profili Connect-able do dodania (zeskanowano ${resp.pagesScanned || 0} stron).`;
+          bulkError.classList.remove("hidden");
         }
       } else {
         if (bulkError) {
-          bulkError.textContent = `Brak profili do dodania (stop: ${resp?.stopped || resp?.error || "unknown"}).`;
+          bulkError.textContent = `Błąd pagination: ${resp?.error || "unknown"}`;
           bulkError.classList.remove("hidden");
         }
       }

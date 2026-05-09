@@ -1449,6 +1449,74 @@
     return { success: true, profiles: collected, stopped: "max_pages_reached" };
   }
 
+  // ── Profile degree detection (#21 v1.5.0) ────────────────────────
+  //
+  // Wywoływane z background tab podczas bulkCheckAccepts. Sprawdza czy
+  // LinkedIn pokazuje 1st degree connection button "Wiadomość" w top-card
+  // (= zaakceptowali zaproszenie) lub dalej "Oczekuje" / "Połącz" (= nie).
+  //
+  // Selektory strukturalne (aria-label prefix), i18n PL+EN. Klasy hashed
+  // LinkedIn'a NIE używane — rotują, nie stable.
+
+  function checkProfileDegree() {
+    // Główne action buttons w top-card profilu są w .pv-top-card section
+    // lub .scaffold-layout-toolbar (sticky toolbar wariant).
+    // Szukamy najpierw w top-card, fallback do całego document'a.
+    const scopes = [
+      document.querySelector(".pv-top-card"),
+      document.querySelector("section.pv-top-card"),
+      document.querySelector(".scaffold-layout__main"),
+      document.querySelector(".scaffold-layout-toolbar"),
+      document, // last resort
+    ].filter(Boolean);
+
+    for (const scope of scopes) {
+      // 1st degree: "Wiadomość" (PL) / "Message" (EN) button.
+      // LinkedIn renderuje wiele takich buttonów — bierzemy pierwszy widoczny.
+      const messageBtn = scope.querySelector(
+        'button[aria-label^="Wiadomość"], ' +
+        'button[aria-label^="Message"], ' +
+        'a[aria-label^="Wiadomość"], ' +
+        'a[aria-label^="Message"]'
+      );
+      if (messageBtn) {
+        return { degree: "1st", status: "accepted" };
+      }
+
+      // Pending invite: "Oczekuje" (PL) / "W toku" / "Pending" (EN).
+      // Te aria-label'e mogą się pojawić na innych elementach LinkedIn'a
+      // (np. powiadomieniach), więc szukamy tylko w obrębie scope'u.
+      const pendingBtn = scope.querySelector(
+        'button[aria-label^="Oczekuje"], ' +
+        'button[aria-label^="W toku"], ' +
+        'button[aria-label^="Pending"], ' +
+        'a[aria-label^="Oczekuje"], ' +
+        'a[aria-label^="W toku"], ' +
+        'a[aria-label^="Pending"]'
+      );
+      if (pendingBtn) {
+        return { degree: "2nd", status: "pending" };
+      }
+
+      // Connectable (NOT accepted, NOT pending): "Połącz" (PL) / "Connect" (EN).
+      const connectBtn = scope.querySelector(
+        'button[aria-label^="Zaproś"], ' +
+        'button[aria-label^="Połącz"], ' +
+        'button[aria-label^="Invite"], ' +
+        'button[aria-label^="Connect"], ' +
+        'a[aria-label^="Zaproś"], ' +
+        'a[aria-label^="Połącz"], ' +
+        'a[aria-label^="Invite"], ' +
+        'a[aria-label^="Connect"]'
+      );
+      if (connectBtn) {
+        return { degree: "2nd", status: "connectable" };
+      }
+    }
+
+    return { degree: "unknown", status: "unknown" };
+  }
+
   // ── Message Listener ─────────────────────────────────────────────
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -1562,6 +1630,19 @@
           });
         });
       return true; // Keep channel open for async response.
+    } else if (message.action === "checkProfileDegree") {
+      // SYNC response — DOM walk jest synchroniczny. Try/catch żeby fail
+      // nie zamknął channel'a bez response'a.
+      try {
+        sendResponse(checkProfileDegree());
+      } catch (err) {
+        console.warn("[LinkedIn MSG] checkProfileDegree failed:", err);
+        sendResponse({
+          degree: "unknown",
+          status: "unknown",
+          error: err && err.message ? err.message : String(err),
+        });
+      }
     }
   });
 

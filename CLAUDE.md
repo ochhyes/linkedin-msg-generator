@@ -223,10 +223,10 @@ Nie łącz dwóch ról w jednej sesji bez zgody usera. Loop ma sens dlatego że 
 # CURRENT STATE
 
 ```
-Sprint:        #3 — Bulk auto-connect MVP Faza 1+2 (Faza 1A+1B done, czeka PM next task)
-Phase:         PM (next task — #21 AI nota / #22 pagination fix / nowy task)
-Active task:   (none — wybór z BACKLOG'u lub nowy task)
-Last commit:   8b71b25 — chore: workflow loop cleanup po #18 + modal dump dla PM #19
+Sprint:        #3 — Bulk auto-connect MVP — ZAMKNIĘTY 2026-05-09 z v1.6.0
+Phase:         (post-sprint — czeka next sprint planning lub feature follow-up)
+Active task:   (none — czeka decyzja o kolejnym kroku po smoke produkcyjnym 1.6.0)
+Last commit:   2563f5b — feat: bulk auto-connect Faza 1B (#19, v1.4.1) — następny commit 1.6.0 w tej sesji
 Updated:       2026-05-09
 ```
 
@@ -333,11 +333,11 @@ Faza 2 (#21 AI nota) i Faza 3 (#22 pagination + selection) w BACKLOG'u jako plac
 >
 > **Środowisko pracy:** Sprint #3 lecimy w VS Code z Claude Code (subagent layer dla parallel work na DOM extraction / state management / testów). Cowork zostaje dla ad-hoc decyzji.
 
-### #19 ✅ DONE — Bulk auto-connect Faza 1B. Auto-click Shadow DOM modal + worker loop + UX countdown + auto-pagination (z known issue #22 nadal nieidealne). Commit: planowany. Pełny opis w sekcji DONE.
+### #19, #21, #22 ✅ DONE — Sprint #3 zamknięty 1.6.0. Pełne opisy w sekcji DONE.
 
 ## IN PROGRESS
 
-(none — #19 zamknięty, czeka PM next task w Sprint #3)
+(none — Sprint #3 zamknięty, czeka PM next sprint lub feature follow-up)
 
 ## READY FOR TEST
 
@@ -345,8 +345,10 @@ Faza 2 (#21 AI nota) i Faza 3 (#22 pagination + selection) w BACKLOG'u jako plac
 
 ## DONE
 
-**Sprint #3 (Bulk auto-connect MVP, w toku):**
-- ✅ #19 P0 Bulk auto-connect Faza 1B — auto-click "Wyślij bez notatki" w Shadow DOM modal'u (`interop-outlet.shadowRoot.querySelector('.send-invite')`) + queue persisted w `chrome.storage.local` + worker loop setTimeout-based + alarms keep-alive (24s) + throttling (delayMin=45/delayMax=120/dailyCap=25/workingHours=9-18) + skip-pending filter (klik na "W toku" otwiera withdraw flow) + telemetria fail'i (`event_type="bulk_connect_click_failure"`). UX: status badge ● Aktywne (pulse) / Pauza / Bezczynne + live countdown "Następne dodanie za 1m 23s · ostatnia akcja Xs temu". Auto-pagination (button "Wypełnij do limitu") z known issue: zatrzymuje się po pierwszej stronie zamiast iść przez page 2/3/4 (selektor next button nie matchuje SDUI w live LinkedIn'ie — fix wcielony w #22 BACKLOG). Bump 1.3.1 → 1.4.0 → 1.4.1. Testy 175/0 (12 backend + 163 extension). Implementacja przez 5 subagentów paralelnie (A backend, B content.js, C background.js, D popup, E test_bulk_connect.js). Commit: planowany w tej sesji.
+**Sprint #3 (Bulk auto-connect MVP — zamknięty 2026-05-09 z v1.6.0):**
+- ✅ #22 P1 Auto-pagination URL-based + page-aware worker — fix known issue z 1.4.1. `URL` constructor + `searchParams.set("page", N)` zachowuje wszystkie LinkedIn'owe query params (keywords, origin, network=["S"], spellCorrectionEnabled, prioritizeMessage). `bulkAutoFillByUrl(maxProfiles)` orchestrowane w background.js: navigates aktywną kartą `?page=N`, scrapuje, dorzuca z `pageNumber` field. `bulkConnectTick` page-aware: pre-click navigate karty na `item.pageNumber` jeśli różna od current. Po auto-fill karta zostaje na ostatniej stronie; przy klik Start worker loop sam navigates per profil (pierwszy item = page 1). Helpers: `getPageFromUrl`, `setPageInUrl`, `waitForTabComplete`. 16 nowych asercji w test_bulk_connect.js (URL composition + query param preservation + pageNumber default). Bump 1.5.0 → 1.6.0. Commit: planowany w tej sesji.
+- ✅ #21 P1 Faza 2 Post-Connect Messaging Pipeline — pivot z original "Note przy Connect" (5 not/tydzień = ~3% utility, niewarto) na manual scan + generate + clipboard send. Storage extension queue items o pola: `acceptedAt`, `lastAcceptCheckAt`, `scrapedProfile`, `messageDraft`, `messageStatus` (none|draft|approved|sent|skipped), `messageApprovedAt`, `messageSentAt`. Background.js: `bulkCheckAccepts` z 4h cooldown (probeProfileTab → checkProfileDegree na `/in/<slug>/`), `bulkScrapeProfileForQueue` (pre-flight scrape pełnego profilu), `bulkGenerateMessage` (reuse `/api/generate-message`, 1000-char), `bulkUpdateMessageDraft`, `bulkApproveMessage`, `bulkSkipMessage`, `bulkMarkMessageSent`. Content.js: `checkProfileDegree` (5 fallback scope'ów, PL+EN: "Wiadomość/Message" → 1st, "Oczekuje/W toku/Pending" → 2nd pending, "Zaproś/Połącz/Invite/Connect" → connectable). Popup section "Wiadomości po-Connect": status badges (zaakcept/draft/sent/skipped), editable textareas auto-save na blur, "Generuj wszystkie" batch + per-item, "Skopiuj i otwórz" → clipboard + new tab `messaging/compose/?recipient=<slug>`, "Pomiń" → skipped. Backend `ScrapeFailureReport.event_type` field (default "scrape_failure", backward-compat). Anti-halucynacja: każda wiadomość requires explicit user click "Skopiuj i otwórz". Bump 1.4.1 → 1.5.0 → 1.6.0 (z #22). Implementacja przez 4 subagentów paralelnie (A backend, B content checkProfileDegree, C popup, D test_message_pipeline). Testy 245/0 (12 backend + 233 extension: 93+27+14+45+54). Commit: planowany w tej sesji.
+- ✅ #19 P0 Bulk auto-connect Faza 1B — auto-click "Wyślij bez notatki" w Shadow DOM modal'u (`interop-outlet.shadowRoot.querySelector('.send-invite')`) + queue persisted w `chrome.storage.local` + worker loop setTimeout-based + alarms keep-alive (24s) + throttling (delayMin=45/delayMax=120/dailyCap=25/workingHours=9-18) + skip-pending filter (klik na "W toku" otwiera withdraw flow) + telemetria fail'i. UX: status badge ● Aktywne / Pauza / Bezczynne + live countdown "Następne dodanie za 1m 23s". Bump 1.3.1 → 1.4.0 → 1.4.1. Testy 175/0 (12 backend + 163 extension). Commit: 2563f5b.
 - ✅ #18 P0 Bulk auto-connect Faza 1A — detection search results / profile / other + sekcja "Bulk Connect" w popup'ie z listą profili (`extractSearchResults`). Paragraph-first parsing z filtrem mutual connections (regex `wspóln[ay]+\s+kontakt|innych\s+wspólnych|mutual connection`). Slug match po imieniu (`a.innerText.includes(name)`) — wcześniej dla profili z mutual connections name pokazywał "Michał Stanioch i 5 innych wspólnych kontaktów" + click otwierał profil mutuala. Pending detection przez `a[aria-label^="W toku"]` (PL) / `^="Pending"` (EN) — wcześniej szukane "Oczekuje" w textContent (polski LinkedIn używa "W toku"). Manifest matches rozszerzone o `/search/results/people/*`. Bump 1.2.1 → 1.3.0 → 1.3.1 (1.3.0 miał dwa bugi wykryte w smoke teście Marcina, 1.3.1 patch fix w tym samym commitcie). Testy 134/0 (test_scraper 93, test_e2e 27, test_search_extractor 14). Commit: c9394ba.
 
 **Sprint #2 (Observability + safety net, 2026-05-05 → 2026-05-09):**
@@ -378,23 +380,9 @@ Faza 2 (#21 AI nota) i Faza 3 (#22 pagination + selection) w BACKLOG'u jako plac
 - #6 Self-test scraper widget w popup (settings → diagnostyka)
 - #10 Wersjonowanie selektorów + auto-fallback chain (selectors.json + hot-update z backendu)
 
-### #21 P1 — Bulk auto-connect Faza 2: AI nota z generatora przez backend (post Sprint #3 Faza 1)
+### #21 ✅ MOVED to IN PROGRESS — Faza 2: Post-Connect Messaging Pipeline (PM rewrite 2026-05-09 z pivot'em).
 
-**Kontekst.** Faza 1 (Connect bez noty) zastępuje Octopus Starter. Faza 2 dodaje **personalizowaną notę z generatora wiadomości** (reuse istniejący `ai_service.py` w backend). To jest "lepiej niż Octopus" — ich personalizacja jest templated `{firstName}`, nasza będzie pełna AI z kontekstem profilu (już ekstraktujemy headline + about + experience).
-
-**Decyzje produktowe wstępne (do uściślenia w PM session przed startem):**
-- Generator dostaje hard limit **200 chars** (LinkedIn regulamin dla noty Connect — 300 chars dla Premium, ale celujemy w lower common denominator).
-- Generator dostaje kontekst: name, headline, about (pierwsze 500 chars), top 3 experiences. Plus user goal/lang/tone z popup settings (już są).
-- Detection kiedy LinkedIn nie pozwala na notę (free user limit ~5/mc): jeśli modal "Add a note" nie pojawi się po Connect → fallback bez noty + log. Jeśli pojawi się ale textarea jest disabled (premium-locked) → fallback bez noty + log.
-- Pre-flight scrape profilu PRZED click Connect — bo nota wymaga kontekstu profilu, którego nie ma w search results listing (są tylko name + headline). Trade-off: każde Connect z notą = 1 scrape profilu + 1 generation = ~3-5s extra per item. Akceptowalne przy delay 45-120s między akcjami.
-- Cache wygenerowanej noty w queue item — nie generujemy 2× po retry/resume.
-
-**Open questions:**
-- Czy Marcin chce mieć możliwość **review noty przed wysłaniem** (per item lub per batch)? Czy fully auto?
-- Czy generator ma dostęp do CRM context (Krayin) z już-rozpoznanymi leadami?
-- Czy w fazie 2 dodajemy A/B mode (50% z notą, 50% bez) do tracking acceptance rate?
-
-**Estymata:** ~2 sprinty Marcin'a (2-4 dni roboty) po Faza 1 production-ready.
+> **Stary plan (Note przy Connect)** zarchiwizowany w git history przed PM rewrite #21 v2. Skipped powód: free user limit 5 not / tydzień (NIE miesiąc jak początkowo myślano) → 5/175 (25/dzień × 7dni) = ~3% utility — niewarte 2 sprintów effort'u.
 
 ---
 

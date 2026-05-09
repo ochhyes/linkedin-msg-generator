@@ -69,6 +69,20 @@
           <p id="bulk-error" class="bulk-queue__error hidden"></p>
         </div>
 
+        <!-- Post-Connect Messaging Pipeline (#21) -->
+        <section id="message-pipeline" class="message-pipeline hidden">
+          <div class="message-pipeline__header">
+            <span class="message-pipeline__title">Wiadomości po-Connect</span>
+            <span id="message-pipeline-count" class="message-pipeline__count"></span>
+          </div>
+          <div class="message-pipeline__controls">
+            <button id="btn-check-accepts" class="btn btn--small btn--outline">Sprawdź akceptacje</button>
+            <button id="btn-generate-all-msg" class="btn btn--small btn--primary" hidden>Generuj wszystkie</button>
+          </div>
+          <p id="message-pipeline-status" class="message-pipeline__status"></p>
+          <ul id="message-list" class="message-pipeline__list"></ul>
+        </section>
+
         <details id="bulk-settings" class="bulk-settings">
           <summary>Ustawienia bulk connect</summary>
           <div class="bulk-settings__grid">

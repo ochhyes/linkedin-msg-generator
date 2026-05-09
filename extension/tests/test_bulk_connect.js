@@ -245,6 +245,86 @@ console.log("\n▸ todayDateString — format YYYY-MM-DD");
   assert(/^\d{4}-\d{2}-\d{2}$/.test(today), "Default arg returns YYYY-MM-DD format");
 }
 
+// ── URL pagination helpers (#22 v1.6.0) ───────────────────────────
+
+function getPageFromUrl(urlStr) {
+  try {
+    const u = new URL(urlStr);
+    const p = parseInt(u.searchParams.get("page") || "1", 10);
+    return Number.isFinite(p) && p > 0 ? p : 1;
+  } catch (_) { return 1; }
+}
+
+function setPageInUrl(urlStr, pageNum) {
+  try {
+    const u = new URL(urlStr);
+    u.searchParams.set("page", String(pageNum));
+    return u.toString();
+  } catch (_) { return urlStr; }
+}
+
+console.log("\n▸ getPageFromUrl + setPageInUrl — preserve query params");
+{
+  // Realny URL Marcin'a z #22 — wszystkie params muszą być zachowane.
+  const url1 = 'https://www.linkedin.com/search/results/people/?keywords=key%20account%20manager&origin=CLUSTER_EXPANSION&network=%5B"S"%5D&page=1&spellCorrectionEnabled=true&prioritizeMessage=false';
+  assertEqual(getPageFromUrl(url1), 1, "Reads page=1 from real URL");
+
+  const url2 = setPageInUrl(url1, 2);
+  assertEqual(getPageFromUrl(url2), 2, "After setPage(url, 2), getPage returns 2");
+  // URL constructor może re-encode (%20 → +) — sprawdzamy values via params parse,
+  // nie raw substring (LinkedIn akceptuje oba encoding'i).
+  const u2 = new URL(url2);
+  assertEqual(u2.searchParams.get("keywords"), "key account manager", "keywords value preserved");
+  assertEqual(u2.searchParams.get("origin"), "CLUSTER_EXPANSION", "origin preserved");
+  assertEqual(u2.searchParams.get("network"), '["S"]', "network filter preserved (decoded)");
+  assertEqual(u2.searchParams.get("spellCorrectionEnabled"), "true", "spellCorrectionEnabled preserved");
+  assertEqual(u2.searchParams.get("prioritizeMessage"), "false", "prioritizeMessage preserved");
+
+  // Page increment.
+  const url3 = setPageInUrl(url2, 3);
+  assertEqual(getPageFromUrl(url3), 3, "Page 2 → 3");
+
+  // URL bez page param → default 1.
+  const noPage = "https://www.linkedin.com/search/results/people/?keywords=ovb";
+  assertEqual(getPageFromUrl(noPage), 1, "Missing page param → 1");
+
+  // Invalid URL → fallback 1.
+  assertEqual(getPageFromUrl("not-a-url"), 1, "Invalid URL → fallback 1");
+  assertEqual(setPageInUrl("not-a-url", 5), "not-a-url", "Invalid URL → setPage no-op");
+
+  // Negative / NaN page → fallback 1.
+  const urlBadPage = setPageInUrl(url1, 1).replace("page=1", "page=invalid");
+  assertEqual(getPageFromUrl(urlBadPage), 1, "Non-numeric page → fallback 1");
+}
+
+console.log("\n▸ pageNumber per queue item — addToQueue preserves");
+{
+  // Symuluje addToQueue logic z background.js: wejściowe profile zawierają
+  // `pageNumber`, output queue items je zachowują.
+  const inputs = [
+    { slug: "alice", name: "Alice", headline: "Eng", pageNumber: 1 },
+    { slug: "bob", name: "Bob", headline: "PM", pageNumber: 2 },
+    { slug: "carol", name: "Carol", pageNumber: 3 }, // headline missing OK
+  ];
+  const queue = inputs.map((p) => ({
+    slug: p.slug,
+    name: p.name || "",
+    headline: p.headline || "",
+    pageNumber: typeof p.pageNumber === "number" ? p.pageNumber : 1,
+  }));
+  assertEqual(queue[0].pageNumber, 1, "Alice on page 1");
+  assertEqual(queue[1].pageNumber, 2, "Bob on page 2");
+  assertEqual(queue[2].pageNumber, 3, "Carol on page 3");
+
+  // Default pageNumber=1 gdy brakuje (manual add z aktywnej karty).
+  const noPageInput = { slug: "dave", name: "Dave" };
+  const itemDefault = {
+    slug: noPageInput.slug,
+    pageNumber: typeof noPageInput.pageNumber === "number" ? noPageInput.pageNumber : 1,
+  };
+  assertEqual(itemDefault.pageNumber, 1, "Missing pageNumber → default 1");
+}
+
 // ── Summary ──────────────────────────────────────────────────────
 console.log("\n=== test_bulk_connect.js ===");
 console.log(`Passed: ${passed}`);

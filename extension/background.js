@@ -243,6 +243,19 @@ async function addToQueue(profiles) {
       status: "pending",
       timestamp: null,
       error: null,
+      // Faza 2 (#21 v1.5.0):
+      acceptedAt: null,
+      lastAcceptCheckAt: null,
+      scrapedProfile: null,
+      messageDraft: null,
+      messageStatus: "none", // "none"|"draft"|"approved"|"sent"|"skipped"
+      messageApprovedAt: null,
+      messageSentAt: null,
+      // Faza 3 (#22 v1.6.0): która strona search results zawiera ten profil.
+      // bulkConnectTick navigates karty na tę stronę przed click'iem żeby
+      // findLiBySlug w content.js znalazł poprawne <li>. Default 1 dla
+      // backward-compat (profile dodawane manualnie z aktywnej strony).
+      pageNumber: typeof p.pageNumber === "number" ? p.pageNumber : 1,
     }));
   const next = await setBulkState({ queue: [...state.queue, ...fresh] });
   return { success: true, queueSize: next.queue.length, added: fresh.length };
@@ -254,6 +267,171 @@ async function updateQueueItem(slug, patch) {
     q.slug === slug ? { ...q, ...patch } : q
   );
   return await setBulkState({ queue });
+}
+
+// ── Post-Connect Messaging (#21 v1.5.0) ──────────────────────────
+
+const ACCEPT_CHECK_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4h rate-limit per item
+const TAB_LOAD_TIMEOUT_MS = 12000; // 12s na document_idle
+const TAB_SCRAPE_TIMEOUT_MS = 30000; // jak BULK_TICK_TIMEOUT_MS
+
+/**
+ * Otwiera background tab z URL'em, czeka aż content script zareaguje na
+ * sendMessage, zwraca response. Cleanup: zamyka tab niezależnie od wyniku.
+ */
+async function probeProfileTab(slug, action) {
+  const url = `https://www.linkedin.com/in/${encodeURIComponent(slug)}/`;
+  let tab = null;
+  try {
+    tab = await chrome.tabs.create({ url, active: false });
+    // Wait for tab content script — retry sendMessage do timeout.
+    const start = Date.now();
+    let lastErr = null;
+    while (Date.now() - start < TAB_LOAD_TIMEOUT_MS) {
+      try {
+        const resp = await Promise.race([
+          chrome.tabs.sendMessage(tab.id, { action }),
+          new Promise((_, rej) => setTimeout(() => rej(new Error("scrape_timeout")), TAB_SCRAPE_TIMEOUT_MS)),
+        ]);
+        return resp;
+      } catch (err) {
+        lastErr = err;
+        // Content script może jeszcze nie być zainjectowany — czekamy.
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+    throw lastErr || new Error("tab_load_timeout");
+  } finally {
+    if (tab && tab.id) {
+      try { await chrome.tabs.remove(tab.id); } catch (_) { /* tab już zamknięty */ }
+    }
+  }
+}
+
+/**
+ * Skanuje queue items ze status="sent" i sprawdza czy LinkedIn pokazuje
+ * 1st degree (accepted). Rate-limit 4h per item żeby nie spamować LI.
+ */
+async function bulkCheckAccepts() {
+  const state = await getBulkState();
+  const now = Date.now();
+  const candidates = state.queue.filter(
+    (q) =>
+      q.status === "sent" &&
+      !q.acceptedAt &&
+      q.slug &&
+      (!q.lastAcceptCheckAt || now - q.lastAcceptCheckAt > ACCEPT_CHECK_COOLDOWN_MS)
+  );
+
+  if (candidates.length === 0) {
+    return { success: true, scanned: 0, accepted: 0, skipped_recent: state.queue.filter((q) => q.status === "sent" && !q.acceptedAt).length };
+  }
+
+  let acceptedCount = 0;
+  for (const item of candidates) {
+    let result = { degree: "unknown", status: "unknown" };
+    try {
+      result = await probeProfileTab(item.slug, "checkProfileDegree");
+    } catch (err) {
+      // Tab open / scrape failed — record check time, skip for now.
+      result = { degree: "unknown", status: "unknown", error: err && err.message || "probe_failed" };
+    }
+    const patch = { lastAcceptCheckAt: Date.now() };
+    if (result?.status === "accepted" || result?.degree === "1st") {
+      patch.acceptedAt = Date.now();
+      acceptedCount += 1;
+    }
+    await updateQueueItem(item.slug, patch);
+    // Małe opóźnienie między tabami żeby nie zalać Chromy/LinkedIn.
+    await new Promise((r) => setTimeout(r, 800));
+  }
+
+  return {
+    success: true,
+    scanned: candidates.length,
+    accepted: acceptedCount,
+  };
+}
+
+/**
+ * Pre-flight scrape pełnego profilu (reuse `scrapeProfile` z #1).
+ * Zapisuje w queue item.scrapedProfile.
+ */
+async function bulkScrapeProfileForQueue(slug) {
+  try {
+    const resp = await probeProfileTab(slug, "scrapeProfile");
+    if (resp?.success && resp?.profile) {
+      await updateQueueItem(slug, { scrapedProfile: resp.profile });
+      return { success: true, profile: resp.profile };
+    }
+    return { success: false, error: resp?.error || "scrape_returned_no_profile" };
+  } catch (err) {
+    return { success: false, error: err && err.message || "scrape_exception" };
+  }
+}
+
+/**
+ * Generuje message draft dla pojedynczego slug'a. Pre-flight scrape jeśli
+ * brakuje scrapedProfile. POST do /api/generate-message (reuse generateMessage).
+ */
+async function bulkGenerateMessage(slug, options = {}) {
+  const state = await getBulkState();
+  const item = state.queue.find((q) => q.slug === slug);
+  if (!item) return { success: false, error: "item_not_found" };
+
+  // Pre-flight scrape gdy brakuje danych profilu.
+  let profile = item.scrapedProfile;
+  if (!profile) {
+    const scraped = await bulkScrapeProfileForQueue(slug);
+    if (!scraped.success) {
+      await updateQueueItem(slug, { messageStatus: "draft", messageDraft: null, error: scraped.error });
+      return { success: false, error: `scrape_failed: ${scraped.error}` };
+    }
+    profile = scraped.profile;
+  }
+
+  try {
+    const result = await generateMessage(profile, options);
+    const draft = result?.message || "";
+    await updateQueueItem(slug, {
+      messageDraft: draft,
+      messageStatus: "draft",
+    });
+    return { success: true, draft };
+  } catch (err) {
+    return { success: false, error: err && err.message || "generate_failed" };
+  }
+}
+
+async function bulkUpdateMessageDraft(slug, draft) {
+  await updateQueueItem(slug, {
+    messageDraft: draft,
+    messageStatus: "draft",
+  });
+  return { success: true };
+}
+
+async function bulkApproveMessage(slug) {
+  await updateQueueItem(slug, {
+    messageStatus: "approved",
+    messageApprovedAt: Date.now(),
+  });
+  return { success: true };
+}
+
+async function bulkSkipMessage(slug) {
+  await updateQueueItem(slug, {
+    messageStatus: "skipped",
+  });
+  return { success: true };
+}
+
+async function bulkMarkMessageSent(slug) {
+  await updateQueueItem(slug, {
+    messageStatus: "sent",
+    messageSentAt: Date.now(),
+  });
+  return { success: true };
 }
 
 async function findLinkedInSearchTab() {
@@ -268,6 +446,164 @@ async function findLinkedInSearchTab() {
 function inWorkingHours(config) {
   const hour = new Date().getHours();
   return hour >= config.workingHoursStart && hour < config.workingHoursEnd;
+}
+
+// ── URL pagination helpers (#22 v1.6.0) ──────────────────────────
+//
+// LinkedIn search results URL zawiera dużo query params (keywords, origin,
+// network, spellCorrectionEnabled, prioritizeMessage, page). MUSIMY
+// preservować wszystkie podczas zmiany strony — nie rebuildujemy URL'a od
+// zera bo zgubilibyśmy filter network=["S"] (2nd degree only) i inne.
+
+function getPageFromUrl(urlStr) {
+  try {
+    const u = new URL(urlStr);
+    const p = parseInt(u.searchParams.get("page") || "1", 10);
+    return Number.isFinite(p) && p > 0 ? p : 1;
+  } catch (_) {
+    return 1;
+  }
+}
+
+function setPageInUrl(urlStr, pageNum) {
+  try {
+    const u = new URL(urlStr);
+    u.searchParams.set("page", String(pageNum));
+    return u.toString();
+  } catch (_) {
+    return urlStr;
+  }
+}
+
+/**
+ * Czeka aż chrome.tabs.update zakończy nawigację (status === "complete").
+ * Potem dodatkowy delay dla LinkedIn SDUI dorenderowania (lazy load lists).
+ */
+async function waitForTabComplete(tabId, timeoutMs) {
+  const limit = timeoutMs || 12000;
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      chrome.tabs.onUpdated.removeListener(listener);
+      reject(new Error("tab_load_timeout"));
+    }, limit);
+
+    function listener(updatedTabId, changeInfo) {
+      if (updatedTabId !== tabId) return;
+      if (changeInfo.status === "complete") {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        chrome.tabs.onUpdated.removeListener(listener);
+        resolve();
+      }
+    }
+    chrome.tabs.onUpdated.addListener(listener);
+  });
+}
+
+const PAGINATION_RENDER_DELAY_MS = 1500; // SDUI lazy render po SPA nav
+const PAGINATION_MAX_PAGES = 10;
+
+/**
+ * Auto-pagination przez kolejne strony LinkedIn search results.
+ * Navigates aktywną kartę przez ?page=1, 2, 3..., extractSearchResults na
+ * każdej, dorzuca Connect-able do queue z `pageNumber` field. Stop'uje gdy
+ * queue zapełni do `maxProfiles` lub max pages albo brak Connect-able.
+ *
+ * NIE navigates karty z powrotem na page 1 po finish — user zostaje na
+ * ostatniej zeskanowanej stronie. Worker loop bulkConnectTick navigates
+ * karty per-profil zgodnie z item.pageNumber.
+ */
+async function bulkAutoFillByUrl(maxProfiles) {
+  const tab = await findLinkedInSearchTab();
+  if (!tab) {
+    return { success: false, error: "no_search_tab" };
+  }
+  const baseUrl = tab.url || "";
+  if (!baseUrl.includes("/search/results/people/")) {
+    return { success: false, error: "not_on_search_page" };
+  }
+
+  const cap = Math.max(1, maxProfiles || 25);
+  const state = await getBulkState();
+  // Dedup także względem istniejącej queue (nie tylko within current scan).
+  const existingSlugs = new Set(state.queue.map((q) => q.slug));
+  const collected = [];
+
+  let pageNum = getPageFromUrl(baseUrl); // start z aktualnej strony
+  if (pageNum < 1) pageNum = 1;
+
+  for (let pagesScanned = 0; pagesScanned < PAGINATION_MAX_PAGES; pagesScanned++) {
+    // Navigate (nawet pierwsza iteracja — żeby gwarantować świeży DOM
+    // bez stale ze scrolla użytkownika; jeśli aktualnie jesteśmy na page=N
+    // ten update jest no-op — Chrome nie reload'uje gdy URL identyczny).
+    const targetUrl = setPageInUrl(baseUrl, pageNum);
+    try {
+      await chrome.tabs.update(tab.id, { url: targetUrl });
+      await waitForTabComplete(tab.id, 12000);
+    } catch (err) {
+      // Tab load failed — przerwij, zwróć co mamy.
+      break;
+    }
+    // SDUI lazy render — extractSearchResults na świeżo loaded DOM często
+    // zwraca pustą listę. Dodatkowe 1.5s żeby listy się zrenderowały.
+    await new Promise((r) => setTimeout(r, PAGINATION_RENDER_DELAY_MS));
+
+    let pageProfiles = [];
+    try {
+      const resp = await chrome.tabs.sendMessage(tab.id, {
+        action: "extractSearchResults",
+      });
+      if (resp && resp.success && Array.isArray(resp.profiles)) {
+        pageProfiles = resp.profiles;
+      }
+    } catch (err) {
+      // Content script nie zareagował — możliwe że LinkedIn redirect'ował na 404
+      // dla page > max_pages. Przerwij scan.
+      break;
+    }
+
+    if (pageProfiles.length === 0) {
+      // Pusta strona — najprawdopodobniej page > max_pages dla tego search.
+      break;
+    }
+
+    let addedThisPage = 0;
+    for (const p of pageProfiles) {
+      if (!p || !p.slug) continue;
+      if (existingSlugs.has(p.slug)) continue;
+      if (p.buttonState !== "Connect") continue;
+      existingSlugs.add(p.slug);
+      collected.push({
+        slug: p.slug,
+        name: p.name || "",
+        headline: p.headline || "",
+        pageNumber: pageNum,
+      });
+      addedThisPage++;
+      if (collected.length >= cap) break;
+    }
+
+    if (collected.length >= cap) break;
+    pageNum++;
+  }
+
+  // Dorzuć do queue (addToQueue zachowuje pageNumber).
+  let added = 0;
+  if (collected.length > 0) {
+    const resp = await addToQueue(collected);
+    added = resp.added || collected.length;
+  }
+
+  return {
+    success: true,
+    added,
+    pagesScanned: pageNum - getPageFromUrl(baseUrl),
+    finalPage: pageNum,
+  };
 }
 
 async function bulkConnectTick() {
@@ -314,6 +650,26 @@ async function bulkConnectTick() {
     await chrome.alarms.clear(BULK_ALARM_NAME);
     await setBulkState({ nextTickAt: null });
     return;
+  }
+
+  // Page-aware navigation (#22 v1.6.0). Pre-click ensure tab jest na
+  // tej samej stronie search results na której był profil scrape'owany.
+  // Bez tego findLiBySlug w content.js zwróci li_not_found dla profili
+  // z innych stron (po auto-fill queue zawiera profile z multiple pages).
+  const targetPage = pending.pageNumber || 1;
+  const currentPage = getPageFromUrl(tab.url || "");
+  if (currentPage !== targetPage) {
+    try {
+      await chrome.tabs.update(tab.id, {
+        url: setPageInUrl(tab.url, targetPage),
+      });
+      await waitForTabComplete(tab.id, 12000);
+      await new Promise((r) => setTimeout(r, PAGINATION_RENDER_DELAY_MS));
+    } catch (err) {
+      // Page nav failed — kontynuuj próbę kliknięcia (może i tak zadziała),
+      // ale zaloguj w error message przy fail.
+      console.warn("[LinkedIn MSG] page nav failed:", err && err.message);
+    }
   }
 
   // Send click message do content script. Timeout 30s żeby zawsze
@@ -477,8 +833,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case "bulkConnectAddToQueue":
           return await addToQueue(message.profiles || []);
 
+        case "bulkAutoFillByUrl":
+          return await bulkAutoFillByUrl(message.maxProfiles);
+
         case "getBulkState":
           return await getBulkState();
+
+        case "bulkCheckAccepts":
+          return await bulkCheckAccepts();
+
+        case "bulkScrapeProfileForQueue":
+          return await bulkScrapeProfileForQueue(message.slug);
+
+        case "bulkGenerateMessage":
+          return await bulkGenerateMessage(message.slug, message.options || {});
+
+        case "bulkUpdateMessageDraft":
+          return await bulkUpdateMessageDraft(message.slug, message.draft || "");
+
+        case "bulkApproveMessage":
+          return await bulkApproveMessage(message.slug);
+
+        case "bulkSkipMessage":
+          return await bulkSkipMessage(message.slug);
+
+        case "bulkMarkMessageSent":
+          return await bulkMarkMessageSent(message.slug);
 
         default:
           throw new Error(`Nieznana akcja: ${message.action}`);

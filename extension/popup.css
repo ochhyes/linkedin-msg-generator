@@ -535,3 +535,29 @@ body {
 
 /* Checkbox per profil w bulk connect list */
 .bulk-connect__row-checkbox { width: 14px; height: 14px; flex-shrink: 0; cursor: pointer; }
+
+/* ── Post-Connect Messaging Pipeline (#21 v1.5.0) ── */
+
+.message-pipeline { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.message-pipeline__header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.message-pipeline__title { font-size: 13px; font-weight: 600; color: var(--text); }
+.message-pipeline__count { font-size: 11px; color: var(--text-dim); }
+.message-pipeline__controls { display: flex; gap: 6px; margin-bottom: 8px; }
+.message-pipeline__controls .btn { flex: 1; }
+.message-pipeline__status { font-size: 11px; color: var(--text-dim); margin: 4px 0 8px; min-height: 14px; }
+.message-pipeline__status--success { color: #3fb950; }
+.message-pipeline__status--error { color: #f85149; }
+.message-pipeline__list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; max-height: 360px; overflow-y: auto; }
+
+.message-item { background: var(--bg-elevated, #1a1d24); border-radius: var(--radius); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.message-item--skipped, .message-item--sent { opacity: 0.6; }
+.message-item__head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.message-item__name { font-size: 12px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+.message-item__status { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 500; flex-shrink: 0; }
+.message-item__status--accepted { background: rgba(46, 160, 67, 0.2); color: #3fb950; }
+.message-item__status--draft { background: rgba(79, 143, 247, 0.2); color: #4f8ff7; }
+.message-item__status--sent { background: rgba(46, 160, 67, 0.25); color: #3fb950; }
+.message-item__status--skipped { background: rgba(187, 128, 9, 0.2); color: #d29922; }
+.message-item__draft { width: 100%; min-height: 60px; max-height: 120px; resize: vertical; padding: 6px 8px; font-size: 11px; line-height: 1.4; background: var(--bg, #0d1117); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); font-family: inherit; }
+.message-item__actions { display: flex; gap: 4px; flex-wrap: wrap; }
+.message-item__actions .btn { flex: 1; min-width: 70px; font-size: 10px; padding: 4px 6px; }
