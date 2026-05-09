@@ -1,14 +1,19 @@
 /**
- * test_syntax.js — lint guard dla głównych plików extension'a (#31 v1.8.1).
+ * test_syntax.js — lint guard dla głównych plików extension'a (#31 v1.8.1, upgrade v1.8.2).
  *
  * Powód powstania: w 1.8.0 (commit 56d08d6) duplicate const w popup.js
  * przeszedł review bo żaden test nie sprawdzał czy pliki w ogóle parsują
  * się jako JS. Cały popup był martwy aż do 1.8.1 hotfix'a — wszystkie
  * event listenery odpadły. Ten test = tania siatka bezpieczeństwa.
  *
- * Wywołuje `node --check <file>` na każdym z 5 entry-pointów extension'a.
- * Exit 0 = OK (PASS), throw (non-zero exit + stderr) = SyntaxError (FAIL
- * z dosłowną treścią błędu node'a — plik + linia).
+ * v1.8.2 upgrade: dorzucony NUL byte detector. Po incydencie 1.8.1 popup.js
+ * miał 169 trailing NUL bytes (mount lag w sandboxie zostawia padding) —
+ * Chrome parser się wywalał, ale `node --check` w niektórych OS-ach toleruje
+ * NULe. Dwie asercje per plik: parse OK + 0 NULi w buforze.
+ *
+ * Wywołuje `node --check <file>` na każdym z 5 entry-pointów extension'a
+ * + czyta plik jako buffer i liczy bajty 0x00. Exit 0 = OK (PASS),
+ * throw / NUL count > 0 = FAIL.
  *
  * Run: node tests/test_syntax.js (z PWD = extension/)
  *
@@ -18,6 +23,7 @@
 
 const { execSync } = require("child_process");
 const path = require("path");
+const fs = require("node:fs");
 
 let passed = 0;
 let failed = 0;
@@ -63,6 +69,24 @@ for (const file of FILES) {
     const lines = stderr.split(/\r?\n/).filter((l) => l.trim());
     const detail = lines.slice(0, 3).join(" | ") || "unknown error";
     assert(false, `${file} parsuje się`, detail);
+  }
+
+  // NUL byte detection — incydent 1.8.1 popup.js miał 169 trailing NULi
+  // które wywalały Chrome parser, ale `node --check` w niektórych OS-ach
+  // toleruje. Asercja explicit: 0 NULi w buforze pliku.
+  try {
+    const buf = fs.readFileSync(fullPath);
+    let nulCount = 0;
+    for (let i = 0; i < buf.length; i++) {
+      if (buf[i] === 0) nulCount++;
+    }
+    if (nulCount === 0) {
+      assert(true, `${file} — 0 NUL bytes`);
+    } else {
+      assert(false, `${file} — 0 NUL bytes`, `znaleziono ${nulCount} NUL byte(s)`);
+    }
+  } catch (err) {
+    assert(false, `${file} — 0 NUL bytes`, `read error: ${err.message}`);
   }
 }
 

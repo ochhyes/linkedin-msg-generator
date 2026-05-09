@@ -1602,10 +1602,33 @@
     // Bulk Connect detection (#18) — reveal section niezależnie od session
     // restore'u. Bez tego fresh install bez `lastSession` w storage zostawia
     // bulk-connect hidden, mimo że user jest na search results page.
+    //
+    // Bug #32 fix (v1.8.2): SDUI search results pages czasem nie wstrzykują
+    // content scriptu mimo manifest matches (LinkedIn'owy React + history
+    // manipulation). Gdy sendMessage rzuca "Receiving end does not exist",
+    // wymuszamy injection programmatic (chrome.scripting.executeScript) i
+    // retry. Ten sam pattern jest w scrapeCurrentTab(~236).
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (tab?.id) {
-        const detection = await chrome.tabs.sendMessage(tab.id, { action: "detectPageType" });
+      if (tab?.id && tab.url && /linkedin\.com/.test(tab.url)) {
+        let detection = null;
+        try {
+          detection = await chrome.tabs.sendMessage(tab.id, { action: "detectPageType" });
+        } catch (msgErr) {
+          // Content script nie odpowiedział — może SDUI page nie wstrzyknął
+          // (Bug #32). Wymuszamy injection programmatic i retry.
+          try {
+            await chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              files: ["content.js"],
+            });
+            // Krótki timeout na inicjalizację listenera content script.
+            await new Promise((r) => setTimeout(r, 200));
+            detection = await chrome.tabs.sendMessage(tab.id, { action: "detectPageType" });
+          } catch (injectErr) {
+            console.warn("[LinkedIn MSG] content script injection fallback failed:", injectErr);
+          }
+        }
         if (detection?.type === "search_results") {
           bulkConnect.classList.remove("hidden");
           loadProfilesList();
@@ -1613,7 +1636,7 @@
         }
       }
     } catch (_) {
-      // not on linkedin or content script not ready — silent
+      // Inne errory (np. brak permissions) — silent
     }
 
     // Bulk queue state (#19) i follow-upy (#25) zawsze ładujemy — queue

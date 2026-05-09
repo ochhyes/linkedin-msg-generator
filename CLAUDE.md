@@ -63,6 +63,7 @@ Reload extension po zmianach: `chrome://extensions/` → ikona reload przy Linke
 - Komentarze po polsku lub angielsku — konsystentnie w pliku
 - Testy: pytest (backend), custom runner + jsdom (extension)
 - Commits: po polsku, imperative mood ("dodaj", "napraw"), bez kropki na końcu
+- Pre-commit hook (`.git/hooks/pre-commit`) sprawdza syntax + NUL bytes w `extension/*.js` przed każdym commit. NIE bypass'uj `--no-verify` chyba że masz konkretny powód. Hook'a powiela mechanism który blokuje SW MV3 popup parsowanie (incydent 1.8.0/1.8.1).
 
 ## Wersjonowanie extension
 
