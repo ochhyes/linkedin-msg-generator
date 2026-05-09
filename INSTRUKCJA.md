@@ -1,4 +1,4 @@
-# LinkedIn MSG — instrukcja dla zespołu OVB (v1.6.0)
+# LinkedIn MSG — instrukcja dla zespołu OVB (v1.7.0)
 
 Extension Chrome dla **bulk wysyłki zaproszeń** + **AI generator wiadomości** dla nowo zaakceptowanych kontaktów. Zastępuje Octopus Starter.
 
@@ -107,6 +107,35 @@ Następnego dnia (lub co kilka dni):
 
 **Nie chcesz pisać do kogoś?** Klik **"Pomiń"** → status `pominięto`, item greyed-out.
 
+### Krok G — Follow-upy 3d / 7d (NOWE w 1.7.0)
+
+Pierwsza wiadomość ma ~30% reply rate. Z follow-up'em po 3 dniach +20%, po 7 dniach +10% — łącznie ~60%. **Bez follow-up'ów tracisz połowę leadów.**
+
+Po kliknięciu **"Wysłałem"** w Kroku F, extension automatycznie planuje 2 follow-upy:
+- **Follow-up #1** za 3 dni (łagodne przypomnienie).
+- **Follow-up #2** za 7 dni (ostatnie zaczepienie).
+
+**Jak rozpoznać że jest follow-up do zrobienia:**
+- Czerwona ikonka z liczbą `(3)` na ikonie LinkedIn MSG w pasku Chrome → tyle follow-up'ów czeka.
+- Po otwarciu popup'u na samej górze pojawi się sekcja **"Do follow-up'u"** z listą profili.
+
+**Per profil zobaczysz:**
+- Imię + headline.
+- Tag `Follow-up #1 (3d po wysłaniu)` lub `#2 (7d po wysłaniu)`.
+- Pustą textarea + 4 buttony.
+
+**Flow follow-up'u (~30s na osobę):**
+
+1. Klik **"Generuj follow-up"** — AI dostaje treść Twojej PIERWSZEJ wiadomości jako kontekst i pisze łagodne nawiązanie (NIE re-pitch tej samej oferty).
+2. Draft pojawi się w textarea. **Edytuj jeśli potrzeba** (zapis automatyczny po kliknięciu poza textarea).
+3. Klik **"Skopiuj i otwórz"** → schowek + nowa karta z LinkedIn Messages.
+4. W LinkedIn'ie: Ctrl+V → Send.
+5. Wracaj do popup'u → klik **"Wysłałem"** → potwierdzenie → profil znika z listy follow-up'ów.
+
+**Nie chcesz follow-up'u dla tej osoby?** Klik **"Pomiń"** → profil znika z listy permanentnie (oba #1 i #2 anulowane).
+
+> **Co z następną wiadomością po wysłaniu follow-up #1?** Jeśli osoba dalej nie odpowiada, follow-up #2 pojawi się za kolejne 4 dni (= 7 dni od pierwszej wiadomości). To jest "ostatnie zaczepienie" — po nim odpuszczamy lead.
+
 ---
 
 ## 4. Typowy harmonogram (przykład)
@@ -115,12 +144,19 @@ Następnego dnia (lub co kilka dni):
 - Search "doradca finansowy Warszawa" → "Wypełnij do limitu" (25) → Start.
 - Plugin chodzi 9:00-18:00, ~25 zaproszeń wysłanych.
 
-**Wtorek 9:00:** Sprawdzanie + follow-up.
+**Wtorek 9:00:** Sprawdzanie + pierwsza wiadomość.
 - Klik "Sprawdź akceptacje" → 8 osób z 25 zaakceptowało.
 - Klik "Generuj wszystkie (8)" → drafty pojawiają się.
-- Per osoba: czytam, edytuję, "Skopiuj i otwórz" → paste w LinkedIn → Send. ~5 min.
+- Per osoba: czytam, edytuję, "Skopiuj i otwórz" → paste w LinkedIn → Send → "Wysłałem". ~5 min.
+- *Każde "Wysłałem" automatycznie planuje follow-up #1 na piątek i #2 na następny wtorek.*
 
-**Środa-Niedziela:** powtarzaj sprawdzanie raz dziennie. Kolejni accept'ują (zwykle 50% w pierwszym tygodniu).
+**Środa-Czwartek:** powtarzaj sprawdzanie raz dziennie. Kolejni accept'ują, kolejne "Wysłałem".
+
+**Piątek 9:00:** Follow-up #1 dla wtorkowej grupy.
+- Czerwony badge `(8)` na ikonie → 8 follow-up'ów due.
+- Sekcja "Do follow-up'u" w popup'ie pokazuje listę. Per osoba: "Generuj follow-up" → review → "Skopiuj i otwórz" → Send → "Wysłałem". ~3-5 min.
+
+**Następny wtorek 9:00:** Follow-up #2 dla tych co dalej nie odpowiedzieli. Po tym puszczamy lead.
 
 **Następny poniedziałek:** nowa kampania (queue z poprzedniego tygodnia można "Wyczyścić kolejkę" lub zostawić jako historia).
 

@@ -256,6 +256,16 @@ async function addToQueue(profiles) {
       // findLiBySlug w content.js znalazł poprawne <li>. Default 1 dla
       // backward-compat (profile dodawane manualnie z aktywnej strony).
       pageNumber: typeof p.pageNumber === "number" ? p.pageNumber : 1,
+      // Sprint #4 (#25 v1.7.0): follow-upy 3d/7d po wysłaniu pierwszej
+      // wiadomości. Daty RemindAt set'owane przez hook w bulkMarkMessageSent
+      // (sentAt+3d / sentAt+7d). Sent timestamps gdy user klika "Wysłałem".
+      followup1RemindAt: null,
+      followup2RemindAt: null,
+      followup1Draft: null,
+      followup2Draft: null,
+      followup1SentAt: null,
+      followup2SentAt: null,
+      followupStatus: "scheduled", // "scheduled" | "skipped"
     }));
   const next = await setBulkState({ queue: [...state.queue, ...fresh] });
   return { success: true, queueSize: next.queue.length, added: fresh.length };
@@ -427,10 +437,215 @@ async function bulkSkipMessage(slug) {
 }
 
 async function bulkMarkMessageSent(slug) {
+  const sentAt = Date.now();
   await updateQueueItem(slug, {
     messageStatus: "sent",
-    messageSentAt: Date.now(),
+    messageSentAt: sentAt,
   });
+  // Idempotent hook (#25 v1.7.0): set follow-up reminders TYLKO gdy nie były
+  // wcześniej ustawione. User może kliknąć "Wysłałem" dwa razy — drugi klik
+  // nie nadpisuje reminderów (np. po reset'cie skipped → ponownie sent).
+  const state = await getBulkState();
+  const item = state.queue.find((q) => q.slug === slug);
+  if (item && item.followup1RemindAt == null) {
+    await updateQueueItem(slug, {
+      followup1RemindAt: sentAt + 3 * 24 * 60 * 60 * 1000,
+      followup2RemindAt: sentAt + 7 * 24 * 60 * 60 * 1000,
+      followupStatus: "scheduled",
+    });
+  }
+  await updateFollowupBadge();
+  return { success: true };
+}
+
+// ── Follow-upy 3d/7d (#25 v1.7.0) ────────────────────────────────
+//
+// Architektura: storage queue items (#21) extended o 7 pól follow-up'owych.
+// Hook w bulkMarkMessageSent ustawia RemindAt'y. Alarm `followup_check_due`
+// co 6h + storage.onChanged listener trigger'ują updateFollowupBadge() —
+// badge na ikonie pokazuje liczbę due follow-up'ów. Popup section listuje
+// due items z buttonami Generuj / Skopiuj i otwórz / Wysłałem / Pomiń.
+//
+// Backend: ZERO zmian. Reuse generateMessage z goal="followup" + augmented
+// sender_context (poprzednia treść wiadomości + numer follow-up'a).
+
+const FOLLOWUP_ALARM_NAME = "followup_check_due";
+const FOLLOWUP_BADGE_COLOR = "#d32f2f";
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Zlicza due follow-up'y w queue i ustawia badge na ikonie. Każdy profil
+ * może mieć dwa due naraz (FU#1 + FU#2 jeśli user nigdy nie zareagował) —
+ * wtedy liczy 2. Cap "99+" dla wizualnej higieny.
+ */
+async function updateFollowupBadge() {
+  try {
+    const state = await getBulkState();
+    const now = Date.now();
+    let count = 0;
+    for (const item of state.queue) {
+      if (item.followupStatus !== "scheduled") continue;
+      if (!item.messageSentAt) continue;
+      if (item.followup1RemindAt && item.followup1RemindAt <= now && !item.followup1SentAt) count++;
+      if (item.followup2RemindAt && item.followup2RemindAt <= now && !item.followup2SentAt) count++;
+    }
+    const text = count > 0 ? (count > 99 ? "99+" : String(count)) : "";
+    await chrome.action.setBadgeText({ text });
+    if (count > 0) {
+      await chrome.action.setBadgeBackgroundColor({ color: FOLLOWUP_BADGE_COLOR });
+    }
+    return count;
+  } catch (err) {
+    console.warn("[followup] updateFollowupBadge failed:", err && err.message);
+    return 0;
+  }
+}
+
+/**
+ * Lista due follow-up'ów (filtered + sorted by oldest sent first). Per-profil
+ * może być dwa entries (jeden per dueFollowup=1|2) gdy oba RemindAt'y minęły.
+ */
+async function bulkListDueFollowups() {
+  const state = await getBulkState();
+  const now = Date.now();
+  const items = [];
+  for (const item of state.queue) {
+    if (item.followupStatus !== "scheduled") continue;
+    if (!item.messageSentAt) continue;
+    const daysSinceSent = Math.floor((now - item.messageSentAt) / DAY_MS);
+    if (item.followup1RemindAt && item.followup1RemindAt <= now && !item.followup1SentAt) {
+      items.push({
+        slug: item.slug,
+        name: item.name,
+        headline: item.headline,
+        messageSentAt: item.messageSentAt,
+        dueFollowup: 1,
+        daysSinceSent,
+        draft: item.followup1Draft || "",
+      });
+    }
+    if (item.followup2RemindAt && item.followup2RemindAt <= now && !item.followup2SentAt) {
+      items.push({
+        slug: item.slug,
+        name: item.name,
+        headline: item.headline,
+        messageSentAt: item.messageSentAt,
+        dueFollowup: 2,
+        daysSinceSent,
+        draft: item.followup2Draft || "",
+      });
+    }
+  }
+  items.sort((a, b) => a.messageSentAt - b.messageSentAt);
+  return { success: true, items };
+}
+
+/**
+ * Generuje follow-up draft przez backend (reuse generateMessage z goal="followup").
+ * Augmentuje sender_context o kontekst follow-up'a + treść poprzedniej wiadomości.
+ * Pre-flight scrape gdy queue item nie ma scrapedProfile (jak bulkGenerateMessage).
+ */
+async function bulkGenerateFollowup(slug, followupNum) {
+  if (followupNum !== 1 && followupNum !== 2) {
+    return { success: false, error: "invalid_followup_num" };
+  }
+
+  const state = await getBulkState();
+  const item = state.queue.find((q) => q.slug === slug);
+  if (!item) return { success: false, error: "item_not_found" };
+  if (!item.messageDraft) return { success: false, error: "no_message_draft" };
+
+  // Pre-flight scrape gdy brakuje danych profilu (mirror bulkGenerateMessage).
+  let profile = item.scrapedProfile;
+  if (!profile) {
+    const scraped = await bulkScrapeProfileForQueue(slug);
+    if (!scraped.success) {
+      return { success: false, error: `scrape_failed: ${scraped.error}` };
+    }
+    profile = scraped.profile;
+  }
+
+  // Augmentowany sender_context — bazowy z user settings + kontekst follow-up'a.
+  const baseSettings = await getSettings();
+  const baseContext = (baseSettings.senderContext || "").trim();
+  const days = followupNum === 1 ? 3 : 7;
+  const followupContext =
+    `[KONTEKST FOLLOW-UP'A] To jest follow-up #${followupNum} (${days} dni po wysłaniu pierwszej wiadomości).\n` +
+    `Poprzednia wiadomość, którą napisał nadawca:\n` +
+    `"${item.messageDraft}"\n` +
+    `Odbiorca nie odpowiedział. Napisz łagodne nawiązanie / przypomnienie o sobie. NIE re-pitch tej samej oferty. Krótko (max 3 zdania).`;
+  const augmented = baseContext
+    ? `${baseContext}\n\n${followupContext}`
+    : followupContext;
+
+  try {
+    const result = await generateMessage(profile, {
+      goal: "followup",
+      sender_context: augmented,
+    });
+    const draft = result?.message || "";
+    const patch = followupNum === 1
+      ? { followup1Draft: draft }
+      : { followup2Draft: draft };
+    await updateQueueItem(slug, patch);
+    return { success: true, draft };
+  } catch (err) {
+    return { success: false, error: err && err.message || "generate_failed" };
+  }
+}
+
+async function bulkUpdateFollowupDraft(slug, followupNum, text) {
+  if (followupNum !== 1 && followupNum !== 2) {
+    return { success: false, error: "invalid_followup_num" };
+  }
+  const patch = followupNum === 1
+    ? { followup1Draft: text }
+    : { followup2Draft: text };
+  await updateQueueItem(slug, patch);
+  return { success: true };
+}
+
+/**
+ * Otwiera tab z LinkedIn messaging compose dla profilu i zwraca draft
+ * (popup robi navigator.clipboard.writeText — clipboard API nie działa
+ * niezawodnie w MV3 service worker, więc clipboard zostaje po stronie popup'u
+ * jak istniejący handleCopyAndOpen w popup.js dla #21).
+ */
+async function bulkCopyFollowupAndOpen(slug, followupNum) {
+  if (followupNum !== 1 && followupNum !== 2) {
+    return { success: false, error: "invalid_followup_num" };
+  }
+  const state = await getBulkState();
+  const item = state.queue.find((q) => q.slug === slug);
+  if (!item) return { success: false, error: "item_not_found" };
+  const draft = followupNum === 1 ? item.followup1Draft : item.followup2Draft;
+  if (!draft || !String(draft).trim()) {
+    return { success: false, error: "empty_draft" };
+  }
+  const url = `https://www.linkedin.com/messaging/compose/?recipient=${encodeURIComponent(slug)}`;
+  try {
+    await chrome.tabs.create({ url, active: true });
+  } catch (err) {
+    return { success: false, error: err && err.message || "tab_open_failed" };
+  }
+  return { success: true, draft, url };
+}
+
+async function bulkMarkFollowupSent(slug, followupNum) {
+  if (followupNum !== 1 && followupNum !== 2) {
+    return { success: false, error: "invalid_followup_num" };
+  }
+  const patch = followupNum === 1
+    ? { followup1SentAt: Date.now() }
+    : { followup2SentAt: Date.now() };
+  await updateQueueItem(slug, patch);
+  await updateFollowupBadge();
+  return { success: true };
+}
+
+async function bulkSkipFollowup(slug) {
+  await updateQueueItem(slug, { followupStatus: "skipped" });
+  await updateFollowupBadge();
   return { success: true };
 }
 
@@ -745,7 +960,20 @@ async function stopBulkConnect() {
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === BULK_ALARM_NAME) {
     // No-op. Alarm tu tylko żeby SW był wakeup'owany co 24s.
+  } else if (alarm.name === FOLLOWUP_ALARM_NAME) {
+    // Re-compute badge co 6h — łapie case'y kiedy user nie otwierał
+    // popup'u przez dni, a follow-up #1 (3d) lub #2 (7d) stał się due.
+    updateFollowupBadge();
   }
+});
+
+// Storage listener — re-compute badge natychmiast po zmianach z popup'u
+// (mark_sent / skip / generate). Gwarantuje że badge zniknie zaraz po
+// kliknięciu "Wysłałem" zamiast czekać do następnego alarm'u.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local") return;
+  if (!changes.bulkConnect) return;
+  updateFollowupBadge();
 });
 
 // ── API Calls ────────────────────────────────────────────────────────
@@ -762,7 +990,13 @@ async function generateMessage(profile, options = {}) {
     tone: options.tone || null,
     language: options.language || settings.defaultLanguage,
     max_chars: options.maxChars || settings.defaultMaxChars,
-    sender_context: settings.senderContext || null,
+    // options.sender_context override pozwala bulkGenerateFollowup wstrzyknąć
+    // augmented context (poprzednia treść wiadomości + nr follow-up'a) bez
+    // mutowania user settings. Undefined → fallback do settings (BC).
+    sender_context:
+      options.sender_context !== undefined
+        ? options.sender_context
+        : settings.senderContext || null,
     ...personalizationToBody(userSettings),
   };
 
@@ -860,6 +1094,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case "bulkMarkMessageSent":
           return await bulkMarkMessageSent(message.slug);
 
+        case "followupListDue":
+          return await bulkListDueFollowups();
+
+        case "followupGenerate":
+          return await bulkGenerateFollowup(message.slug, message.followupNum);
+
+        case "followupUpdateDraft":
+          return await bulkUpdateFollowupDraft(message.slug, message.followupNum, message.text);
+
+        case "followupCopyAndOpen":
+          return await bulkCopyFollowupAndOpen(message.slug, message.followupNum);
+
+        case "followupMarkSent":
+          return await bulkMarkFollowupSent(message.slug, message.followupNum);
+
+        case "followupSkip":
+          return await bulkSkipFollowup(message.slug);
+
         default:
           throw new Error(`Nieznana akcja: ${message.action}`);
       }
@@ -880,4 +1132,15 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     await chrome.storage.local.set({ bulkConnect: BULK_DEFAULTS });
     console.log("[LinkedIn MSG] Extension installed, defaults saved.");
   }
+  // #25: alarm reset niezależnie od reason — install/update/chrome_update.
+  // chrome.alarms.create jest idempotent (nadpisze istniejący o tej samej nazwie).
+  await chrome.alarms.create(FOLLOWUP_ALARM_NAME, { periodInMinutes: 360 });
+  await updateFollowupBadge();
+});
+
+// SW może się obudzić bez onInstalled (np. po idle kill). Re-create alarm
+// + recompute badge na każdy start żeby badge był aktualny.
+chrome.runtime.onStartup.addListener(async () => {
+  await chrome.alarms.create(FOLLOWUP_ALARM_NAME, { periodInMinutes: 360 });
+  await updateFollowupBadge();
 });

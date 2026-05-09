@@ -70,6 +70,10 @@
   const btnCheckAccepts = $("#btn-check-accepts");
   const btnGenerateAllMsg = $("#btn-generate-all-msg");
   const messageList = $("#message-list");
+  // Follow-up (#25) refs
+  const followupSection = $("#followup-section");
+  const followupCountBadge = $("#followup-count-badge");
+  const followupList = $("#followup-list");
 
   // ── State ────────────────────────────────────────────────────────
   let currentProfile = null;
@@ -728,6 +732,8 @@
   }
 
   // Re-render queue at any storage change. Plus countdown timer toggle.
+  // Każda zmiana queue (mark_sent, generate, skip etc.) potencjalnie
+  // wpływa też na listę due follow-up'ów — re-load sekcji follow-up.
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === "local" && changes.bulkConnect) {
       const newState = changes.bulkConnect.newValue;
@@ -735,6 +741,8 @@
       renderBulkUI(newState);
       if (newState?.active) startCountdownTimer();
       else stopCountdownTimer();
+      // Follow-up section (#25) — refresh listy due po każdej zmianie queue.
+      loadFollowupList();
     }
   });
 
@@ -1038,6 +1046,282 @@
     );
   }
 
+  // ── Follow-up reminders 3d/7d (#25 v1.7.0) ───────────────────────
+  //
+  // Sekcja "Do follow-up'u" — lista profili, dla których minęły 3 lub 7
+  // dni od pierwszej wysłanej wiadomości. Background.js odpowiada za
+  // recompute due/badge na alarm 6h + storage.onChanged. Popup pyta
+  // background o snapshot (`followupListDue`) i renderuje DOM.
+
+  // Map per-row dla debounce auto-save edycji draftu (klucz = `${slug}#${N}`).
+  const _followupDraftDebounce = new Map();
+
+  /**
+   * Pyta background o aktualną listę due follow-upów i renderuje sekcję.
+   * Silent fail — gdy SW nie odpowiada, sekcja zostaje w poprzednim stanie.
+   */
+  async function loadFollowupList() {
+    try {
+      const resp = await chrome.runtime.sendMessage({ action: "followupListDue" });
+      if (resp && resp.success) {
+        renderFollowupList(resp.items || []);
+      }
+    } catch (err) {
+      console.warn("[LinkedIn MSG] loadFollowupList failed:", err);
+    }
+  }
+
+  /**
+   * Renderuje sekcję Follow-up. Gdy items.length === 0 sekcja jest
+   * całkowicie ukryta (display:none) — bez badge'a, bez nagłówka.
+   */
+  function renderFollowupList(items) {
+    if (!followupSection || !followupList) return;
+    if (!Array.isArray(items) || items.length === 0) {
+      followupSection.classList.add("hidden");
+      followupList.innerHTML = "";
+      if (followupCountBadge) followupCountBadge.textContent = "";
+      return;
+    }
+    followupSection.classList.remove("hidden");
+    if (followupCountBadge) followupCountBadge.textContent = String(items.length);
+    followupList.innerHTML = "";
+    for (const item of items) {
+      followupList.appendChild(createFollowupRow(item));
+    }
+  }
+
+  /**
+   * Buduje DOM jednego rzędu follow-up. textContent dla user data
+   * (imię, headline) — NIE innerHTML, ochrona przed XSS gdyby LinkedIn
+   * podsunął złośliwy headline.
+   */
+  function createFollowupRow(item) {
+    const slug = item.slug || "";
+    const followupNum = item.dueFollowup === 2 ? 2 : 1;
+    const days = followupNum === 2 ? 7 : 3;
+
+    const li = document.createElement("li");
+    li.className = "followup-row";
+    li.dataset.slug = slug;
+    li.dataset.followupNum = String(followupNum);
+
+    const head = document.createElement("div");
+    head.className = "followup-row__head";
+
+    const nameEl = document.createElement("span");
+    nameEl.className = "followup-row__name";
+    nameEl.textContent = item.name || slug || "—";
+
+    const tag = document.createElement("span");
+    tag.className = "followup-row__tag" + (followupNum === 2 ? " followup-row__tag--second" : "");
+    tag.textContent = `Follow-up #${followupNum} (${days}d po wysłaniu)`;
+
+    head.appendChild(nameEl);
+    head.appendChild(tag);
+
+    const headlineEl = document.createElement("div");
+    headlineEl.className = "followup-row__headline";
+    headlineEl.textContent = item.headline || "";
+
+    const draftArea = document.createElement("textarea");
+    draftArea.className = "followup-row__draft";
+    draftArea.dataset.slug = slug;
+    draftArea.dataset.followupNum = String(followupNum);
+    draftArea.placeholder = item.draft
+      ? ""
+      : "Klik 'Generuj follow-up' żeby wygenerować draft…";
+    draftArea.value = item.draft || "";
+
+    const actions = document.createElement("div");
+    actions.className = "followup-row__actions";
+
+    const btnGen = document.createElement("button");
+    btnGen.className = "btn btn--small btn--outline";
+    btnGen.textContent = item.draft ? "Regeneruj follow-up" : "Generuj follow-up";
+    btnGen.dataset.action = "followup-generate";
+    btnGen.dataset.slug = slug;
+    btnGen.dataset.followupNum = String(followupNum);
+    actions.appendChild(btnGen);
+
+    const btnCopyOpen = document.createElement("button");
+    btnCopyOpen.className = "btn btn--small btn--primary";
+    btnCopyOpen.textContent = "Skopiuj i otwórz";
+    btnCopyOpen.dataset.action = "followup-copy-open";
+    btnCopyOpen.dataset.slug = slug;
+    btnCopyOpen.dataset.followupNum = String(followupNum);
+    actions.appendChild(btnCopyOpen);
+
+    const btnSent = document.createElement("button");
+    btnSent.className = "btn btn--small btn--outline";
+    btnSent.textContent = "Wysłałem";
+    btnSent.dataset.action = "followup-mark-sent";
+    btnSent.dataset.slug = slug;
+    btnSent.dataset.followupNum = String(followupNum);
+    actions.appendChild(btnSent);
+
+    const btnSkip = document.createElement("button");
+    btnSkip.className = "btn btn--small btn--outline";
+    btnSkip.textContent = "Pomiń";
+    btnSkip.dataset.action = "followup-skip";
+    btnSkip.dataset.slug = slug;
+    actions.appendChild(btnSkip);
+
+    li.appendChild(head);
+    li.appendChild(headlineEl);
+    li.appendChild(draftArea);
+    li.appendChild(actions);
+    return li;
+  }
+
+  /**
+   * Generuje AI draft follow-up'a. Background reads queue[slug].messageDraft
+   * + scrapedProfile, woła generator z goal="followup", zapisuje do storage.
+   * UI: button disabled + "Generuję…" do response, potem fill textarea.
+   */
+  async function handleFollowupGenerate(slug, followupNum, btn) {
+    if (!slug || !btn) return;
+    const origText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Generuję…";
+    try {
+      const resp = await chrome.runtime.sendMessage({
+        action: "followupGenerate",
+        slug,
+        followupNum,
+      });
+      if (resp?.success) {
+        // Update textarea — storage.onChanged też triggernie loadFollowupList(),
+        // ale nie polegamy na nim (wymiana całego DOM zaorałaby focus).
+        const ta = followupList?.querySelector(
+          `textarea[data-slug="${CSS.escape(slug)}"][data-followup-num="${followupNum}"]`
+        );
+        if (ta) ta.value = resp.draft || "";
+      } else {
+        alert("Nie udało się wygenerować follow-up'a: " + (resp?.error || "unknown"));
+      }
+    } catch (err) {
+      alert("Błąd generowania: " + ((err && err.message) || err));
+    } finally {
+      btn.disabled = false;
+      btn.textContent = origText;
+    }
+  }
+
+  /**
+   * Auto-save edycji draftu po blur z debounce 500ms. Klucz dedupe
+   * `slug#N` żeby followup #1 i #2 nie konkurowały o ten sam timer.
+   */
+  function scheduleFollowupDraftSave(slug, followupNum, text) {
+    if (!slug) return;
+    const key = `${slug}#${followupNum}`;
+    const prev = _followupDraftDebounce.get(key);
+    if (prev) clearTimeout(prev);
+    const timer = setTimeout(async () => {
+      _followupDraftDebounce.delete(key);
+      try {
+        await chrome.runtime.sendMessage({
+          action: "followupUpdateDraft",
+          slug,
+          followupNum,
+          text,
+        });
+      } catch (err) {
+        console.warn("[LinkedIn MSG] followupUpdateDraft failed:", err);
+      }
+    }, 500);
+    _followupDraftDebounce.set(key, timer);
+  }
+
+  async function handleFollowupCopyAndOpen(slug, followupNum) {
+    if (!slug) return;
+    try {
+      const resp = await chrome.runtime.sendMessage({
+        action: "followupCopyAndOpen",
+        slug,
+        followupNum,
+      });
+      if (!resp?.success) {
+        if (resp?.error === "empty_draft") {
+          alert("Najpierw wygeneruj draft");
+        } else {
+          alert("Nie udało się skopiować: " + (resp?.error || "unknown"));
+        }
+        return;
+      }
+      // Background otworzył tab + zwrócił draft. Clipboard write robi popup
+      // bo navigator.clipboard.writeText nie działa niezawodnie w MV3 SW.
+      if (resp.draft) {
+        try {
+          await navigator.clipboard.writeText(resp.draft);
+        } catch (clipErr) {
+          console.warn("[LinkedIn MSG] clipboard write failed:", clipErr);
+        }
+      }
+    } catch (err) {
+      alert("Błąd: " + ((err && err.message) || err));
+    }
+  }
+
+  async function handleFollowupMarkSent(slug, followupNum, name) {
+    if (!slug) return;
+    const label = name || slug;
+    if (!confirm(`Wysłałeś follow-up #${followupNum} do ${label}?`)) return;
+    try {
+      await chrome.runtime.sendMessage({
+        action: "followupMarkSent",
+        slug,
+        followupNum,
+      });
+      await loadFollowupList();
+    } catch (err) {
+      console.warn("[LinkedIn MSG] followupMarkSent failed:", err);
+    }
+  }
+
+  async function handleFollowupSkip(slug, name) {
+    if (!slug) return;
+    const label = name || slug;
+    if (!confirm(`Pomiń follow-upy dla ${label}?`)) return;
+    try {
+      await chrome.runtime.sendMessage({ action: "followupSkip", slug });
+      await loadFollowupList();
+    } catch (err) {
+      console.warn("[LinkedIn MSG] followupSkip failed:", err);
+    }
+  }
+
+  // Delegated click handler dla wszystkich buttonów w sekcji follow-up.
+  if (followupList) {
+    followupList.addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-action]");
+      if (!btn) return;
+      const action = btn.dataset.action;
+      const slug = btn.dataset.slug;
+      const followupNum = parseInt(btn.dataset.followupNum, 10) || 1;
+      const row = btn.closest(".followup-row");
+      const name = row?.querySelector(".followup-row__name")?.textContent || "";
+      if (action === "followup-generate") handleFollowupGenerate(slug, followupNum, btn);
+      else if (action === "followup-copy-open") handleFollowupCopyAndOpen(slug, followupNum);
+      else if (action === "followup-mark-sent") handleFollowupMarkSent(slug, followupNum, name);
+      else if (action === "followup-skip") handleFollowupSkip(slug, name);
+    });
+
+    // Auto-save draft po blur (capture phase, blur nie bubbles).
+    followupList.addEventListener(
+      "blur",
+      (e) => {
+        const t = e.target;
+        if (t && t.tagName === "TEXTAREA" && t.dataset.slug) {
+          const slug = t.dataset.slug;
+          const followupNum = parseInt(t.dataset.followupNum, 10) || 1;
+          scheduleFollowupDraftSave(slug, followupNum, t.value);
+        }
+      },
+      true
+    );
+  }
+
   // ── Countdown timer (#19/v1.4.1) ─────────────────────────────────
   //
   // Live update co 1s pokazujący czas do następnego ticku worker loop'u
@@ -1216,5 +1500,9 @@
     // storage.local i user może mieć aktywną kolejkę z poprzedniej sesji
     // nawet jeśli akurat jest na stronie profilu / feed'a.
     loadBulkState();
+
+    // Follow-up reminders (#25): zawsze pytamy background o due,
+    // sekcja sama się pokaże/ukryje w renderFollowupList.
+    loadFollowupList();
   })();
 })();

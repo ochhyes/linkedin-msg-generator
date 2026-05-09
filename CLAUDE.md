@@ -223,10 +223,10 @@ Nie łącz dwóch ról w jednej sesji bez zgody usera. Loop ma sens dlatego że 
 # CURRENT STATE
 
 ```
-Sprint:        #3 — Bulk auto-connect MVP — ZAMKNIĘTY 2026-05-09 z v1.6.0
-Phase:         (post-sprint — czeka next sprint planning lub feature follow-up)
-Active task:   (none — czeka decyzja o kolejnym kroku po smoke produkcyjnym 1.6.0)
-Last commit:   2563f5b — feat: bulk auto-connect Faza 1B (#19, v1.4.1) — następny commit 1.6.0 w tej sesji
+Sprint:        #4 — Follow-upy 3d/7d — ZAMKNIĘTY 2026-05-09 z v1.7.0
+Phase:         (post-sprint — czeka next sprint planning lub feedback z dystrybucji 1.7.0)
+Active task:   (none — #25 done, sprint zamknięty)
+Last commit:   (planowany w tej sesji) — feat: follow-upy 3d/7d (#25, v1.7.0)
 Updated:       2026-05-09
 ```
 
@@ -288,21 +288,32 @@ Faza 2 (#21 AI nota) i Faza 3 (#22 pagination + selection) w BACKLOG'u jako plac
 - E2E fixture'y mają wartość ale duplikacja Voyager parsera z content.js to debt — rozwiązać w #10 (BACKLOG).
 - LinkedIn rolluje **nowy SDUI layout** (hashed classes) na część search results pages. Stary entity-result layout dalej żyje na większości stron, ale trzeba mieć selektory na obie wersje. Dotknie nas w #18.
 
-## Notatki z poprzedniej sesji (handoff dla PM #19)
+## Sprint #3 — RETRO (domknięty 2026-05-09 z v1.6.0)
 
-**Sesja 2026-05-09 zamknęła #18 P0 (commit c9394ba, v1.3.0 → v1.3.1 patch w tym samym commitcie po dwóch bug'ach z smoke testu Marcina).**
+**Sprint:** "Bulk auto-connect MVP — Octopus Starter killer dla zespołu OVB" — domknięty 2026-05-09.
 
-**Stan przed PM #19:**
-- Branch master, ostatni commit c9394ba lokalnie (push'owany razem z cleanup commit'em w tej sesji).
-- Manifest 1.3.1, testy 134/0.
-- Modal dump `extension/tests/fixtures/preload_modal_dump.md` (15 KB, sanitized HTML + selektory + skeleton kodu) — **wymagany input** dla PM #19. Zawiera: Shadow DOM modal z `interop-outlet`, structural selectors (`.send-invite`, `button[data-test-modal-close-btn]`, `.artdeco-modal__actionbar button.artdeco-button--primary`), state diff "Połącz" vs "W toku" (klasy identyczne, stan tylko w aria-label/text/href), edge cases (reklamy w liście, withdraw flow na "W toku", `<dialog>` w body to nie modal invite).
-- Dystrybucja 1.3.1 wstrzymana świadomie — zespół OVB dostanie zip dopiero po Faza 1B (1.4.0) z auto-click'iem (decyzja Marcina, opcja B z PM cleanup).
+**Co zostało zrobione (5 commitów, 1.3.0 → 1.6.0):**
+- `c9394ba` — feat: bulk connect detection + lista profili (#18, v1.3.1). Detection search results / profile / other + sekcja "Bulk Connect" w popup'ie. Patch fix w tym samym commitcie (mutual connections + "W toku" detection po smoke teście Marcina).
+- `8b71b25` — chore: workflow cleanup po #18 + Shadow DOM modal dump (input dla PM #19).
+- `2563f5b` — feat: Faza 1B auto-click w Shadow DOM modal'u (#19, v1.4.1). Queue persisted + worker loop + throttling + skip-pending + telemetria fail'i. UX countdown badge.
+- `fe828a3` — feat: Faza 2 post-Connect messaging + Faza 3 URL pagination (#21+#22, v1.6.0). Pivot z "Note przy Connect" (3% utility) na manual scan + clipboard send. URL-based pagination (`searchParams.set("page", N)`) zamiast click-based DOM dump.
+- `36ec3d6` + `4c4b596` — INSTRUKCJA.md dla zespołu OVB + stable extension key (`key` field w manifest dla deterministic ID po update'cie Load Unpacked).
 
-**PM #19 task na następną sesję:** przepisać plan Faza 1B pod Shadow DOM modal. Aktualny plan #19 w TODO ma duży banner OUTDATED na początku — czeka na rewrite. Skeleton kodu z dumpu (sekcja "Implikacje dla content.js") jest gotowy do wklejenia po dostosowaniu do queue/throttling/state architektury.
+**Stan zamknięcia:**
+- Manifest 1.6.0, testy 245/0 (12 backend + 233 extension).
+- Origin/master up to date.
+- `extension 1.6.0.zip` + INSTRUKCJA.md dystrybuowane zespołowi OVB (przed end of day 2026-05-09).
+- `chrome.storage.local` per-extension-ID stable dzięki manifest `key` field — przy 1.7.x update userzy nie tracą queue ani settings.
 
-**Pre-existing nieczyste zmiany w drzewie po sesji 2026-05-09:**
-- `M extension.zip` — paczka dystrybucyjna 1.2.1 (workspace artifact, do regeneracji przy 1.4.0). Można dorzucić do `.claudeignore` żeby się nie pojawiała w `git status`.
-- `?? CLAUDE_CODE_GUIDE.md` — przewodnik onboarding'u na Claude Code w VS Code (untracked, świadomie poza repo).
+**Lessons learned:**
+- 4 subagenty paralelnie (A backend / B content / C popup / D tests) zadziałały dobrze przy #21 i #19 — kontrakt message API zdefiniowany w PM phase, agenty nie deptały sobie po plikach. Powtórzymy w sprint #4.
+- Pivot na #21 (Note przy Connect → Post-Connect messaging) opłacił się — 5 not/tydzień u free user'a to ~3% utility, nie warte sprintu. Dane (limit) z research'u zaoszczędziły 2 sprinty wasted effort.
+- `extension/manifest.json` `key` field MUSI być stabilny od początku. Bez niego ID extensione zależy od path'y folderu Load Unpacked → różne foldery dla różnych wersji = różne ID = różne `chrome.storage.local` = utrata queue/settings przy update. Lekcja na przyszłe Chrome extensions w innych projektach.
+- LinkedIn `/search/results/people/?page=N` URL pagination jest stabilniejsza niż click-based "Next" button (SDUI hashed classes). URL jest źródłem prawdy, DOM zmienia się co miesiąc.
+
+**Workspace state na koniec sprintu #3:**
+- `M extension.zip` — paczka dystrybucyjna 1.6.0 (workspace artifact, regenerowana przy każdym minor/major bump).
+- `?? CLAUDE_CODE_GUIDE.md` — przewodnik Claude Code w VS Code (untracked, świadomie poza repo).
 
 ---
 
@@ -337,13 +348,124 @@ Faza 2 (#21 AI nota) i Faza 3 (#22 pagination + selection) w BACKLOG'u jako plac
 
 ## IN PROGRESS
 
-(none — Sprint #3 zamknięty, czeka PM next sprint lub feature follow-up)
+(none — #25 P0 done, Sprint #4 zamknięty 1.7.0)
+
+---
+
+<details>
+<summary>Archiwum: PM plan dla #25 (rozwiniętym do referencji historycznej)</summary>
+
+### #25 P0 — Follow-upy 3d/7d po wysłaniu pierwszej wiadomości (Sprint #4, v1.7.0) — DONE
+
+**Driver biznesowy.** Outreach LinkedIn = follow-up game. 30% reply rate na pierwszą wiadomość, +20% z follow-up'em po 3d, +10% po 7d → łącznie ~60% (vs. 30% bez follow-up'ów). Octopus Starter ma sequence (intro + 2 followupy) — żeby go zastąpić MUSIMY mieć follow-up'y. 1.6.0 zatrzymał się na `messageStatus="sent"` — co dalej z leadem nie wiemy.
+
+**Architektura (pivot vs original PM proposal):**
+- Backend: ZERO zmian. Reuse istniejący `goal="followup"` (models.py:8 ALLOWED_GOALS). Prompt builder ma już `GOAL_PROMPTS["followup"]`. AI dostaje informację o follow-up'ie #1/#2 + treść poprzedniej wiadomości przez augmentowany `sender_context`.
+- Extension: rozszerzamy storage queue items (#21) o 7 nowych pól follow-up'owych. Hook w istniejącym `bulkMarkMessageSent` (background.js:429). Alarm daily check + badge. Sekcja w popup'ie nad "Wiadomości po-Connect".
+
+**Storage schema (rozszerzenie queue items z #21):**
+```js
+// Nowe pola dodane do queue item w background.js:240-258 (addToQueue):
+followup1RemindAt: null,   // timestamp set przy bulkMarkMessageSent (sentAt+3d)
+followup2RemindAt: null,   // timestamp set przy bulkMarkMessageSent (sentAt+7d)
+followup1Draft: null,      // string AI-generated, editable
+followup2Draft: null,      // string AI-generated, editable
+followup1SentAt: null,     // timestamp gdy user kliknął "Wysłałem" #1
+followup2SentAt: null,     // timestamp gdy user kliknął "Wysłałem" #2
+followupStatus: "scheduled" // "scheduled" | "skipped" — set przy bulkMarkMessageSent
+```
+
+**Acceptance criteria (15 punktów):**
+- AC1: Storage schema rozszerzony o 7 nowych pól follow-up'owych. Defaults dla nowych queue items: wszystkie `null` poza `followupStatus="scheduled"`. Backward-compat: stare queue items bez tych pól traktowane jak `null` w filterach.
+- AC2: `bulkMarkMessageSent(slug)` (background.js:429) po update'cie `messageSentAt` ustawia: `followup1RemindAt = now+3*24h`, `followup2RemindAt = now+7*24h`, `followupStatus = "scheduled"`. **Idempotentne** — gdy `followup1RemindAt` już ustawiony, NIE nadpisuje (np. user kliknął "Wysłałem" dwa razy przez przypadek).
+- AC3: chrome.alarms `followup_check_due` (period 6h) + alarm uruchamia `updateFollowupBadge()`. Plus listener `chrome.storage.onChanged` triggerujący update badge gdy queue zmieniona.
+- AC4: `updateFollowupBadge()` liczy due (gdzie `followupStatus === "scheduled" AND messageSentAt !== null AND ((followup1RemindAt <= now AND !followup1SentAt) OR (followup2RemindAt <= now AND !followup2SentAt))`) — ten sam profil może mieć dwa due naraz (badge=2). `chrome.action.setBadgeText({text: count > 0 ? (count > 99 ? "99+" : String(count)) : ""})` + `setBadgeBackgroundColor({color:"#d32f2f"})`.
+- AC5: Sekcja "Do follow-up'u" w popup'ie nad sekcją "Wiadomości po-Connect", lista filtrowana jak AC4, sort po `followup{N}RemindAt asc`.
+- AC6: Per-row: imię + headline + tag `Follow-up #1 (3d po wysłaniu)` lub `#2 (7d po wysłaniu)` + buttony: **Generuj follow-up** / **Skopiuj i otwórz** / **Wysłałem** / **Pomiń**. Plus editable textarea dla `followup{N}Draft`.
+- AC7: **Generuj follow-up** → background `bulkGenerateFollowup(slug, followupNum)`:
+  - reads `queue[slug].messageDraft` (oryginalna pierwsza wiadomość) + `scrapedProfile`
+  - calls existing `generateMessage(profile, options)` z `options.goal = "followup"` + augmented `options.sender_context`:
+    ```
+    [user's existing sender_context from storage]\n\n
+    [KONTEKST FOLLOW-UP'A] To jest follow-up #${N} (${days} dni po wysłaniu pierwszej wiadomości).
+    Poprzednia wiadomość, którą napisał nadawca:
+    "${messageDraft}"
+    Odbiorca nie odpowiedział. Napisz łagodne nawiązanie / przypomnienie o sobie. NIE re-pitch tej samej oferty. Krótko (max 3 zdania).
+    ```
+  - updates `queue[slug].followup{N}Draft = response.message`, returns `{success, draft}`.
+- AC8: Editable textarea per row z auto-save na blur (debounce 500ms) → `bulkUpdateFollowupDraft(slug, N, text)`.
+- AC9: **Skopiuj i otwórz** → kopiuje `followup{N}Draft` (jeśli pusty: warning "Najpierw wygeneruj draft") + opens `linkedin.com/messaging/compose/?recipient=<slug>` w new tab (reuse z #21).
+- AC10: **Wysłałem** → `bulkMarkFollowupSent(slug, N)` → `followup{N}SentAt = now`, recompute badge, profil znika z listy follow-up'ów (lub przesuwa się na #2 jeśli #1 było zaznaczone).
+- AC11: **Pomiń** → `bulkSkipFollowup(slug)` → `followupStatus = "skipped"`, recompute badge, profil znika permanently z follow-up cycle (nie pokazuje się też dla #2).
+- AC12: ≥15 nowych asercji w `extension/tests/test_followup.js` (NEW): schema defaults, hook w markSent (idempotent), due math 3d/7d, filter due (now/past/future + already sent), badge counter formatting (0/N/99+), state transitions (mark_sent #1 znika, skip znika permanently #1+#2), backward-compat dla queue items bez nowych pól.
+- AC13: Bump `extension/manifest.json` 1.6.0 → 1.7.0 (minor, new feature). NIE dodajemy nowych permissions (alarms już jest, action default).
+- AC14: Existing 245/0 + nowe asercje (≥15) = 260+/0, brak regresji.
+- AC15: `INSTRUKCJA.md` sekcja "Follow-upy" — opis flow (3d → przypomnienie, 7d → ostatnie zaczepienie, badge na ikonie, klik "Generuj" → review → "Skopiuj i otwórz" → po wysłaniu klik "Wysłałem").
+
+**Pliki dotykane (zero backend!):**
+- `extension/popup.html` (~30 linii — sekcja Follow-up nad "Wiadomości po-Connect")
+- `extension/popup.css` (~50 linii — style tagi, badge, textarea)
+- `extension/popup.js` (~150 linii — listing + 4 handlery + auto-save + state rendering + storage.onChanged listener)
+- `extension/background.js` (~120 linii — hook w bulkMarkMessageSent, alarm + badge, 6 message handlerów: list_due, generate, update_draft, copy_and_open, mark_sent, skip)
+- `extension/manifest.json` — bump
+- `extension/tests/test_followup.js` — NEW (~250 linii, ≥15 asercji)
+- `INSTRUKCJA.md` — paragraph (~25 linii)
+
+**Message contract (popup ↔ background):**
+```
+popup → background: {action: "followupListDue"}
+  ← {success, items: [{slug, name, headline, messageSentAt, dueFollowup: 1|2, daysSinceSent, draft}]}
+
+popup → background: {action: "followupGenerate", slug, followupNum: 1|2}
+  → reads queue[slug].messageDraft + scrapedProfile
+  → calls generateMessage(profile, {goal:"followup", sender_context: <augmented>})
+  → updates queue[slug].followup{N}Draft
+  ← {success, draft}
+
+popup → background: {action: "followupUpdateDraft", slug, followupNum, text}
+  ← {success}
+
+popup → background: {action: "followupCopyAndOpen", slug, followupNum}
+  → clipboard.writeText(followup{N}Draft) + chrome.tabs.create(messaging URL)
+  ← {success} or {success: false, error: "empty_draft"}
+
+popup → background: {action: "followupMarkSent", slug, followupNum}
+  ← {success}
+
+popup → background: {action: "followupSkip", slug}
+  ← {success}
+```
+
+**Subagenty (3 paralelne + main loop):**
+- **A: Background** — `extension/background.js` (hook w `bulkMarkMessageSent` linia 429 + alarm `followup_check_due` 6h + `updateFollowupBadge()` z `chrome.action.setBadgeText` + 6 message handlerów + dispatcher case'y)
+- **B: Popup UI** — `extension/popup.html` + `extension/popup.css` + `extension/popup.js` (sekcja "Do follow-up'u" + listing + 4 buttony per row + textarea auto-save + storage.onChanged listener + state rendering)
+- **C: Tests** — `extension/tests/test_followup.js` NEW (≥15 asercji jsdom-based: schema, due math, filter, badge counter, state transitions, BC)
+- **Main loop (po finishu A/B/C):** integracja, `manifest.json` bump 1.6.0→1.7.0, `INSTRUKCJA.md` sekcja, run all tests, smoke check
+
+**Risks:**
+- ⚠️ Subagent A musi zachować idempotency w hook'u (gdy followup1RemindAt już ustawiony, NIE nadpisuje). Briefing exhortuje to explicitnie.
+- ⚠️ Badge update musi być re-computed za każdym razem gdy queue zmienia się (storage.onChanged listener) ORAZ co 6h przez alarm (dla case'u gdy user nie otworzył popup'u przez dni — alarm sam wyliczy że follow-up #1 jest due dzisiaj, badge skoczy z 0 na 1).
+- ⚠️ Subagent B musi reużyć istniejący style messages pipeline z popup'u (z #21) — sprawdzi popup.css conventions przed pisaniem.
+- ⚠️ AI generation reuse'uje `bulkGenerateMessage` patterns — ale to JEST fork (osobna funkcja `bulkGenerateFollowup`), bo generuje na inne pole (followup{N}Draft) z innym `sender_context`. Osobna funkcja jest cleaner niż próba multiplexować z istniejącą.
+
+**Definition of Done dla #25:**
+- AC1-15 wszystkie ✓
+- 260+/0 testów PASS — osiągnięte 320/0 (52 backend + 268 extension: 93+27+14+45+54+35)
+- Bump 1.7.0 ✓
+- Smoke test: dodaj fake queue item z `messageSentAt = now - 4*24h` (4 dni temu), sprawdź że follow-up #1 due, badge=1, sekcja w popup'ie pokazuje, "Generuj follow-up" działa, AI zwraca tekst, "Skopiuj i otwórz" otwiera new tab z LinkedIn messaging
+- Commit po polsku: `feat: follow-upy 3d/7d po pierwszej wiadomości (#25, v1.7.0)` ✓
+- INSTRUKCJA.md zaktualizowana ✓
+
+</details>
 
 ## READY FOR TEST
 
 (none)
 
 ## DONE
+
+**Sprint #4 (Follow-upy 3d/7d — zamknięty 2026-05-09 z v1.7.0):**
+- ✅ #25 P0 Follow-upy 3d/7d po pierwszej wiadomości — CRM lifecycle dla outreach. Storage queue items rozszerzone o 7 nowych pól (`followup{1,2}{RemindAt,Draft,SentAt}`, `followupStatus`). Hook idempotent w istniejącym `bulkMarkMessageSent` (background.js:441) — przy oznaczeniu "Wysłałem" automatycznie planuje follow-up #1 (now+3d) i #2 (now+7d). chrome.alarms `followup_check_due` co 6h + `chrome.storage.onChanged` listener dla live badge update. `chrome.action.setBadgeText` z licznikiem due ("99+" cap). Sekcja "Do follow-up'u" w popup'ie nad "Wiadomości po-Connect" — DOM-constructor row per profil z 4 buttonami (Generuj follow-up / Skopiuj i otwórz / Wysłałem / Pomiń) + editable textarea z auto-save debounce 500ms. AI generation reuse'uje istniejący `goal="followup"` (backend ZERO zmian) + augmentowany `sender_context` zawierający poprzednią wiadomość + numer follow-up'u + instrukcję "łagodne nawiązanie, NIE re-pitch". Bump 1.6.0 → 1.7.0. Implementacja przez 3 subagenty paralelnie (A background.js, B popup html/css/js, C test_followup.js NEW 35 asercji) + main loop integration (clipboard fix w popup.js + manifest bump + INSTRUKCJA.md Krok G + harmonogram). Testy: 320/0 (52 backend + 268 extension: 93 scraper + 27 e2e + 14 search_extractor + 45 bulk_connect + 54 message_pipeline + 35 followup). Commit: planowany w tej sesji.
 
 **Sprint #3 (Bulk auto-connect MVP — zamknięty 2026-05-09 z v1.6.0):**
 - ✅ #22 P1 Auto-pagination URL-based + page-aware worker — fix known issue z 1.4.1. `URL` constructor + `searchParams.set("page", N)` zachowuje wszystkie LinkedIn'owe query params (keywords, origin, network=["S"], spellCorrectionEnabled, prioritizeMessage). `bulkAutoFillByUrl(maxProfiles)` orchestrowane w background.js: navigates aktywną kartą `?page=N`, scrapuje, dorzuca z `pageNumber` field. `bulkConnectTick` page-aware: pre-click navigate karty na `item.pageNumber` jeśli różna od current. Po auto-fill karta zostaje na ostatniej stronie; przy klik Start worker loop sam navigates per profil (pierwszy item = page 1). Helpers: `getPageFromUrl`, `setPageInUrl`, `waitForTabComplete`. 16 nowych asercji w test_bulk_connect.js (URL composition + query param preservation + pageNumber default). Bump 1.5.0 → 1.6.0. Commit: planowany w tej sesji.
