@@ -97,13 +97,31 @@ function personalizationToBody(us) {
 // ── Diagnostics — telemetria fail'i scrape (#5) ──────────────────────
 
 /**
- * Wyciąga slug profilu z URL'a LinkedIn (kopia helpera z popup.js;
- * vanilla JS bez modułów, więc ad-hoc duplikacja jest świadoma).
+ * Wyciąga slug profilu z URL'a LinkedIn — zwraca DECODED LOWERCASE form
+ * (np. "radosław-paczyński-72307a230", nie "rados%C5%82aw-paczy%C5%84ski-...").
+ *
+ * KONSEKWENCJE NORMALIZACJI:
+ * - Storage queue items używają decoded slug jako klucz (dedup, lookup)
+ * - URL builders (chrome.tabs.create) muszą encode'ować raz przez
+ *   URL.searchParams.set lub encodeURIComponent (NIE oba)
+ * - Spójność z popup.js extractSlugFromUrl (też decoded lowercase od v1.8.0)
+ *
+ * Wcześniejsze wersje zwracały slug as-is z URL-a (czyli URL-encoded
+ * z mixed case w %XX), co powodowało:
+ * - Bug A: double-encoding w chrome.tabs.create (rados%C5% → rados%25C5%)
+ * - Bug B: mismatch popup vs background (popup .toLowerCase()'ował, BG nie)
+ * Migracja istniejących encoded slug-ów w queue: migrateSlugEncoding() przy SW startup.
  */
 function extractSlugFromUrl(url) {
   if (!url || typeof url !== "string") return "";
   const m = url.match(/\/in\/([^/?#]+)/);
-  return m ? m[1] : "";
+  if (!m) return "";
+  try {
+    return decodeURIComponent(m[1]).toLowerCase();
+  } catch (_) {
+    // Malformed URL escape — fallback na lowercase as-is.
+    return m[1].toLowerCase();
+  }
 }
 
 /**
@@ -517,6 +535,64 @@ async function bulkAddManualSent(profile, messageDraft) {
   return { success: true, slug, action: existing ? "updated" : "added" };
 }
 
+// Pełna lista follow-upów dla dashboard'u — kategoryzuje queue na due,
+// scheduled, history. Dashboard otwiera ten widok w nowej karcie.
+async function bulkListAllFollowups() {
+  const state = await getBulkState();
+  const now = Date.now();
+  const due = [];
+  const scheduled = [];
+  const history = [];
+
+  for (const item of state.queue) {
+    // Wymagamy żeby wiadomość była wysłana (manual_sent lub bulk pipeline).
+    if (!item.messageSentAt) continue;
+
+    const base = {
+      slug: item.slug,
+      name: item.name || "",
+      headline: item.headline || "",
+      messageSentAt: item.messageSentAt,
+      messageDraft: item.messageDraft || "",
+      status: item.status,
+    };
+
+    // Skipped → tylko historia
+    if (item.followupStatus === "skipped") {
+      history.push({ ...base, kind: "skipped" });
+      continue;
+    }
+
+    // Sprawdź follow-up #1
+    if (item.followup1RemindAt) {
+      if (item.followup1SentAt) {
+        history.push({ ...base, kind: "followup_sent", followupNum: 1, sentAt: item.followup1SentAt, draft: item.followup1Draft || "" });
+      } else if (item.followup1RemindAt <= now) {
+        due.push({ ...base, dueFollowup: 1, daysSinceSent: Math.floor((now - item.messageSentAt) / 86400000), draft: item.followup1Draft || "" });
+      } else {
+        scheduled.push({ ...base, dueFollowup: 1, remindAt: item.followup1RemindAt, daysUntil: Math.ceil((item.followup1RemindAt - now) / 86400000) });
+      }
+    }
+
+    // Sprawdź follow-up #2
+    if (item.followup2RemindAt) {
+      if (item.followup2SentAt) {
+        history.push({ ...base, kind: "followup_sent", followupNum: 2, sentAt: item.followup2SentAt, draft: item.followup2Draft || "" });
+      } else if (item.followup2RemindAt <= now) {
+        due.push({ ...base, dueFollowup: 2, daysSinceSent: Math.floor((now - item.messageSentAt) / 86400000), draft: item.followup2Draft || "" });
+      } else {
+        scheduled.push({ ...base, dueFollowup: 2, remindAt: item.followup2RemindAt, daysUntil: Math.ceil((item.followup2RemindAt - now) / 86400000) });
+      }
+    }
+  }
+
+  due.sort((a, b) => a.messageSentAt - b.messageSentAt);
+  scheduled.sort((a, b) => a.remindAt - b.remindAt);
+  history.sort((a, b) => (b.sentAt || b.messageSentAt) - (a.sentAt || a.messageSentAt));
+
+  return { success: true, due, scheduled, history };
+}
+
 // Zwraca minimum potrzebne popup'owi do pokazania persistent "już śledzone"
 // hint'u na profilu. Null gdy slug nie istnieje albo nigdy nie był wysłany.
 async function getTrackingState(slug) {
@@ -703,7 +779,11 @@ async function bulkCopyFollowupAndOpen(slug, followupNum) {
   if (!draft || !String(draft).trim()) {
     return { success: false, error: "empty_draft" };
   }
-  const url = `https://www.linkedin.com/messaging/compose/?recipient=${encodeURIComponent(slug)}`;
+  // URL.searchParams.set encoduje raz, niezależnie od formy slug'a w storage.
+  // (slug w v1.8.0 jest decoded lowercase — fallback safe nawet gdyby był encoded)
+  const composeUrl = new URL("https://www.linkedin.com/messaging/compose/");
+  composeUrl.searchParams.set("recipient", slug);
+  const url = composeUrl.toString();
   try {
     await chrome.tabs.create({ url, active: true });
   } catch (err) {
@@ -1181,6 +1261,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case "getTrackingState":
           return await getTrackingState(message.slug);
 
+        case "followupListAll":
+          return await bulkListAllFollowups();
+
         case "followupListDue":
           return await bulkListDueFollowups();
 
@@ -1219,8 +1302,10 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     await chrome.storage.local.set({ bulkConnect: BULK_DEFAULTS });
     console.log("[LinkedIn MSG] Extension installed, defaults saved.");
   }
+  // v1.8.0: migracja encoded slug-ów (z wcześniejszych 1.7.x) na decoded
+  // lowercase form. Idempotent — items już w decoded form pozostają bez zmian.
+  await migrateSlugEncoding();
   // #25: alarm reset niezależnie od reason — install/update/chrome_update.
-  // chrome.alarms.create jest idempotent (nadpisze istniejący o tej samej nazwie).
   await chrome.alarms.create(FOLLOWUP_ALARM_NAME, { periodInMinutes: 360 });
   await updateFollowupBadge();
 });
@@ -1228,6 +1313,52 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 // SW może się obudzić bez onInstalled (np. po idle kill). Re-create alarm
 // + recompute badge na każdy start żeby badge był aktualny.
 chrome.runtime.onStartup.addListener(async () => {
+  await migrateSlugEncoding();
   await chrome.alarms.create(FOLLOWUP_ALARM_NAME, { periodInMinutes: 360 });
   await updateFollowupBadge();
 });
+
+/**
+ * Jednorazowa migracja: queue items zapisane w 1.7.x mogły mieć encoded
+ * slug-i (np. "rados%C5%82aw-...") z mixed case. v1.8.0 standaryzuje
+ * decoded lowercase. Funkcja idempotent — drugie wywołanie nic nie zmienia.
+ *
+ * Plus dedup: jeśli po decode dwa items mają ten sam slug (legacy double-
+ * inserted przed unifikacją), merge'ujemy zachowując bardziej kompletny
+ * (większy messageSentAt + truthy followup1RemindAt).
+ */
+async function migrateSlugEncoding() {
+  try {
+    const state = await getBulkState();
+    if (!Array.isArray(state.queue) || state.queue.length === 0) return;
+
+    let changed = false;
+    const merged = new Map();
+    for (const item of state.queue) {
+      if (!item || !item.slug) continue;
+      let normalized;
+      try {
+        normalized = decodeURIComponent(item.slug).toLowerCase();
+      } catch (_) {
+        normalized = item.slug.toLowerCase();
+      }
+      if (normalized !== item.slug) changed = true;
+      const patched = { ...item, slug: normalized };
+      const prev = merged.get(normalized);
+      if (!prev) {
+        merged.set(normalized, patched);
+      } else {
+        // Wybierz bardziej kompletny — preferuj item z messageSentAt set.
+        const keep = (patched.messageSentAt || 0) >= (prev.messageSentAt || 0) ? patched : prev;
+        merged.set(normalized, keep);
+        changed = true;
+      }
+    }
+    if (changed) {
+      await setBulkState({ queue: Array.from(merged.values()) });
+      console.log(`[LinkedIn MSG] Slug migracja v1.8.0 — znormalizowano ${merged.size} item(s).`);
+    }
+  } catch (err) {
+    console.warn("[LinkedIn MSG] migrateSlugEncoding failed:", err);
+  }
+}

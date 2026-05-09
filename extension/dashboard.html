@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard follow-upów — LinkedIn MSG</title>
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+  <div class="page">
+
+    <header class="hdr">
+      <div class="hdr__title">
+        <h1>Dashboard follow-upów</h1>
+        <p class="hdr__sub">Wszystkie profile, do których wysłałeś pierwszą wiadomość — pogrupowane wg statusu follow-upu.</p>
+      </div>
+      <button id="btn-refresh" class="btn btn--outline" title="Odśwież listę">↻ Odśwież</button>
+    </header>
+
+    <main>
+
+      <!-- Section 1: DUE NOW -->
+      <section class="block block--due">
+        <h2>
+          Do follow-up'u TERAZ
+          <span id="due-count" class="count-badge count-badge--due">0</span>
+        </h2>
+        <p class="hint">Profile gdzie minęło ≥3 lub ≥7 dni od pierwszej wiadomości a ty jeszcze nie wysłałeś follow-upu. Działaj.</p>
+        <div id="due-list" class="list">
+          <p class="empty-state hidden" id="due-empty">Brak follow-upów do zrobienia teraz. ✓</p>
+        </div>
+      </section>
+
+      <!-- Section 2: SCHEDULED -->
+      <section class="block block--scheduled">
+        <h2>
+          Zaplanowane
+          <span id="scheduled-count" class="count-badge count-badge--scheduled">0</span>
+        </h2>
+        <p class="hint">Follow-upy które pojawią się w przyszłości. Sortowane od najbliższego.</p>
+        <div id="scheduled-list" class="list">
+          <p class="empty-state hidden" id="scheduled-empty">Brak zaplanowanych follow-upów.</p>
+        </div>
+      </section>
+
+      <!-- Section 3: HISTORY -->
+      <section class="block block--history">
+        <h2>
+          Historia
+          <span id="history-count" class="count-badge count-badge--history">0</span>
+        </h2>
+        <p class="hint">Wysłane follow-upy + pominięte profile. Read-only.</p>
+        <div id="history-list" class="list">
+          <p class="empty-state hidden" id="history-empty">Brak historii.</p>
+        </div>
+      </section>
+
+    </main>
+
+    <footer class="ftr">
+      <p>Dane są lokalne (chrome.storage.local). Nic nie wychodzi poza Twój komputer poza wywołaniami AI generuj/follow-up.</p>
+    </footer>
+
+  </div>
+  <script src="dashboard.js"></script>
+</body>
+</html>

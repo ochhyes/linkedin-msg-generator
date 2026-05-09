@@ -1,0 +1,327 @@
+(function () {
+  "use strict";
+
+  const $ = (sel) => document.querySelector(sel);
+
+  const dueList = $("#due-list");
+  const scheduledList = $("#scheduled-list");
+  const historyList = $("#history-list");
+  const dueCount = $("#due-count");
+  const scheduledCount = $("#scheduled-count");
+  const historyCount = $("#history-count");
+  const dueEmpty = $("#due-empty");
+  const scheduledEmpty = $("#scheduled-empty");
+  const historyEmpty = $("#history-empty");
+  const btnRefresh = $("#btn-refresh");
+
+  // Per-textarea debounce dla auto-save draftów (klucz: slug#N).
+  const _draftDebounce = new Map();
+
+  // ── Data load ──────────────────────────────────────────────────────
+
+  async function loadAll() {
+    try {
+      const resp = await chrome.runtime.sendMessage({ action: "followupListAll" });
+      if (!resp?.success) {
+        console.warn("[dashboard] followupListAll failed:", resp);
+        return;
+      }
+      renderDue(resp.due || []);
+      renderScheduled(resp.scheduled || []);
+      renderHistory(resp.history || []);
+    } catch (err) {
+      console.warn("[dashboard] loadAll failed:", err);
+    }
+  }
+
+  // ── Due section ────────────────────────────────────────────────────
+
+  function renderDue(items) {
+    dueCount.textContent = items.length;
+    dueList.querySelectorAll(".row").forEach((el) => el.remove());
+    if (items.length === 0) {
+      dueEmpty.classList.remove("hidden");
+      return;
+    }
+    dueEmpty.classList.add("hidden");
+    for (const item of items) dueList.appendChild(buildDueRow(item));
+  }
+
+  function buildDueRow(item) {
+    const num = item.dueFollowup === 2 ? 2 : 1;
+    const days = num === 2 ? 7 : 3;
+    const li = document.createElement("div");
+    li.className = "row";
+    li.dataset.slug = item.slug;
+    li.dataset.followupNum = String(num);
+
+    const head = document.createElement("div");
+    head.className = "row__head";
+    const nameEl = document.createElement("strong");
+    nameEl.className = "row__name";
+    const nameLink = document.createElement("a");
+    nameLink.href = `https://www.linkedin.com/in/${encodeURIComponent(item.slug)}/`;
+    nameLink.target = "_blank";
+    nameLink.rel = "noopener noreferrer";
+    nameLink.textContent = item.name || item.slug;
+    nameEl.appendChild(nameLink);
+    head.appendChild(nameEl);
+
+    const tag = document.createElement("span");
+    tag.className = `row__tag row__tag--fu${num}`;
+    tag.textContent = `Follow-up #${num} (${days}d po wysłaniu)`;
+    head.appendChild(tag);
+    li.appendChild(head);
+
+    if (item.headline) {
+      const hl = document.createElement("p");
+      hl.className = "row__headline";
+      hl.textContent = item.headline;
+      li.appendChild(hl);
+    }
+
+    const meta = document.createElement("p");
+    meta.className = "row__meta";
+    meta.textContent = `Wiadomość wysłana ${item.daysSinceSent} dni temu (${formatDate(item.messageSentAt)})`;
+    li.appendChild(meta);
+
+    const draft = document.createElement("textarea");
+    draft.className = "row__draft";
+    draft.placeholder = "Klik 'Generuj' żeby AI stworzyło draft, albo wpisz własny.";
+    draft.value = item.draft || "";
+    draft.addEventListener("blur", () => {
+      const key = `${item.slug}#${num}`;
+      const prev = _draftDebounce.get(key);
+      if (prev) clearTimeout(prev);
+      const t = setTimeout(async () => {
+        try {
+          await chrome.runtime.sendMessage({
+            action: "followupUpdateDraft",
+            slug: item.slug,
+            followupNum: num,
+            text: draft.value,
+          });
+        } catch (err) { console.warn("[dashboard] save draft:", err); }
+      }, 500);
+      _draftDebounce.set(key, t);
+    });
+    li.appendChild(draft);
+
+    const actions = document.createElement("div");
+    actions.className = "row__actions";
+
+    const btnGen = btn("Generuj follow-up", "btn--primary");
+    btnGen.addEventListener("click", async () => {
+      btnGen.disabled = true;
+      const orig = btnGen.textContent;
+      btnGen.textContent = "Generuję…";
+      try {
+        const resp = await chrome.runtime.sendMessage({
+          action: "followupGenerate",
+          slug: item.slug,
+          followupNum: num,
+        });
+        if (resp?.success) {
+          draft.value = resp.draft || draft.value;
+        } else {
+          alert("Błąd generowania: " + (resp?.error || "unknown"));
+        }
+      } catch (err) {
+        alert("Błąd: " + ((err && err.message) || err));
+      } finally {
+        btnGen.disabled = false;
+        btnGen.textContent = orig;
+      }
+    });
+    actions.appendChild(btnGen);
+
+    const btnCopy = btn("Skopiuj i otwórz", "btn--outline");
+    btnCopy.addEventListener("click", async () => {
+      try {
+        const resp = await chrome.runtime.sendMessage({
+          action: "followupCopyAndOpen",
+          slug: item.slug,
+          followupNum: num,
+        });
+        if (!resp?.success) {
+          if (resp?.error === "empty_draft") alert("Najpierw wygeneruj draft");
+          else alert("Błąd: " + (resp?.error || "unknown"));
+          return;
+        }
+        if (resp.draft) {
+          try { await navigator.clipboard.writeText(resp.draft); } catch (_) {}
+        }
+      } catch (err) { alert("Błąd: " + err); }
+    });
+    actions.appendChild(btnCopy);
+
+    const btnSent = btn("Wysłałem", "btn--outline");
+    btnSent.addEventListener("click", async () => {
+      if (!confirm(`Wysłałeś follow-up #${num} do ${item.name || item.slug}?`)) return;
+      try {
+        await chrome.runtime.sendMessage({
+          action: "followupMarkSent",
+          slug: item.slug,
+          followupNum: num,
+        });
+        loadAll();
+      } catch (err) { console.warn(err); }
+    });
+    actions.appendChild(btnSent);
+
+    const btnSkip = btn("Pomiń", "btn--danger");
+    btnSkip.addEventListener("click", async () => {
+      if (!confirm(`Pomiń follow-upy dla ${item.name || item.slug}? (też #2 jeśli jeszcze nie wysłany)`)) return;
+      try {
+        await chrome.runtime.sendMessage({ action: "followupSkip", slug: item.slug });
+        loadAll();
+      } catch (err) { console.warn(err); }
+    });
+    actions.appendChild(btnSkip);
+
+    li.appendChild(actions);
+    return li;
+  }
+
+  // ── Scheduled section ──────────────────────────────────────────────
+
+  function renderScheduled(items) {
+    scheduledCount.textContent = items.length;
+    scheduledList.querySelectorAll(".row").forEach((el) => el.remove());
+    if (items.length === 0) {
+      scheduledEmpty.classList.remove("hidden");
+      return;
+    }
+    scheduledEmpty.classList.add("hidden");
+    for (const item of items) scheduledList.appendChild(buildScheduledRow(item));
+  }
+
+  function buildScheduledRow(item) {
+    const num = item.dueFollowup === 2 ? 2 : 1;
+    const li = document.createElement("div");
+    li.className = "row";
+
+    const head = document.createElement("div");
+    head.className = "row__head";
+    const nameEl = document.createElement("strong");
+    nameEl.className = "row__name";
+    const nameLink = document.createElement("a");
+    nameLink.href = `https://www.linkedin.com/in/${encodeURIComponent(item.slug)}/`;
+    nameLink.target = "_blank";
+    nameLink.rel = "noopener noreferrer";
+    nameLink.textContent = item.name || item.slug;
+    nameEl.appendChild(nameLink);
+    head.appendChild(nameEl);
+
+    const tag = document.createElement("span");
+    tag.className = "row__tag row__tag--scheduled";
+    const dayLabel = item.daysUntil === 1 ? "1 dzień" : `${item.daysUntil} dni`;
+    tag.textContent = `Follow-up #${num} za ${dayLabel} (${formatDate(item.remindAt)})`;
+    head.appendChild(tag);
+    li.appendChild(head);
+
+    if (item.headline) {
+      const hl = document.createElement("p");
+      hl.className = "row__headline";
+      hl.textContent = item.headline;
+      li.appendChild(hl);
+    }
+
+    const meta = document.createElement("p");
+    meta.className = "row__meta";
+    meta.textContent = `Pierwsza wiadomość: ${formatDate(item.messageSentAt)}`;
+    li.appendChild(meta);
+
+    return li;
+  }
+
+  // ── History section ────────────────────────────────────────────────
+
+  function renderHistory(items) {
+    historyCount.textContent = items.length;
+    historyList.querySelectorAll(".row").forEach((el) => el.remove());
+    if (items.length === 0) {
+      historyEmpty.classList.remove("hidden");
+      return;
+    }
+    historyEmpty.classList.add("hidden");
+    for (const item of items) historyList.appendChild(buildHistoryRow(item));
+  }
+
+  function buildHistoryRow(item) {
+    const li = document.createElement("div");
+    li.className = "row";
+
+    const head = document.createElement("div");
+    head.className = "row__head";
+    const nameEl = document.createElement("strong");
+    nameEl.className = "row__name";
+    const nameLink = document.createElement("a");
+    nameLink.href = `https://www.linkedin.com/in/${encodeURIComponent(item.slug)}/`;
+    nameLink.target = "_blank";
+    nameLink.rel = "noopener noreferrer";
+    nameLink.textContent = item.name || item.slug;
+    nameEl.appendChild(nameLink);
+    head.appendChild(nameEl);
+
+    const tag = document.createElement("span");
+    if (item.kind === "skipped") {
+      tag.className = "row__tag row__tag--skipped";
+      tag.textContent = "Pominięty";
+    } else {
+      tag.className = "row__tag row__tag--sent";
+      tag.textContent = `Follow-up #${item.followupNum || "?"} wysłany ${formatDate(item.sentAt)}`;
+    }
+    head.appendChild(tag);
+    li.appendChild(head);
+
+    if (item.headline) {
+      const hl = document.createElement("p");
+      hl.className = "row__headline";
+      hl.textContent = item.headline;
+      li.appendChild(hl);
+    }
+
+    if (item.draft) {
+      const draft = document.createElement("textarea");
+      draft.className = "row__draft";
+      draft.readOnly = true;
+      draft.value = item.draft;
+      li.appendChild(draft);
+    }
+
+    return li;
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────
+
+  function btn(text, ...extraClasses) {
+    const b = document.createElement("button");
+    b.className = ["btn", "btn--small", ...extraClasses].join(" ");
+    b.textContent = text;
+    return b;
+  }
+
+  function formatDate(ts) {
+    if (!ts) return "—";
+    const d = new Date(ts);
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const yyyy = d.getFullYear();
+    const hh = String(d.getHours()).padStart(2, "0");
+    const min = String(d.getMinutes()).padStart(2, "0");
+    return `${dd}.${mm}.${yyyy} ${hh}:${min}`;
+  }
+
+  // ── Init ───────────────────────────────────────────────────────────
+
+  btnRefresh.addEventListener("click", loadAll);
+
+  // Auto-refresh gdy storage zmienia się (np. user kliknął "Wysłałem"
+  // w popup'ie i wraca do dashboardu).
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && changes.bulkConnect) loadAll();
+  });
+
+  loadAll();
+})();

@@ -200,14 +200,20 @@
   }
 
   /**
-   * Extract the canonical /in/<slug> identifier from a LinkedIn profile URL.
-   * Returns lowercase slug with trailing slash stripped, or null when the URL
-   * isn't a profile page. Used to compare cached profile vs active tab (#3).
+   * Extract canonical slug — DECODED LOWERCASE UTF-8 (np. "radosław-..."
+   * nie "rados%C5%82aw-..."). Spójność z background.extractSlugFromUrl
+   * od v1.8.0 — wcześniej popup robił .toLowerCase() na encoded form,
+   * background nie. To powodowało mismatch %C5 vs %c5 w storage lookup.
    */
   function extractSlugFromUrl(url) {
     if (!url || typeof url !== "string") return null;
     const m = url.match(/linkedin\.com\/in\/([^/?#]+)/i);
-    return m ? m[1].toLowerCase() : null;
+    if (!m) return null;
+    try {
+      return decodeURIComponent(m[1]).toLowerCase();
+    } catch (_) {
+      return m[1].toLowerCase();
+    }
   }
 
   // ── Content Script Communication ─────────────────────────────────
@@ -405,24 +411,29 @@
         // tab.create natychmiast zamyka popup (focus shift). Bez delay user
         // nie zdąży zobaczyć potwierdzenia że tracking został zapisany.
         const action = resp.action === "updated" ? "Zaktualizowano" : "Zapisano";
+        // Open w TLE (active: false) żeby popup ZOSTAŁ open — user widzi
+        // toast i hint, sam przełączy się do nowej karty gdy będzie gotów.
+        // Wcześniej (1.7.2/1.7.3) active: true zamykało popup natychmiast,
+        // toast nigdy nie był widoczny mimo delay'u (Marcin reportował).
+        const composeUrl = new URL("https://www.linkedin.com/messaging/compose/");
+        composeUrl.searchParams.set("recipient", slug);
+        chrome.tabs.create({ url: composeUrl.toString(), active: false });
+
+        const action = resp.action === "updated" ? "Zaktualizowano" : "Zapisano";
         showTrackStatus(
-          `✓ ${action}. Wiadomość w schowku — w nowej karcie zrób Ctrl+V → Send. Follow-up #1 za 3 dni, #2 za 7. Otwieram LinkedIn…`,
+          `✓ ${action}. Wiadomość w schowku, czat LinkedIn otwarty w tle (znajdź go w pasku kart → Ctrl+V → Send). Follow-up #1 za 3 dni, #2 za 7.`,
           "success"
         );
         btnCopyTrack.textContent = "✓ Zapisano";
-        // Refresh hint zaraz, żeby gdy popup zostanie reopenowany pokazywał
-        // że profil jest already tracked. Hint czyta storage przez background.
         refreshTrackingHint(currentProfile);
 
-        // 1.6s daje user'owi czas przeczytać komunikat (zmierzone — jeden
-        // krótki rzut oka). Po tym chrome.tabs.create przejmuje fokus na
-        // LinkedIn messaging i popup zamyka się.
-        await new Promise((r) => setTimeout(r, 1600));
-
-        chrome.tabs.create({
-          url: `https://www.linkedin.com/messaging/compose/?recipient=${encodeURIComponent(slug)}`,
-          active: true,
-        });
+        // Re-enable button po 2s — jakby user chciał ponowić (np. zmienił
+        // generację) — drugi klik update'uje messageDraft, idempotent hook
+        // chroni RemindAt'y.
+        setTimeout(() => {
+          btnCopyTrack.disabled = false;
+          btnCopyTrack.textContent = origText;
+        }, 2000);
       } catch (err) {
         console.warn("[LinkedIn MSG] copy+track failed:", err);
         showTrackStatus(`Błąd: ${(err && err.message) || err}`, "error");
@@ -528,6 +539,15 @@
   if (btnOpenOptions) {
     btnOpenOptions.addEventListener("click", () => {
       chrome.runtime.openOptionsPage();
+    });
+  }
+
+  // Dashboard follow-upów (#27 v1.8.0) — pełny widok wszystkich follow-upów
+  // (TERAZ / Zaplanowane / Historia). Otwiera się w nowej karcie.
+  const btnDashboard = $("#btn-dashboard");
+  if (btnDashboard) {
+    btnDashboard.addEventListener("click", () => {
+      chrome.tabs.create({ url: chrome.runtime.getURL("dashboard.html"), active: true });
     });
   }
 
@@ -1120,10 +1140,9 @@
     if (!item || !item.messageDraft) return;
     try {
       await navigator.clipboard.writeText(item.messageDraft);
-      chrome.tabs.create({
-        url: `https://www.linkedin.com/messaging/compose/?recipient=${encodeURIComponent(slug)}`,
-        active: true,
-      });
+      const composeUrl = new URL("https://www.linkedin.com/messaging/compose/");
+      composeUrl.searchParams.set("recipient", slug);
+      chrome.tabs.create({ url: composeUrl.toString(), active: true });
       await chrome.runtime.sendMessage({ action: "bulkMarkMessageSent", slug });
       if (messagePipelineStatus) {
         messagePipelineStatus.className = "message-pipeline__status message-pipeline__status--success";
