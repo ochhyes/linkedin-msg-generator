@@ -14,7 +14,15 @@ Extension Chrome dla **bulk wysyłki zaproszeń** + **AI generator wiadomości**
 5. Pojawi się "LinkedIn MSG" na liście — sprawdź wersję `1.6.0` przy nazwie.
 6. (Opcjonalnie) Przypnij ikonę do paska Chrome — kliknij ikonę puzzla 🧩 → przy "LinkedIn MSG" klik pinezki 📌.
 
-> **Aktualizacja do nowej wersji:** rozpakuj nowy zip nad starym folderem (zastąp pliki) → w `chrome://extensions/` klik kółko **Reload** przy LinkedIn MSG.
+> **Aktualizacja do nowej wersji** (np. 1.6.0 → 1.7.0):
+> 1. Rozpakuj nowy zip — **może być w nowym folderze** (np. `linkedin-msg-extension-1.7.0/`).
+> 2. W `chrome://extensions/` klik **Usuń** przy starej wersji LinkedIn MSG.
+> 3. Klik **Załaduj rozpakowane** → wybierz NOWY folder z 1.7.0.
+> 4. **Twoje dane (kolejka zaproszeń, drafty wiadomości, akceptacje) PRZEŻYJĄ** — extension ma stabilny `key` w manifest.json, więc Chrome traktuje to jako tę samą extension'ę niezależnie od folderu.
+>
+> **Gdzie są fizycznie dane:** `C:\Users\<user>\AppData\Local\Google\Chrome\User Data\Default\Local Extension Settings\<EXTENSION_ID>\` — Chrome trzyma to NIEZALEŻNIE od folderu z plikami extension'u. Reinstall folderu nie kasuje danych. Format storage: LevelDB (binary).
+>
+> **Backup ręczny** (na wypadek wymiany komputera): w popup'ie `Ustawienia bulk connect` → **Eksport kolejki** (jeśli dorzucone w przyszłej wersji), lub manual przez DevTools console na karcie extension'u: `chrome.storage.local.get('bulkConnect', d => copy(JSON.stringify(d)))` — wkleja JSON do schowka, zapisz w pliku.
 
 ---
 
