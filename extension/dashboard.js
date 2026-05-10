@@ -14,6 +14,15 @@
   const historyEmpty = $("#history-empty");
   const btnRefresh = $("#btn-refresh");
 
+  // #38 v1.11.0 — stats + contacts table refs.
+  const statsSection = $("#stats-section");
+  const statsFunnel = $("#stats-funnel");
+  const btnRefreshStats = $("#btn-refresh-stats");
+  const contactsSection = $("#contacts-list-section");
+  const contactsTbody = $("#contacts-tbody");
+  const contactsCount = $("#contacts-count");
+  const contactsEmpty = $("#contacts-empty");
+
   // Per-textarea debounce dla auto-save draftów (klucz: slug#N).
   const _draftDebounce = new Map();
 
@@ -293,6 +302,290 @@
     return li;
   }
 
+  // ── Stats funnel (#38 v1.11.0) ─────────────────────────────────────
+
+  async function loadStats() {
+    if (!statsFunnel) return;
+    try {
+      const resp = await chrome.runtime.sendMessage({ action: "bulkGetStats" });
+      if (!resp || !resp.success || !resp.totals || !resp.rates) {
+        // Handler not deployed yet (subagent A) — hide cleanly.
+        if (statsSection) statsSection.classList.add("hidden");
+        return;
+      }
+      if (statsSection) statsSection.classList.remove("hidden");
+      renderStatsFunnel(resp.totals, resp.rates);
+    } catch (err) {
+      console.warn("[dashboard] loadStats fail:", err);
+      if (statsSection) statsSection.classList.add("hidden");
+    }
+  }
+
+  function renderStatsFunnel(totals, rates) {
+    if (!statsFunnel) return;
+    if ((totals.invitesSent || 0) === 0 && (totals.messagesSent || 0) === 0) {
+      statsFunnel.innerHTML = "";
+      const p = document.createElement("p");
+      p.className = "stats-empty";
+      p.textContent = "Zacznij od bulk Connect lub manual outreach żeby zobaczyć statystyki.";
+      statsFunnel.appendChild(p);
+      return;
+    }
+
+    const rows = [
+      { icon: "📨", label: "Invites wysłane", value: totals.invitesSent || 0, arrow: `Accept rate: ${fmtRate(rates.acceptRate)}%` },
+      { icon: "✅", label: "Zaakceptowane", value: totals.accepted || 0, arrow: `Wiadomość 1 wysłana: ${totals.messagesSent || 0}` },
+      { icon: "📩", label: "Wiadomość 1 wysłana", value: totals.messagesSent || 0, arrow: `Reply rate stage 1: ${fmtRate(rates.messageReplyRate)}%` },
+      { icon: "↪", label: "Odpowiedź na wiadomość 1", value: totals.messageReplies || 0, arrow: `FU#1 wysłany: ${totals.followup1Sent || 0}` },
+      { icon: "🔔", label: "Follow-up #1 wysłany", value: totals.followup1Sent || 0, arrow: `Reply rate stage 2: ${fmtRate(rates.followup1ReplyRate)}%` },
+      { icon: "↪", label: "Odpowiedź na FU#1", value: totals.followup1Replies || 0, arrow: `FU#2 wysłany: ${totals.followup2Sent || 0}` },
+      { icon: "🔔", label: "Follow-up #2 wysłany", value: totals.followup2Sent || 0, arrow: `Reply rate stage 3: ${fmtRate(rates.followup2ReplyRate)}%` },
+      { icon: "↪", label: "Odpowiedź na FU#2", value: totals.followup2Replies || 0, arrow: null },
+    ];
+
+    statsFunnel.innerHTML = "";
+    for (const row of rows) {
+      const div = document.createElement("div");
+      div.className = "stats-row";
+      const iconSpan = document.createElement("span");
+      iconSpan.className = "stats-row__icon";
+      iconSpan.textContent = row.icon;
+      const labelSpan = document.createElement("span");
+      labelSpan.className = "stats-row__label";
+      labelSpan.textContent = row.label;
+      const valueSpan = document.createElement("span");
+      valueSpan.className = "stats-row__value";
+      valueSpan.textContent = String(row.value);
+      div.appendChild(iconSpan);
+      div.appendChild(labelSpan);
+      div.appendChild(valueSpan);
+      statsFunnel.appendChild(div);
+      if (row.arrow) {
+        const arr = document.createElement("div");
+        arr.className = "stats-arrow";
+        arr.textContent = `↓ ${row.arrow}`;
+        statsFunnel.appendChild(arr);
+      }
+    }
+
+    // Total row.
+    const total = document.createElement("div");
+    total.className = "stats-row stats-row--total";
+    const totIcon = document.createElement("span");
+    totIcon.className = "stats-row__icon";
+    totIcon.textContent = "🎯";
+    const totLabel = document.createElement("span");
+    totLabel.className = "stats-row__label";
+    totLabel.textContent = "TOTAL: Reply rate (any stage)";
+    const totValue = document.createElement("span");
+    totValue.className = "stats-row__value";
+    const anyReply = totals.anyReply || 0;
+    const messagesSent = totals.messagesSent || 0;
+    totValue.textContent = `${fmtRate(rates.overallReplyRate)}% (${anyReply}/${messagesSent})`;
+    total.appendChild(totIcon);
+    total.appendChild(totLabel);
+    total.appendChild(totValue);
+    statsFunnel.appendChild(total);
+  }
+
+  function fmtRate(r) {
+    const n = Number(r);
+    if (!Number.isFinite(n)) return "0";
+    // Handler returns rates as percentage (e.g. 33.5). Display 1 decimal.
+    return n.toFixed(1).replace(/\.0$/, "");
+  }
+
+  // ── Contacts table (#38 v1.11.0) ───────────────────────────────────
+
+  async function loadContactsList() {
+    if (!contactsTbody) return;
+    try {
+      const resp = await chrome.runtime.sendMessage({ action: "getBulkState" });
+      // getBulkState returns the state object directly: { queue, config, stats, ... }
+      // (not wrapped in {success, state}). Defensive: fallback if shape differs.
+      let queue = null;
+      if (resp && Array.isArray(resp.queue)) queue = resp.queue;
+      else if (resp && resp.state && Array.isArray(resp.state.queue)) queue = resp.state.queue;
+      if (!queue) {
+        contactsTbody.innerHTML = "";
+        if (contactsEmpty) contactsEmpty.classList.remove("hidden");
+        if (contactsCount) contactsCount.textContent = "0";
+        return;
+      }
+      renderContactsTable(queue);
+    } catch (err) {
+      console.warn("[dashboard] loadContactsList fail:", err);
+    }
+  }
+
+  function renderContactsTable(queue) {
+    if (!contactsTbody) return;
+    contactsTbody.innerHTML = "";
+
+    const sorted = [...queue].sort((a, b) => {
+      const aReply = Math.max(a.messageReplyAt || 0, a.followup1ReplyAt || 0, a.followup2ReplyAt || 0);
+      const bReply = Math.max(b.messageReplyAt || 0, b.followup1ReplyAt || 0, b.followup2ReplyAt || 0);
+      if (aReply !== bReply) return bReply - aReply;
+      return (b.messageSentAt || 0) - (a.messageSentAt || 0);
+    });
+
+    if (contactsCount) contactsCount.textContent = String(sorted.length);
+
+    if (sorted.length === 0) {
+      if (contactsEmpty) contactsEmpty.classList.remove("hidden");
+      return;
+    }
+    if (contactsEmpty) contactsEmpty.classList.add("hidden");
+
+    for (const item of sorted) {
+      contactsTbody.appendChild(buildContactRow(item));
+    }
+  }
+
+  function buildContactRow(item) {
+    const tr = document.createElement("tr");
+    tr.dataset.slug = item.slug;
+
+    // Status cell — color-coded
+    let statusClass = "cell-status-pending";
+    let statusText = item.status || "pending";
+    if (item.messageReplyAt || item.followup1ReplyAt || item.followup2ReplyAt) {
+      statusClass = "cell-status-replied";
+      statusText = "replied";
+    } else if (item.acceptedAt) {
+      statusClass = "cell-status-accepted";
+      statusText = "accepted";
+    } else if (item.status === "sent" || item.status === "manual_sent") {
+      statusClass = "cell-status-sent";
+    }
+
+    const inviteSent = (item.status === "sent" || item.status === "manual_sent")
+      ? (item.timestamp || item.messageSentAt || null)
+      : null;
+
+    // Name cell — link to profile
+    const nameTd = document.createElement("td");
+    const nameLink = document.createElement("a");
+    nameLink.href = `https://www.linkedin.com/in/${encodeURIComponent(item.slug)}/`;
+    nameLink.target = "_blank";
+    nameLink.rel = "noopener noreferrer";
+    nameLink.textContent = item.name || item.slug;
+    nameTd.appendChild(nameLink);
+    tr.appendChild(nameTd);
+
+    // Status cell
+    const statusTd = document.createElement("td");
+    statusTd.className = statusClass;
+    statusTd.textContent = statusText;
+    tr.appendChild(statusTd);
+
+    tr.appendChild(buildMarkCell(inviteSent, "Invite wysłane"));
+    tr.appendChild(buildMarkCell(item.acceptedAt, "Zaakceptowane"));
+    tr.appendChild(buildMarkCell(item.messageSentAt, "Wiadomość wysłana"));
+    tr.appendChild(buildMarkCell(item.messageReplyAt, "Odpowiedział na msg"));
+    tr.appendChild(buildMarkCell(item.followup1SentAt, "FU#1 wysłany"));
+    tr.appendChild(buildMarkCell(item.followup1ReplyAt, "Odpowiedział na FU#1"));
+    tr.appendChild(buildMarkCell(item.followup2SentAt, "FU#2 wysłany"));
+    tr.appendChild(buildMarkCell(item.followup2ReplyAt, "Odpowiedział na FU#2"));
+
+    // Actions cell
+    const actionsTd = document.createElement("td");
+    actionsTd.className = "actions-cell";
+
+    if (item.messageSentAt && !item.messageReplyAt) {
+      actionsTd.appendChild(makeReplyBtn("↪Msg", "Oznacz że odpowiedział na wiadomość 1", "btn-mark-reply",
+        () => markReply(item.slug, "message")));
+    }
+    if (item.followup1SentAt && !item.followup1ReplyAt) {
+      actionsTd.appendChild(makeReplyBtn("↪FU1", "Oznacz że odpowiedział na FU#1", "btn-mark-reply",
+        () => markReply(item.slug, "followup1")));
+    }
+    if (item.followup2SentAt && !item.followup2ReplyAt) {
+      actionsTd.appendChild(makeReplyBtn("↪FU2", "Oznacz że odpowiedział na FU#2", "btn-mark-reply",
+        () => markReply(item.slug, "followup2")));
+    }
+    if (item.messageReplyAt) {
+      actionsTd.appendChild(makeReplyBtn("✕Msg", "Cofnij oznaczenie odpowiedzi na msg", "btn-unmark-reply",
+        () => unmarkReply(item.slug, "message")));
+    }
+    if (item.followup1ReplyAt) {
+      actionsTd.appendChild(makeReplyBtn("✕FU1", "Cofnij oznaczenie odpowiedzi na FU#1", "btn-unmark-reply",
+        () => unmarkReply(item.slug, "followup1")));
+    }
+    if (item.followup2ReplyAt) {
+      actionsTd.appendChild(makeReplyBtn("✕FU2", "Cofnij oznaczenie odpowiedzi na FU#2", "btn-unmark-reply",
+        () => unmarkReply(item.slug, "followup2")));
+    }
+    tr.appendChild(actionsTd);
+
+    return tr;
+  }
+
+  function buildMarkCell(date, title) {
+    const td = document.createElement("td");
+    if (!date) {
+      td.className = "cell-no";
+      td.textContent = "—";
+      return td;
+    }
+    td.className = "cell-yes";
+    const d = new Date(date);
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    td.textContent = `✓ ${dd}.${mm}`;
+    const iso = d.toISOString().slice(0, 16).replace("T", " ");
+    td.title = `${title}: ${iso}`;
+    return td;
+  }
+
+  function makeReplyBtn(text, title, cls, onClick) {
+    const b = document.createElement("button");
+    b.className = cls;
+    b.textContent = text;
+    b.title = title;
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      onClick();
+    });
+    return b;
+  }
+
+  async function markReply(slug, stage) {
+    let action;
+    if (stage === "message") action = "bulkMarkMessageReply";
+    else if (stage === "followup1") action = "bulkMarkFollowup1Reply";
+    else if (stage === "followup2") action = "bulkMarkFollowup2Reply";
+    else return;
+
+    try {
+      const resp = await chrome.runtime.sendMessage({ action, slug });
+      if (resp && resp.success === false) {
+        console.warn("[dashboard] markReply rejected:", resp);
+      }
+    } catch (err) {
+      console.warn("[dashboard] markReply fail:", err);
+    }
+    refreshAll();
+  }
+
+  async function unmarkReply(slug, stage) {
+    try {
+      const resp = await chrome.runtime.sendMessage({ action: "bulkUnmarkReply", slug, stage });
+      if (resp && resp.success === false) {
+        console.warn("[dashboard] unmarkReply rejected:", resp);
+      }
+    } catch (err) {
+      console.warn("[dashboard] unmarkReply fail:", err);
+    }
+    refreshAll();
+  }
+
+  function refreshAll() {
+    loadAll();
+    loadStats();
+    loadContactsList();
+  }
+
   // ── Helpers ────────────────────────────────────────────────────────
 
   function btn(text, ...extraClasses) {
@@ -315,13 +608,30 @@
 
   // ── Init ───────────────────────────────────────────────────────────
 
-  btnRefresh.addEventListener("click", loadAll);
+  btnRefresh.addEventListener("click", () => {
+    loadAll();
+    loadStats();
+    loadContactsList();
+  });
+
+  if (btnRefreshStats) {
+    btnRefreshStats.addEventListener("click", (e) => {
+      e.stopPropagation();
+      loadStats();
+    });
+  }
 
   // Auto-refresh gdy storage zmienia się (np. user kliknął "Wysłałem"
   // w popup'ie i wraca do dashboardu).
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === "local" && changes.bulkConnect) loadAll();
+    if (area === "local" && changes.bulkConnect) {
+      loadAll();
+      loadStats();
+      loadContactsList();
+    }
   });
 
   loadAll();
+  loadStats();
+  loadContactsList();
 })();

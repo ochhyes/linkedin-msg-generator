@@ -202,9 +202,9 @@ PM 5–15 min · Dev 30–120 min · Tester 10–30 min · Commit 2–5 min.
 
 ```
 Sprint:        #5 — Stabilizacja + UX overhaul + Bulk worker + Reply tracking
-Phase:         PM (#39 done, plan #38 czeka na start Dev)
-Active task:   #38 — Reply tracking + funnel statystyki (v1.11.0) — następny task
-Last commit:   <pending — feat: bulk worker resilience (#39, v1.10.0)>
+Phase:         PM (#38 + #39 done, decyzja o nowym sprincie lub dystrybucji)
+Active task:   żaden — Sprint #5 zamknięty z v1.11.0
+Last commit:   b5bc0ff — feat: bulk worker resilience (#39, v1.10.0)
 Updated:       2026-05-10
 ```
 
@@ -214,21 +214,11 @@ Updated:       2026-05-10
 
 ## TODO (priorytet od góry)
 
-### #38 P1 — Reply tracking + funnel statystyki w dashboardzie (v1.11.0)
-
-**Po #39 skończonym.** PM plan w thread'zie konwersacji 2026-05-10. Skrót:
-- Storage queue items +3 pola: `messageReplyAt`, `followup1ReplyAt`, `followup2ReplyAt` (BC null default).
-- Nowy `followupStatus="replied"` (auto-cancel scheduled follow-upów przy mark reply, cascade msg→FU1+FU2, FU1→FU2).
-- 4 nowe handlery w background.js: `bulkMarkMessageReply`, `bulkMarkFollowup1Reply`, `bulkMarkFollowup2Reply`, `bulkUnmarkReply` + `bulkGetStats` computed (totals + rates per stage + overall, divide-by-zero → 0%).
-- Dashboard: nowa sekcja `#stats-section` (top, 8-row funnel z procentami) + `#contacts-list-section` (bottom, tabela pełen pipeline view, per-row reply/unmark buttons, klik wiersza otwiera profil).
-- Popup Follow-up tab: read-only "↪ Odpowiedział X.MM" tag w Scheduled rows gdy `*ReplyAt`.
-- ≥20 asercji w `extension/tests/test_reply.js` NEW.
-- Bump 1.10.0 → 1.11.0 (minor). Backend ZERO zmian.
-- Subagenty: A (background+stats), B (dashboard UI), C (tests+popup tag+INSTRUKCJA).
+(none — Sprint #5 zamknięty, oczekuje decyzji o nowym sprincie lub dystrybucji 1.11.0)
 
 ## IN PROGRESS
 
-(none — #39 done, #38 czeka na decyzję start Dev)
+(none)
 
 ## READY FOR TEST
 
@@ -237,6 +227,9 @@ Updated:       2026-05-10
 ## DONE
 
 > Format: 1 linia per release (sha, opis, bump). Pełne treści w `git show <sha>`.
+
+**Sprint #5 — Reply tracking + funnel statystyki (kontynuacja Sprintu #5, 2026-05-10 z v1.11.0):**
+- ✅ #38 P1 — feat: reply tracking + funnel statystyki w dashboardzie (v1.11.0). Mamy pipeline Invite → Accept → Msg → FU#1 → FU#2 ale brakowało stage'u REPLY — bez tego nie wiemy ile naprawdę konwertuje. Storage queue items +3 pola: `messageReplyAt`, `followup1ReplyAt`, `followup2ReplyAt` (BC null default). Nowy `followupStatus="replied"` (oprócz scheduled/skipped) — auto-set przy mark reply, filter w `bulkListAllFollowups` excluduje replied items z due/scheduled (idą do history z `kind:"replied"`). 4 handlery w background.js: `bulkMarkMessageReply` (set + status=replied), `bulkMarkFollowup1Reply`, `bulkMarkFollowup2Reply`, `bulkUnmarkReply(slug, stage)` z restore `followupStatus="scheduled"` gdy żaden inny ReplyAt nie jest set (RemindAt'y persisted, więc due się znowu liczą po unmark). Wszystkie idempotent (alreadyMarked check). `bulkGetStats` computed: totals (invitesSent, accepted, messagesSent, messageReplies, fu1Sent, fu1Replies, fu2Sent, fu2Replies, anyReply) + rates (acceptRate, msgReplyRate, fu1ReplyRate, fu2ReplyRate, overallReplyRate) z `pct(num,den)` divide-by-zero safe (return 0 nie NaN/Infinity, 1-decimal precision). Dashboard: 2 nowe sekcje — `#stats-section` top z 8-row funnel + procenty + highlighted TOTAL row, `#contacts-list-section` bottom z pełną tabelą pipeline'u (Imię/Status/Inv/Acc/Msg/Rep/FU1/R1/FU2/R2/Akcje), color-coded status, per-row mark/unmark buttons (do 3 mark + 3 unmark per stage). Sort: latest reply first → messageSentAt. Klik wiersza otwiera profil LinkedIn `target=_blank`. Popup Follow-up tab Scheduled: read-only fioletowy tag "↪ Odp. msg/FU#1/FU#2 DD.MM" gdy item ma `*ReplyAt`. Backend: ZERO zmian. Bump 1.10.0 → 1.11.0. Implementacja: 3 subagenty paralelnie (A background.js +165 linii, B dashboard html/css/js +525 linii z dark theme adaptation, C test_reply.js NEW 45 asercji + popup.js +19 + popup.css +12 + INSTRUKCJA sekcja 3.6 +50). Testy 409/0 → 454/0 (+45 z test_reply.js). Zero new permissions.
 
 **Sprint #5 — Bulk worker resilience (kontynuacja Sprintu #5, 2026-05-10 z v1.10.0):**
 - ✅ #39 P0 — feat: bulk worker resilience: auto-navigate + URL hint + jitter (v1.10.0). Worker gubił się gdy user opuścił search results (klik czyjś profil) — `findLinkedInSearchTab` zwracał null → tick exit'uje "Lost search tab". Fix: persist `bulkSettings.tabId` + `lastSearchKeywords` przy starcie session. `resolveBulkTab()` używa `chrome.tabs.get(tabId)` z fallbackiem do `findLinkedInSearchTab`. URL read przez `chrome.scripting.executeScript({func:()=>location.href})` (no `tabs` permission). Auto-navigate na `buildSearchUrl(keywords, pending.pageNumber)` gdy URL ≠ `/search/results/people/`. Loop guard: `navigateFailCount` 3-strike → auto-pause + telemetria `event_type:"bulk_navigate_fail"` (reuse `reportScrapeFailure` z v1.6.0). Anti-detection: jitter 5-15s w `bulkAutoFillByUrl` zamiast fixed 500ms. Popup: sticky bottom `#bulk-target-url` z klikalnym linkiem (manual fallback gdy auto-nav zawiedzie), auto-hide gdy URL match przez `chrome.tabs.onUpdated` debounced. Implementacja: 2 subagenty paralelnie (A background.js +170 linii, B popup html/css/js +162 linii). Testy 278/0 → 409/0 (+131 asercji w test_bulk_connect.js — jitter 100-sample loop dominuje). Bump 1.9.1 → 1.10.0. Zero new permissions. INSTRUKCJA.md zaktualizowana (Krok C punkty 5-6).

@@ -292,7 +292,14 @@ async function addToQueue(profiles) {
       followup2Draft: null,
       followup1SentAt: null,
       followup2SentAt: null,
-      followupStatus: "scheduled", // "scheduled" | "skipped"
+      followupStatus: "scheduled", // "scheduled" | "skipped" | "replied"
+      // Sprint #6 (#38 v1.11.0): reply tracking — timestamp gdy user oznaczy
+      // że dostał odpowiedź na danym etapie. Ustawia followupStatus="replied"
+      // (excluded z due/scheduled, idzie do history). BC: items sprzed v1.11.0
+      // nie mają tych pól → null w filterach.
+      messageReplyAt: null,
+      followup1ReplyAt: null,
+      followup2ReplyAt: null,
     }));
   const next = await setBulkState({ queue: [...state.queue, ...fresh] });
   return { success: true, queueSize: next.queue.length, added: fresh.length };
@@ -566,6 +573,14 @@ async function bulkListAllFollowups() {
       status: item.status,
     };
 
+    // Replied items — całkowicie wykluczone z due/scheduled, idą do history.
+    // (#38 v1.11.0) — gdy user dostał odpowiedź na dowolnym etapie, dalsze
+    // follow-up'y są zbędne. Status reset'owalny przez bulkUnmarkReply.
+    if (item.followupStatus === "replied") {
+      history.push({ ...base, kind: "replied" });
+      continue;
+    }
+
     // Skipped → tylko historia
     if (item.followupStatus === "skipped") {
       history.push({ ...base, kind: "skipped" });
@@ -817,6 +832,148 @@ async function bulkSkipFollowup(slug) {
   await updateQueueItem(slug, { followupStatus: "skipped" });
   await updateFollowupBadge();
   return { success: true };
+}
+
+// ── Reply tracking (#38 v1.11.0) ─────────────────────────────────
+//
+// User oznacza że dostał odpowiedź na danym etapie (message / followup1 /
+// followup2). Ustawia ReplyAt timestamp + followupStatus="replied" (item
+// excluded z due/scheduled, ląduje w history). Idempotent — drugi klik
+// no-op zachowując original timestamp. bulkUnmarkReply pozwala cofnąć (np.
+// błędny klik) — restore'uje followupStatus="scheduled" jeśli żaden inny
+// stage nie ma reply, RemindAt'y zostały persisted więc due liczy się znowu.
+
+async function bulkMarkMessageReply(slug) {
+  if (!slug) return { success: false, error: "no_slug" };
+  const state = await getBulkState();
+  const item = state.queue.find((q) => q.slug === slug);
+  if (!item) return { success: false, error: "not_found" };
+  // Idempotent — jeśli już oznaczony, no-op (zachowaj original ReplyAt timestamp).
+  if (item.messageReplyAt) return { success: true, alreadyMarked: true };
+  await updateQueueItem(slug, {
+    messageReplyAt: Date.now(),
+    followupStatus: "replied",
+  });
+  await updateFollowupBadge();
+  return { success: true };
+}
+
+async function bulkMarkFollowup1Reply(slug) {
+  if (!slug) return { success: false, error: "no_slug" };
+  const state = await getBulkState();
+  const item = state.queue.find((q) => q.slug === slug);
+  if (!item) return { success: false, error: "not_found" };
+  if (item.followup1ReplyAt) return { success: true, alreadyMarked: true };
+  await updateQueueItem(slug, {
+    followup1ReplyAt: Date.now(),
+    followupStatus: "replied",
+  });
+  await updateFollowupBadge();
+  return { success: true };
+}
+
+async function bulkMarkFollowup2Reply(slug) {
+  if (!slug) return { success: false, error: "no_slug" };
+  const state = await getBulkState();
+  const item = state.queue.find((q) => q.slug === slug);
+  if (!item) return { success: false, error: "not_found" };
+  if (item.followup2ReplyAt) return { success: true, alreadyMarked: true };
+  await updateQueueItem(slug, {
+    followup2ReplyAt: Date.now(),
+    followupStatus: "replied",
+  });
+  await updateFollowupBadge();
+  return { success: true };
+}
+
+async function bulkUnmarkReply(slug, stage) {
+  // stage: "message" | "followup1" | "followup2"
+  if (!slug || !stage) return { success: false, error: "no_slug_or_stage" };
+  const state = await getBulkState();
+  const item = state.queue.find((q) => q.slug === slug);
+  if (!item) return { success: false, error: "not_found" };
+
+  const otherFields = ["messageReplyAt", "followup1ReplyAt", "followup2ReplyAt"];
+  const removedField = stage === "message" ? "messageReplyAt" : `${stage}ReplyAt`;
+
+  const patch = {};
+  if (stage === "message") patch.messageReplyAt = null;
+  else if (stage === "followup1") patch.followup1ReplyAt = null;
+  else if (stage === "followup2") patch.followup2ReplyAt = null;
+  else return { success: false, error: "bad_stage" };
+
+  // Restore followupStatus do "scheduled" gdy żaden inny ReplyAt nie jest set.
+  // (Inaczej user oznaczył reply na innym stage'u — zostaje "replied".)
+  // RemindAt'y zostały persisted od bulkMarkMessageSent — due się znowu liczą
+  // gdy wracamy do "scheduled".
+  const hasOtherReply = otherFields
+    .filter((f) => f !== removedField)
+    .some((f) => item[f] != null);
+
+  if (!hasOtherReply && item.followupStatus === "replied") {
+    patch.followupStatus = "scheduled";
+  }
+
+  await updateQueueItem(slug, patch);
+  await updateFollowupBadge();
+  return { success: true };
+}
+
+// ── Funnel statistics (#38 v1.11.0) ──────────────────────────────
+//
+// Computed funkcja — liczy queue items po stage'ach i kalkuluje rates.
+// pct() handles divide-by-zero (return 0, nie NaN/Infinity). Round do
+// 1 miejsca po przecinku dla wizualnej higieny ("23.4%" nie "23.456789%").
+
+async function bulkGetStats() {
+  const state = await getBulkState();
+  const totals = {
+    invitesSent: 0,
+    accepted: 0,
+    messagesSent: 0,
+    messageReplies: 0,
+    followup1Sent: 0,
+    followup1Replies: 0,
+    followup2Sent: 0,
+    followup2Replies: 0,
+    anyReply: 0,
+  };
+
+  for (const item of state.queue) {
+    // Invite sent: status="sent" lub "manual_sent" (manual outreach też counts).
+    if (item.status === "sent" || item.status === "manual_sent") {
+      totals.invitesSent++;
+    }
+    if (item.acceptedAt != null) totals.accepted++;
+    if (item.messageSentAt != null) totals.messagesSent++;
+    if (item.messageReplyAt != null) totals.messageReplies++;
+    if (item.followup1SentAt != null) totals.followup1Sent++;
+    if (item.followup1ReplyAt != null) totals.followup1Replies++;
+    if (item.followup2SentAt != null) totals.followup2Sent++;
+    if (item.followup2ReplyAt != null) totals.followup2Replies++;
+    if (
+      item.messageReplyAt != null ||
+      item.followup1ReplyAt != null ||
+      item.followup2ReplyAt != null
+    ) {
+      totals.anyReply++;
+    }
+  }
+
+  function pct(num, den) {
+    if (!den || den <= 0) return 0;
+    return Math.round((num / den) * 1000) / 10; // 1 decimal place
+  }
+
+  const rates = {
+    acceptRate: pct(totals.accepted, totals.invitesSent),
+    messageReplyRate: pct(totals.messageReplies, totals.messagesSent),
+    followup1ReplyRate: pct(totals.followup1Replies, totals.followup1Sent),
+    followup2ReplyRate: pct(totals.followup2Replies, totals.followup2Sent),
+    overallReplyRate: pct(totals.anyReply, totals.messagesSent),
+  };
+
+  return { success: true, totals, rates };
 }
 
 async function findLinkedInSearchTab() {
@@ -1465,6 +1622,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         case "followupSkip":
           return await bulkSkipFollowup(message.slug);
+
+        // Reply tracking (#38 v1.11.0)
+        case "bulkMarkMessageReply":
+          return await bulkMarkMessageReply(message.slug);
+        case "bulkMarkFollowup1Reply":
+          return await bulkMarkFollowup1Reply(message.slug);
+        case "bulkMarkFollowup2Reply":
+          return await bulkMarkFollowup2Reply(message.slug);
+        case "bulkUnmarkReply":
+          return await bulkUnmarkReply(message.slug, message.stage);
+        case "bulkGetStats":
+          return await bulkGetStats();
 
         default:
           throw new Error(`Nieznana akcja: ${message.action}`);

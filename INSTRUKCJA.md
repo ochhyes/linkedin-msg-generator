@@ -1,4 +1,4 @@
-# LinkedIn MSG — instrukcja dla zespołu OVB (v1.10.0)
+# LinkedIn MSG — instrukcja dla zespołu OVB (v1.11.0)
 
 Extension Chrome dla **bulk wysyłki zaproszeń** + **AI generator wiadomości** dla nowo zaakceptowanych kontaktów. Zastępuje Octopus Starter.
 
@@ -207,6 +207,56 @@ Sekcja "Do follow-up'u" w popup'ie pokazuje TYLKO follow-upy które są DUE TERA
 **Auto-refresh:** Dashboard sam się odświeża gdy klikniesz akcję w popup'ie (np. "Wysłałem" w sekcji "Do follow-up'u"). Nie musisz refreshować ręcznie. Plus button **↻ Odśwież** w prawym górnym jeśli chcesz force-refresh.
 
 > **Dashboard tylko z LOKALNYMI danymi.** Zawartość = `chrome.storage.local` na Twoim komputerze. Nic nie idzie do chmury, do innego użytkownika OVB, do Marcina. Jedyne co opuszcza Twój komputer to wywołania AI (`/api/generate-message`) gdy klikniesz Generuj.
+
+### 3.6 Statystyki + tracking odpowiedzi (NOWE w 1.11.0)
+
+W dashboardzie (klik 📊 w popup'ie) na samej górze pojawia się sekcja **📊 Statystyki** — funnel pipeline'u:
+
+```
+📨 Invites wysłane: 50
+   ↓ Accept rate: 24%
+✅ Zaakceptowane: 12
+   ↓ Wiadomość 1 wysłana: 8
+📩 Wiadomość 1 wysłana: 8
+   ↓ Reply rate stage 1: 25%
+↪ Odpowiedź na wiadomość 1: 2
+   ↓ FU#1 wysłany: 4
+🔔 Follow-up #1 wysłany: 4
+   ↓ Reply rate stage 2: 50%
+↪ Odpowiedź na FU#1: 2
+   ↓ FU#2 wysłany: 1
+🔔 Follow-up #2 wysłany: 1
+↪ Odpowiedź na FU#2: 0
+
+🎯 TOTAL: Reply rate (any stage): 50% (4/8)
+```
+
+Dane liczone real-time z lokalnego state — zero backend.
+
+#### Jak oznaczyć że ktoś odpowiedział
+
+Na dole dashboardu jest tabela **📋 Wszystkie kontakty w pipeline** z kolumnami: imię, status, invite, accept, msg, reply, FU1, R1, FU2, R2 + akcje.
+
+W kolumnie "Akcje" per wiersz pojawiają się buttony:
+- **↪Msg** — gdy wiadomość 1 wysłana ale brak reply. Klik = oznacz że osoba odpowiedziała na pierwszą wiadomość. Auto-cancel scheduled FU#1+FU#2 (osoba odpowiedziała → nie wysyłaj follow-up'ów).
+- **↪FU1** — analogicznie dla follow-up #1. Auto-cancel scheduled FU#2.
+- **↪FU2** — dla follow-up #2.
+- **✕Msg / ✕FU1 / ✕FU2** — cofnij oznaczenie (jeśli klikniesz pomyłkowo). Restore'uje scheduled follow-up'y.
+
+Każdy z buttonów ma tooltip z datą oznaczenia.
+
+#### Co się dzieje w popup'ie po oznaczeniu reply
+
+Sekcja "Do follow-up'u" w popup'ie:
+- Profile z oznaczonym reply znikają z **Do follow-up'u (due)** — bo follow-up nie ma sensu skoro odpowiedział.
+- W sekcji **Zaplanowane** (jeśli tam były) pokazuje się tag fioletowy "↪ Odp. msg DD.MM" jako informacja kontekstowa.
+- Tab badge (N) — liczba follow-up'ów do zrobienia spada (jeden mniej).
+
+#### Po co to wszystko
+
+**Bo bez tych liczb robisz outreach na ślepo.** 30% accept rate vs 50% mówi czy Twoje pierwsze wiadomości na zaproszeniu są dobre. 5% reply rate na wiadomości post-Connect mówi że copy do poprawki. Octopus Starter pokazuje podobne metryki — to baseline, nie luxury.
+
+Dane wszystkie lokalnie u Ciebie (`chrome.storage.local`), nic nie idzie do żadnego serwera (poza telemetrią błędów scrape, opt-in od v1.2.0).
 
 ---
 

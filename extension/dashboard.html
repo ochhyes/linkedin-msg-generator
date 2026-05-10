@@ -19,6 +19,18 @@
 
     <main>
 
+      <!-- Section 0: STATS (#38 v1.11.0) -->
+      <section id="stats-section" class="block block--stats">
+        <h2>
+          📊 Statystyki
+          <button id="btn-refresh-stats" class="btn btn--small btn--outline" title="Odśwież statystyki">↻</button>
+        </h2>
+        <p class="hint">Funnel od invite do reply. Reply markowane manualnie z tabeli "Wszystkie kontakty" poniżej.</p>
+        <div id="stats-funnel" class="stats-funnel">
+          <p class="stats-empty">Ładowanie…</p>
+        </div>
+      </section>
+
       <!-- Section 1: DUE NOW -->
       <section class="block block--due">
         <h2>
@@ -52,6 +64,36 @@
         <p class="hint">Wysłane follow-upy + pominięte profile. Read-only.</p>
         <div id="history-list" class="list">
           <p class="empty-state hidden" id="history-empty">Brak historii.</p>
+        </div>
+      </section>
+
+      <!-- Section 4: ALL CONTACTS (#38 v1.11.0) -->
+      <section id="contacts-list-section" class="block block--contacts">
+        <h2>
+          📋 Wszystkie kontakty w pipeline
+          <span id="contacts-count" class="count-badge">0</span>
+        </h2>
+        <p class="hint">Pełna tabela. Markuj odpowiedzi przyciskami ↪Msg / ↪FU1 / ↪FU2 — odbije się w statystykach. Klik imienia otwiera profil.</p>
+        <div class="table-wrapper">
+          <table id="contacts-table" class="contacts-table">
+            <thead>
+              <tr>
+                <th>Imię</th>
+                <th title="Status invite">Status</th>
+                <th title="Invite wysłane">Inv</th>
+                <th title="Zaakceptowane">Acc</th>
+                <th title="Pierwsza wiadomość wysłana">Msg</th>
+                <th title="Odpowiedź na wiadomość">Rep</th>
+                <th title="Follow-up #1 wysłany">FU1</th>
+                <th title="Odpowiedź na FU#1">R1</th>
+                <th title="Follow-up #2 wysłany">FU2</th>
+                <th title="Odpowiedź na FU#2">R2</th>
+                <th>Akcje</th>
+              </tr>
+            </thead>
+            <tbody id="contacts-tbody"></tbody>
+          </table>
+          <p id="contacts-empty" class="empty-state hidden">Brak kontaktów. Zacznij od bulk Connect lub manual outreach.</p>
         </div>
       </section>
 

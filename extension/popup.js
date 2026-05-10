@@ -1607,6 +1607,25 @@
     meta.textContent = `Pierwsza wiadomość: ${formatAbsoluteDate(item.messageSentAt)} · follow-up: ${formatAbsoluteDate(item.remindAt)}`;
     li.appendChild(meta);
 
+    // #38 reply tracking — read-only tag dla scheduled rows. Pokazuje się
+    // gdy user oznaczył reply na wcześniejszy stage (np. msg replied, ale
+    // FU#2 jeszcze scheduled bo unmark FU#1 przywrócił status="scheduled").
+    const replyAt = item.messageReplyAt || item.followup1ReplyAt || item.followup2ReplyAt;
+    if (replyAt) {
+      let stageLabel = "msg";
+      if (item.messageReplyAt) stageLabel = "msg";
+      else if (item.followup1ReplyAt) stageLabel = "FU#1";
+      else if (item.followup2ReplyAt) stageLabel = "FU#2";
+
+      const d = new Date(replyAt);
+      const formatted = `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}`;
+
+      const replyTag = document.createElement("span");
+      replyTag.className = "followup-row__replied";
+      replyTag.textContent = `↪ Odp. ${stageLabel} ${formatted}`;
+      li.appendChild(replyTag);
+    }
+
     return li;
   }
 
