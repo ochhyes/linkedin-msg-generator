@@ -214,6 +214,15 @@ const BULK_DEFAULTS = {
   // Wall-clock timestamp (ms) ostatnio wykonanego tick'a — dla diagnostyki
   // w popup'ie (np. "Ostatnia akcja 30s temu").
   lastTickAt: null,
+  // #39 v1.9.2 — bulk worker resilience. tabId persistowany przy bulkConnectStart
+  // żeby tick mógł resolve'ować tab nawet jeśli user przeszedł na inny URL
+  // w tej samej karcie (zamiast exit'ować z "Lost LinkedIn search tab").
+  // lastSearchKeywords pozwala odbudować search URL i auto-navigate kartę
+  // z powrotem na search results. navigateFailCount circuit-breaker po 3
+  // failed auto-navigates żeby nie spamować user'a tab.update'ami.
+  tabId: null,
+  lastSearchKeywords: null,
+  navigateFailCount: 0,
 };
 
 const BULK_ALARM_NAME = "bulkKeepAlive";
@@ -819,6 +828,91 @@ async function findLinkedInSearchTab() {
   return tabs[0] || null;
 }
 
+// ── Bulk worker resilience (#39 v1.9.2) ──────────────────────────────
+//
+// Pre-#39 problem: `findLinkedInSearchTab()` querowało po URL pattern, więc gdy
+// user kliknął na profil w aktywnej karcie (URL zmienił się z /search/results/
+// people/ na /in/<slug>/), query zwracało null → tick exit'ował z "Lost
+// LinkedIn search tab". User musiał manualnie wrócić na search i kliknąć Start.
+//
+// Fix: persist tabId przy starcie bulk session. Tick używa `resolveBulkTab()`
+// (chrome.tabs.get → fallback do findLinkedInSearchTab). Jeśli URL kart nie
+// jest na search results, tick auto-navigates karty na zapisanym keywords
+// + pageNumber (max 3 retry — circuit breaker).
+
+/**
+ * Zwraca tab object dla bulk session. Próbuje persistowanego tabId, fallback
+ * na query po URL pattern. Re-persistuje tabId gdy fallback znalazł nowy.
+ */
+async function resolveBulkTab() {
+  const state = await getBulkState();
+  if (state.tabId) {
+    try {
+      const tab = await chrome.tabs.get(state.tabId);
+      if (tab) return tab;
+    } catch (_) {
+      // Tab closed — fallthrough do fallback.
+    }
+  }
+  const fallback = await findLinkedInSearchTab();
+  if (fallback && fallback.id) {
+    await setBulkState({ tabId: fallback.id });
+    return fallback;
+  }
+  return null;
+}
+
+/**
+ * Czyta location.href z taba bez `tabs` permission. Pattern z v1.8.2 (#32) —
+ * `scripting` + host_permissions wystarcza dla executeScript w LinkedIn'ie.
+ */
+async function getCurrentBulkTabUrl(tabId) {
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => location.href,
+    });
+    return (results && results[0] && results[0].result) || null;
+  } catch (err) {
+    return null;
+  }
+}
+
+/**
+ * Buduje search results URL z zapisanego keywords + page. Używane gdy tick
+ * wykryje że karta jest poza search results (np. user kliknął profil) i
+ * próbuje auto-navigate z powrotem.
+ */
+function buildSearchUrl(keywords, pageNum) {
+  const u = new URL("https://www.linkedin.com/search/results/people/");
+  if (keywords) u.searchParams.set("keywords", keywords);
+  if (pageNum && pageNum > 1) u.searchParams.set("page", String(pageNum));
+  // Standard LinkedIn defaults dla people search — NIE re-buildujemy
+  // network=["S"] (2nd degree only) etc., bo nie zapisujemy całego URL'a.
+  // Auto-navigate jest fallbackiem dla "user wyszedł z search" — primary
+  // use case (page-aware navigation w tick'u) używa setPageInUrl który
+  // preservuje wszystkie LinkedIn'owe query params z aktualnego URL'a.
+  u.searchParams.set("origin", "FACETED_SEARCH");
+  return u.toString();
+}
+
+/**
+ * Telemetria fail'a auto-navigate (3x w rzędu user wyszedł z search results,
+ * worker poddał się). Reuse `reportScrapeFailure` żeby payload trafił do
+ * tego samego JSONL log'u backendu (`event_type` field rozróżnia incydenty).
+ */
+async function fireBulkNavigateFail(currentUrl, expectedUrl) {
+  reportScrapeFailure({
+    event_type: "bulk_navigate_fail",
+    url: currentUrl || "",
+    error_message: `expected ${expectedUrl}`,
+    diagnostics: {
+      current_url: currentUrl || null,
+      expected_url: expectedUrl || null,
+    },
+  });
+}
+
 function inWorkingHours(config) {
   const hour = new Date().getHours();
   return hour >= config.workingHoursStart && hour < config.workingHoursEnd;
@@ -913,6 +1007,12 @@ async function bulkAutoFillByUrl(maxProfiles) {
   if (pageNum < 1) pageNum = 1;
 
   for (let pagesScanned = 0; pagesScanned < PAGINATION_MAX_PAGES; pagesScanned++) {
+    // #39: anti-detection jitter 5-15s między pages. NIE przed pierwszą
+    // iteracją (już jesteśmy na page=N, scrape natychmiastowy = expected).
+    if (pagesScanned > 0) {
+      const jitter = 5000 + Math.random() * 10000;
+      await new Promise((r) => setTimeout(r, jitter));
+    }
     // Navigate (nawet pierwsza iteracja — żeby gwarantować świeży DOM
     // bez stale ze scrolla użytkownika; jeśli aktualnie jesteśmy na page=N
     // ten update jest no-op — Chrome nie reload'uje gdy URL identyczny).
@@ -1017,7 +1117,8 @@ async function bulkConnectTick() {
     return;
   }
 
-  const tab = await findLinkedInSearchTab();
+  // #39: resolveBulkTab → persistowany tabId z fallbackiem do query.
+  const tab = await resolveBulkTab();
   if (!tab) {
     await setBulkState({
       active: false,
@@ -1028,16 +1129,64 @@ async function bulkConnectTick() {
     return;
   }
 
+  // #39: gdy user wyszedł z search results (kliknął profil lub przeszedł na
+  // inną stronę w tej samej karcie), auto-navigate z powrotem zamiast exit'u.
+  // Circuit-breaker: po 3 nieudanych próbach poddajemy się żeby nie spamować
+  // tab.update'ami w przypadku gdy LinkedIn redirect'uje gdzie indziej.
+  const currentUrl = await getCurrentBulkTabUrl(tab.id);
+  if (!currentUrl || !currentUrl.includes("/search/results/people/")) {
+    const navFails = (state.navigateFailCount || 0) + 1;
+    if (navFails >= 3) {
+      const targetUrlForTelemetry = buildSearchUrl(
+        state.lastSearchKeywords,
+        pending.pageNumber || 1
+      );
+      fireBulkNavigateFail(currentUrl, targetUrlForTelemetry);
+      await setBulkState({
+        active: false,
+        errorMsg:
+          "Auto-navigate failed 3x. Open search results manually i kliknij Start.",
+        navigateFailCount: 0,
+      });
+      await chrome.alarms.clear(BULK_ALARM_NAME);
+      await setBulkState({ nextTickAt: null });
+      return;
+    }
+    await setBulkState({ navigateFailCount: navFails });
+    const targetUrl = buildSearchUrl(
+      state.lastSearchKeywords,
+      pending.pageNumber || 1
+    );
+    try {
+      await chrome.tabs.update(tab.id, { url: targetUrl });
+      await waitForTabComplete(tab.id, 12000);
+      await new Promise((r) => setTimeout(r, PAGINATION_RENDER_DELAY_MS));
+    } catch (err) {
+      console.warn("[LinkedIn MSG] auto-navigate failed:", err && err.message);
+    }
+    // Schedule next tick — tab dopiero load'ował, nie próbujemy klikania
+    // w tej iteracji. Krótszy delay bo to recovery, nie real connect.
+    const recoveryDelay = 5000 + Math.random() * 5000;
+    await setBulkState({ nextTickAt: Date.now() + recoveryDelay });
+    setTimeout(bulkConnectTick, recoveryDelay);
+    return;
+  }
+
+  // Karta jest na search results — reset circuit breaker.
+  if (state.navigateFailCount > 0) {
+    await setBulkState({ navigateFailCount: 0 });
+  }
+
   // Page-aware navigation (#22 v1.6.0). Pre-click ensure tab jest na
   // tej samej stronie search results na której był profil scrape'owany.
   // Bez tego findLiBySlug w content.js zwróci li_not_found dla profili
   // z innych stron (po auto-fill queue zawiera profile z multiple pages).
   const targetPage = pending.pageNumber || 1;
-  const currentPage = getPageFromUrl(tab.url || "");
+  const currentPage = getPageFromUrl(currentUrl);
   if (currentPage !== targetPage) {
     try {
       await chrome.tabs.update(tab.id, {
-        url: setPageInUrl(tab.url, targetPage),
+        url: setPageInUrl(currentUrl, targetPage),
       });
       await waitForTabComplete(tab.id, 12000);
       await new Promise((r) => setTimeout(r, PAGINATION_RENDER_DELAY_MS));
@@ -1098,12 +1247,31 @@ async function bulkConnectTick() {
 }
 
 async function startBulkConnect() {
+  // #39: capture tabId + keywords PRZED ustawieniem active=true. Bez search
+  // tab nie startujemy — user musi mieć /search/results/people/ otwarte
+  // żeby tick wiedział na której karcie pracować + jak ją odzyskać po SPA nav.
+  const tab = await findLinkedInSearchTab();
+  if (!tab || !tab.id) {
+    return { success: false, error: "open_search_results_first" };
+  }
+  let lastSearchKeywords = null;
+  try {
+    const u = new URL(tab.url || "");
+    lastSearchKeywords = u.searchParams.get("keywords");
+  } catch (_) {
+    // Malformed URL — fallback na null, auto-navigate i tak zbuduje
+    // bazowy URL bez keywords (LinkedIn pokaże all-people search).
+  }
+
   // Pierwszy tick za 100ms — popup widzi countdown od razu.
   await setBulkState({
     active: true,
     errorMsg: null,
     nextTickAt: Date.now() + 100,
     lastTickAt: null,
+    tabId: tab.id,
+    lastSearchKeywords,
+    navigateFailCount: 0,
   });
   // Keep-alive alarm (24s period < 30s SW idle limit).
   await chrome.alarms.create(BULK_ALARM_NAME, { periodInMinutes: 0.4 });
@@ -1233,6 +1401,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         case "getBulkState":
           return await getBulkState();
+
+        case "getBulkTabUrl": {
+          // #39: popup używa do diagnozy "user wyszedł z search results"
+          // (np. żeby pokazać banner "Wróć na search żeby Resume").
+          const s = await getBulkState();
+          if (!s.tabId) {
+            return { success: true, url: null, active: s.active };
+          }
+          const url = await getCurrentBulkTabUrl(s.tabId);
+          return {
+            success: true,
+            url,
+            active: s.active,
+            lastSearchKeywords: s.lastSearchKeywords || null,
+          };
+        }
 
         case "bulkCheckAccepts":
           return await bulkCheckAccepts();

@@ -1062,7 +1062,8 @@
   // Każda zmiana queue (mark_sent, generate, skip etc.) potencjalnie
   // wpływa też na listę due follow-up'ów — re-load sekcji follow-up.
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === "local" && changes.bulkConnect) {
+    if (area !== "local") return;
+    if (changes.bulkConnect) {
       const newState = changes.bulkConnect.newValue;
       _lastBulkState = newState;
       renderBulkUI(newState);
@@ -1072,8 +1073,112 @@
       loadFollowupList();
       // Tab badge (#1.9.0) — count due follow-upów może się zmienić.
       updateFollowupTabBadge();
+      // Worker resilience hint (#39) — bulk active flag może się zmienić.
+      scheduleBulkHintRefresh();
+    }
+    // bulkSettings (#39) jest osobnym kluczem niż bulkConnect — listen
+    // explicite, żeby Start/Stop worker'a triggerował re-render hint'a.
+    if (changes.bulkSettings) {
+      scheduleBulkHintRefresh();
     }
   });
+
+  // ── Bulk target URL hint (#39 worker resilience) ─────────────────
+  //
+  // Pokazuje user'owi gdzie powinien być (full URL na dole popup'u) gdy
+  // worker bulk active a current tab URL nie matchuje search results.
+  // Background dispatcher zwraca {success, active, url, lastSearchKeywords}.
+  // Hide gdy: worker nie active, current tab już na /search/results/people/,
+  // albo background nie odpowiada (handler jeszcze nie wdrożony przez subagent A).
+
+  let bulkHintDebounce = null;
+
+  function scheduleBulkHintRefresh() {
+    if (bulkHintDebounce) clearTimeout(bulkHintDebounce);
+    bulkHintDebounce = setTimeout(() => {
+      updateBulkTargetUrlHint().catch(() => {});
+    }, 200);
+  }
+
+  function buildBulkTargetUrl(keywords) {
+    try {
+      const u = new URL("https://www.linkedin.com/search/results/people/");
+      if (keywords) u.searchParams.set("keywords", keywords);
+      u.searchParams.set("origin", "FACETED_SEARCH");
+      return u.toString();
+    } catch (_) {
+      return "https://www.linkedin.com/search/results/people/";
+    }
+  }
+
+  async function updateBulkTargetUrlHint() {
+    const hint = document.getElementById("bulk-target-url");
+    if (!hint) return;
+    const link = document.getElementById("bulk-target-link");
+
+    let resp;
+    try {
+      resp = await chrome.runtime.sendMessage({ action: "getBulkTabUrl" });
+    } catch (_) {
+      resp = null;
+    }
+    if (!resp || !resp.success || !resp.active) {
+      hint.classList.add("hidden");
+      hint.setAttribute("hidden", "");
+      return;
+    }
+
+    const currentUrl = resp.url || "";
+    const onSearchResults = currentUrl.includes("/search/results/people/");
+    if (onSearchResults) {
+      hint.classList.add("hidden");
+      hint.setAttribute("hidden", "");
+      return;
+    }
+
+    // Nie na search — pokaż target URL.
+    const keywords = resp.lastSearchKeywords || "";
+    const targetUrl = buildBulkTargetUrl(keywords);
+    if (link) {
+      link.textContent = targetUrl;
+      link.href = targetUrl;
+    }
+    hint.classList.remove("hidden");
+    hint.removeAttribute("hidden");
+  }
+
+  // Click handler — manual override navigate na target URL.
+  // Zamiast otwierać new tab (target=_blank w HTML), preferujemy update
+  // active tab — worker będzie tam scrape'ować dalej.
+  const bulkTargetLink = document.getElementById("bulk-target-link");
+  if (bulkTargetLink) {
+    bulkTargetLink.addEventListener("click", async (e) => {
+      e.preventDefault();
+      const url = bulkTargetLink.href;
+      if (!url) return;
+      try {
+        const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (activeTab && activeTab.id) {
+          await chrome.tabs.update(activeTab.id, { url });
+        } else {
+          await chrome.tabs.create({ url });
+        }
+      } catch (_) {
+        window.open(url, "_blank");
+      }
+    });
+  }
+
+  // Listener tabs.onUpdated — gdy user navigates aktywną kartę, hint
+  // może zniknąć (jeśli wszedł na /search/results/people/) lub się
+  // zaktualizować. Debounced 200ms żeby nie spammować.
+  if (chrome.tabs && chrome.tabs.onUpdated) {
+    chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+      if (changeInfo.url || changeInfo.status === "complete") {
+        scheduleBulkHintRefresh();
+      }
+    });
+  }
 
   // ── Post-Connect Messaging Pipeline (#21) ────────────────────────
 
@@ -1894,6 +1999,9 @@
     updateFollowupTabBadge();
     renderActionBar();
     updateProfileEmptyState();
+    // Worker resilience hint (#39) — pokaż na otwarciu popup'u jeśli
+    // worker active i user nie jest na search results.
+    updateBulkTargetUrlHint().catch(() => {});
 
     // Then overlay last session state (takes precedence dla profile preview)
     const last = await loadSession();

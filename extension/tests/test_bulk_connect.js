@@ -325,6 +325,121 @@ console.log("\n▸ pageNumber per queue item — addToQueue preserves");
   assertEqual(itemDefault.pageNumber, 1, "Missing pageNumber → default 1");
 }
 
+// ── Bulk worker resilience (#39 v1.10.0) ──────────────────────────
+
+function buildSearchUrl(keywords, pageNum) {
+  try {
+    const u = new URL("https://www.linkedin.com/search/results/people/");
+    if (keywords) u.searchParams.set("keywords", keywords);
+    if (pageNum && pageNum > 1) u.searchParams.set("page", String(pageNum));
+    u.searchParams.set("origin", "FACETED_SEARCH");
+    return u.toString();
+  } catch (_) {
+    return "https://www.linkedin.com/search/results/people/";
+  }
+}
+
+function urlMatchesSearch(urlStr) {
+  if (!urlStr || typeof urlStr !== "string") return false;
+  return urlStr.includes("/search/results/people/");
+}
+
+function getJitterMs() {
+  return 5000 + Math.random() * 10000;
+}
+
+function parseKeywordsFromUrl(urlStr) {
+  try {
+    const u = new URL(urlStr);
+    return u.searchParams.get("keywords");
+  } catch (_) {
+    return null;
+  }
+}
+
+function shouldAbortAfterNavigateFails(failCount) {
+  return failCount >= 3;
+}
+
+console.log("\n▸ buildSearchUrl — auto-navigate target URL");
+{
+  const u1 = buildSearchUrl("ovb", 1);
+  assert(u1.includes("/search/results/people/"), "Page 1 URL contains search path");
+  assert(u1.includes("keywords=ovb"), "Page 1 URL contains keywords");
+  assert(!u1.includes("page="), "Page 1 — page param OMITTED (default)");
+
+  const u3 = buildSearchUrl("ovb", 3);
+  assert(u3.includes("page=3"), "Page 3 URL contains page=3");
+
+  const uEmpty = buildSearchUrl("", 1);
+  assert(uEmpty.includes("/search/results/people/"), "Empty keywords — fallback URL valid");
+  assert(!uEmpty.includes("keywords="), "Empty keywords — keywords param OMITTED");
+
+  const uNull = buildSearchUrl(null, 1);
+  assert(uNull.includes("/search/results/people/"), "null keywords — fallback URL valid");
+
+  const uEnc = buildSearchUrl("key account manager", 2);
+  const parsed = new URL(uEnc);
+  assertEqual(parsed.searchParams.get("keywords"), "key account manager", "Multi-word keywords decoded back correctly");
+  assertEqual(parsed.searchParams.get("page"), "2", "page=2 set correctly");
+  assertEqual(parsed.searchParams.get("origin"), "FACETED_SEARCH", "origin=FACETED_SEARCH default");
+}
+
+console.log("\n▸ urlMatchesSearch — auto-navigate trigger condition");
+{
+  assertEqual(urlMatchesSearch("https://www.linkedin.com/search/results/people/?keywords=ovb"), true, "Search URL matches");
+  assertEqual(urlMatchesSearch("https://www.linkedin.com/search/results/people/?keywords=ovb&page=3"), true, "Search URL with page matches");
+  assertEqual(urlMatchesSearch("https://www.linkedin.com/in/john-doe/"), false, "Profile URL does NOT match (worker should auto-nav)");
+  assertEqual(urlMatchesSearch("https://www.linkedin.com/feed/"), false, "Feed URL does NOT match");
+  assertEqual(urlMatchesSearch("https://www.linkedin.com/search/results/all/?keywords=ovb"), false, "search/results/all/ does NOT match (we want people/ only)");
+  assertEqual(urlMatchesSearch(""), false, "Empty string does NOT match");
+  assertEqual(urlMatchesSearch(null), false, "null does NOT match");
+  assertEqual(urlMatchesSearch(undefined), false, "undefined does NOT match");
+}
+
+console.log("\n▸ getJitterMs — anti-detection delay range 5-15s");
+{
+  for (let i = 0; i < 100; i++) {
+    const ms = getJitterMs();
+    assert(ms >= 5000 && ms <= 15000, `Jitter sample ${i} in [5000, 15000] (got ${ms})`);
+    if (ms < 5000 || ms > 15000) break; // early exit on first fail
+  }
+}
+
+console.log("\n▸ parseKeywordsFromUrl — lastSearchKeywords source");
+{
+  assertEqual(parseKeywordsFromUrl("https://www.linkedin.com/search/results/people/?keywords=ovb"), "ovb", "Single-word keywords parsed");
+  assertEqual(parseKeywordsFromUrl("https://www.linkedin.com/search/results/people/?keywords=key%20account&page=2"), "key account", "URL-encoded multi-word decoded");
+  assertEqual(parseKeywordsFromUrl("https://www.linkedin.com/search/results/people/"), null, "Missing keywords param → null");
+  assertEqual(parseKeywordsFromUrl("not-a-url"), null, "Invalid URL → null");
+  assertEqual(parseKeywordsFromUrl(""), null, "Empty string → null");
+}
+
+console.log("\n▸ shouldAbortAfterNavigateFails — loop guard");
+{
+  assertEqual(shouldAbortAfterNavigateFails(0), false, "0 fails → continue");
+  assertEqual(shouldAbortAfterNavigateFails(1), false, "1 fail → continue");
+  assertEqual(shouldAbortAfterNavigateFails(2), false, "2 fails → continue");
+  assertEqual(shouldAbortAfterNavigateFails(3), true, "3 fails → ABORT (circuit breaker)");
+  assertEqual(shouldAbortAfterNavigateFails(10), true, "10 fails → ABORT");
+}
+
+console.log("\n▸ Auto-navigate idempotency — URL match → no-op");
+{
+  // Symulacja: gdy URL już matchuje, NIE navigate.
+  const decisions = [];
+  function tickDecision(currentUrl) {
+    if (urlMatchesSearch(currentUrl)) return "click"; // continue normal tick
+    return "navigate"; // recovery path
+  }
+  decisions.push(tickDecision("https://www.linkedin.com/search/results/people/?keywords=ovb"));
+  decisions.push(tickDecision("https://www.linkedin.com/in/profile/"));
+  decisions.push(tickDecision("https://www.linkedin.com/search/results/people/?keywords=ovb&page=3"));
+  assertEqual(decisions[0], "click", "On search URL → tick proceeds with click");
+  assertEqual(decisions[1], "navigate", "On profile URL → tick navigates first");
+  assertEqual(decisions[2], "click", "On search URL with page → tick proceeds with click");
+}
+
 // ── Summary ──────────────────────────────────────────────────────
 console.log("\n=== test_bulk_connect.js ===");
 console.log(`Passed: ${passed}`);

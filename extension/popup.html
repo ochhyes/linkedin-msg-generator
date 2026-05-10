@@ -154,6 +154,14 @@
           <button id="btn-bulk-save-settings" class="btn btn--small btn--outline">Zapisz</button>
         </details>
 
+        <!-- Worker resilience hint (#39): pokazuje się gdy worker bulk
+             aktywny, ale current tab URL nie jest na search results. -->
+        <div id="bulk-target-url" class="bulk-target-url hidden" hidden>
+          <span class="bulk-target-url__icon">📍</span>
+          <span class="bulk-target-url__label">Powinien być na:</span>
+          <a href="#" id="bulk-target-link" class="bulk-target-url__link" target="_blank" rel="noopener"></a>
+        </div>
+
       </div>
 
       <!-- Tab: Follow-upy -->

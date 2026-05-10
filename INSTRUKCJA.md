@@ -1,4 +1,4 @@
-# LinkedIn MSG — instrukcja dla zespołu OVB (v1.8.0)
+# LinkedIn MSG — instrukcja dla zespołu OVB (v1.10.0)
 
 Extension Chrome dla **bulk wysyłki zaproszeń** + **AI generator wiadomości** dla nowo zaakceptowanych kontaktów. Zastępuje Octopus Starter.
 
@@ -81,7 +81,9 @@ Rozwiń **"Ustawienia bulk connect"** w popup'ie:
 2. Pod statusem widzisz countdown: *"Następne dodanie za 1m 23s · ostatnia akcja 5s temu"*.
 3. **Możesz zamknąć popup** — extension chodzi w tle, nawet gdy popup zamknięty. Otwórz ponownie kiedy chcesz, żeby zobaczyć postęp.
 4. **Karta LinkedIn'a musi pozostać otwarta** w jakimś tab'ie. Plugin sam przełącza między stronami search results gdy klika "Połącz" na profilach z różnych stron.
-5. Po wykonaniu wszystkich w kolejce: status zmienia się na **Bezczynne**, queue oznaczony "wysłane" zielonymi badge'ami.
+5. **NOWE w 1.10.0 — auto-recovery gdy zmienisz stronę:** jeśli przypadkiem klikniesz na czyjś profil podczas bulk run, plugin SAM wraca na search results (auto-navigate). Plus: jeśli auto-navigate nie zadziała (np. LinkedIn captcha), na dole popup'u pojawi się żółty pasek **"📍 Powinien być na: <link>"** z klikalnym URL'em do ręcznego powrotu. Pasek znika gdy znajdziesz się we właściwym miejscu. Jeśli auto-navigate zawiedzie 3x z rzędu — bulk pauzuje się automatycznie, otwórz search ręcznie i klik Start.
+6. **NOWE w 1.10.0 — anti-detection jitter:** plugin czeka 5-15s losowo między przeskakiwaniami stron w "Wypełnij do limitu" (zamiast stałego 0.5s). LinkedIn trudniej wykryć automation pattern.
+7. Po wykonaniu wszystkich w kolejce: status zmienia się na **Bezczynne**, queue oznaczony "wysłane" zielonymi badge'ami.
 
 ### Krok D — Sprawdzanie akceptacji (codziennie, ~30s)
 

@@ -862,3 +862,48 @@ body {
   background: var(--text-dim);
   color: var(--bg);
 }
+
+/* ── Bulk target URL hint (#39 worker resilience, v1.9.x) ────────────
+   Sticky bottom strip w Bulk tab — pokazuje user'owi gdzie powinien być
+   gdy worker bulk active a current tab URL nie matchuje search results.
+   Tab-content padding to 12px 16px (var(--space-3) var(--space-4)),
+   więc negative margin -16px sideways daje full-width strip. */
+.bulk-target-url {
+  position: sticky;
+  bottom: 0;
+  background: #fff8e1;
+  border-top: 1px solid #fbc02d;
+  padding: 8px 12px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 10;
+  margin: var(--space-3) -16px -12px;
+}
+
+.bulk-target-url.hidden,
+.bulk-target-url[hidden] {
+  display: none;
+}
+
+.bulk-target-url__icon {
+  flex-shrink: 0;
+}
+
+.bulk-target-url__label {
+  color: #5d4037;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.bulk-target-url__link {
+  color: #1976d2;
+  text-decoration: underline;
+  word-break: break-all;
+  cursor: pointer;
+}
+
+.bulk-target-url__link:hover {
+  color: #0d47a1;
+}

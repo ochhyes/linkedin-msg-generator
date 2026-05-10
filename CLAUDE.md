@@ -201,18 +201,12 @@ PM 5–15 min · Dev 30–120 min · Tester 10–30 min · Commit 2–5 min.
 # CURRENT STATE
 
 ```
-Sprint:        #5 — Stabilizacja + UX overhaul (zamknięty 2026-05-09 z v1.9.1)
-Phase:         PM (decyzja co dalej — push + dystrybucja vs nowy sprint)
-Active task:   żaden — Sprint #5 zamknięty
-Last commit:   0843668 — docs: zamknięcie Sprint #5 w CLAUDE.md (v1.9.1)
+Sprint:        #5 — Stabilizacja + UX overhaul + Bulk worker + Reply tracking
+Phase:         PM (#39 done, plan #38 czeka na start Dev)
+Active task:   #38 — Reply tracking + funnel statystyki (v1.11.0) — następny task
+Last commit:   <pending — feat: bulk worker resilience (#39, v1.10.0)>
 Updated:       2026-05-10
 ```
-
-**Workspace state (do domknięcia operacyjnego):**
-- origin/master up to date (push'nięty 2026-05-10)
-- `extension.zip` modified — regen pod 1.9.1 przed dystrybucją
-- `CLAUDE_CODE_GUIDE.md` untracked — świadomie poza repo
-- Dystrybucja 1.9.1 zespołowi OVB — TODO (1.8.0 nigdy nie poszedł, hotfix'y 1.8.1→1.9.1 zostały lokalnie)
 
 ---
 
@@ -220,11 +214,21 @@ Updated:       2026-05-10
 
 ## TODO (priorytet od góry)
 
-(none — Sprint #5 zamknięty, oczekuje decyzji PM o nowym sprincie lub operacyjnym domknięciu dystrybucji 1.9.1)
+### #38 P1 — Reply tracking + funnel statystyki w dashboardzie (v1.11.0)
+
+**Po #39 skończonym.** PM plan w thread'zie konwersacji 2026-05-10. Skrót:
+- Storage queue items +3 pola: `messageReplyAt`, `followup1ReplyAt`, `followup2ReplyAt` (BC null default).
+- Nowy `followupStatus="replied"` (auto-cancel scheduled follow-upów przy mark reply, cascade msg→FU1+FU2, FU1→FU2).
+- 4 nowe handlery w background.js: `bulkMarkMessageReply`, `bulkMarkFollowup1Reply`, `bulkMarkFollowup2Reply`, `bulkUnmarkReply` + `bulkGetStats` computed (totals + rates per stage + overall, divide-by-zero → 0%).
+- Dashboard: nowa sekcja `#stats-section` (top, 8-row funnel z procentami) + `#contacts-list-section` (bottom, tabela pełen pipeline view, per-row reply/unmark buttons, klik wiersza otwiera profil).
+- Popup Follow-up tab: read-only "↪ Odpowiedział X.MM" tag w Scheduled rows gdy `*ReplyAt`.
+- ≥20 asercji w `extension/tests/test_reply.js` NEW.
+- Bump 1.10.0 → 1.11.0 (minor). Backend ZERO zmian.
+- Subagenty: A (background+stats), B (dashboard UI), C (tests+popup tag+INSTRUKCJA).
 
 ## IN PROGRESS
 
-(none)
+(none — #39 done, #38 czeka na decyzję start Dev)
 
 ## READY FOR TEST
 
@@ -233,6 +237,9 @@ Updated:       2026-05-10
 ## DONE
 
 > Format: 1 linia per release (sha, opis, bump). Pełne treści w `git show <sha>`.
+
+**Sprint #5 — Bulk worker resilience (kontynuacja Sprintu #5, 2026-05-10 z v1.10.0):**
+- ✅ #39 P0 — feat: bulk worker resilience: auto-navigate + URL hint + jitter (v1.10.0). Worker gubił się gdy user opuścił search results (klik czyjś profil) — `findLinkedInSearchTab` zwracał null → tick exit'uje "Lost search tab". Fix: persist `bulkSettings.tabId` + `lastSearchKeywords` przy starcie session. `resolveBulkTab()` używa `chrome.tabs.get(tabId)` z fallbackiem do `findLinkedInSearchTab`. URL read przez `chrome.scripting.executeScript({func:()=>location.href})` (no `tabs` permission). Auto-navigate na `buildSearchUrl(keywords, pending.pageNumber)` gdy URL ≠ `/search/results/people/`. Loop guard: `navigateFailCount` 3-strike → auto-pause + telemetria `event_type:"bulk_navigate_fail"` (reuse `reportScrapeFailure` z v1.6.0). Anti-detection: jitter 5-15s w `bulkAutoFillByUrl` zamiast fixed 500ms. Popup: sticky bottom `#bulk-target-url` z klikalnym linkiem (manual fallback gdy auto-nav zawiedzie), auto-hide gdy URL match przez `chrome.tabs.onUpdated` debounced. Implementacja: 2 subagenty paralelnie (A background.js +170 linii, B popup html/css/js +162 linii). Testy 278/0 → 409/0 (+131 asercji w test_bulk_connect.js — jitter 100-sample loop dominuje). Bump 1.9.1 → 1.10.0. Zero new permissions. INSTRUKCJA.md zaktualizowana (Krok C punkty 5-6).
 
 **Sprint #5 — Stabilizacja + UX overhaul (zamknięty 2026-05-09 z v1.9.1, 4 commity):**
 - ✅ `c934488` v1.8.1 — fix: SyntaxError `const action` duplicate w popup.js (#30) + lint guard `test_syntax.js` NEW z 5 asercji `node --check` (#31). Bump patch.
