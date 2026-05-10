@@ -201,10 +201,10 @@ PM 5–15 min · Dev 30–120 min · Tester 10–30 min · Commit 2–5 min.
 # CURRENT STATE
 
 ```
-Sprint:        #5 — Stabilizacja + UX overhaul + Bulk worker + Reply tracking + Quota guard
-Phase:         PM (#40 hotfix done, oczekuje diagnostyki Marcina przed dystrybucją)
-Active task:   żaden — Sprint #5 zamknięty z v1.11.1
-Last commit:   d83dbdb — feat: reply tracking + funnel statystyki (#38, v1.11.0)
+Sprint:        #5 — Stabilizacja + UX overhaul + Bulk worker + Reply tracking + Quota guard + Fetch patch
+Phase:         PM (Sprint #5 zamknięty z v1.11.2, oczekuje smoke + dystrybucji)
+Active task:   żaden — Sprint #5 zamknięty z v1.11.2
+Last commit:   9688561 — fix: data loss prevention + storage quota guard (#40, v1.11.1)
 Updated:       2026-05-10
 ```
 
@@ -227,6 +227,9 @@ Updated:       2026-05-10
 ## DONE
 
 > Format: 1 linia per release (sha, opis, bump). Pełne treści w `git show <sha>`.
+
+**Sprint #5 — Fetch patch dla flood `chrome-extension://invalid/` (2026-05-10 z v1.11.2):**
+- ✅ #41 P1 — fix: silent suppression flood `chrome-extension://invalid/ ERR_FAILED` (v1.11.2). LinkedIn'owy obfuscated bundle (`d3jr0erc6y93o17nx3pgkd9o9.js:12275` etc.) cache'uje URL'e do extension'ów (chrome.runtime.getURL z poprzednich sesji) i pinguje je przez `window.fetch` po reload extension'a → Chrome zwraca dla nieważnych extension URL'i wirtualny `chrome-extension://invalid/` → fetch leci → `ERR_FAILED` → flood w konsoli (200+ na minutę). Mitygacja v1.2.1 (#12b orphan auto-reload jednorazowy) była częściowa — czyściła niektóre cache'y, ale LinkedIn rebuilduje runtime i znów próbuje pingować. Marcin nadal widział flood w v1.11.1. Fix: NEW `extension/fetch_patch.js` patchuje `window.fetch` w MAIN world (przez manifest content_script `world: "MAIN"` + `run_at: "document_start"` żeby załadować się PRZED LinkedIn'owym bundle'em). Patch przechwytuje requests do `chrome-extension://invalid*` i zwraca silent 204 No Content zamiast ERR_FAILED → LinkedIn'owy fetch caller dostaje resolved Promise, nie loguje error w konsoli. Idempotent (`window.__lmgFetchPatched` flag) — multiple content_script injections (SPA history nav) nie nakładają warstw. Defensywny try/catch wokół URL extraction handle'uje exotic input types (Request object, URL object). Manifest: dorzucony drugi content_script entry z `matches: linkedin.com/*` (szersze niż content.js — patch potrzebny na wszystkich LinkedIn pages, nie tylko /in/ i /search/). `world:"MAIN"` wymaga Chrome 111+ (2023, dostępne wszystkim z OVB). test_syntax.js entry list +1 (fetch_patch.js). Bump 1.11.1 → 1.11.2 (patch — bug fix). Commit: planowany w tej sesji.
 
 **Sprint #5 — Data loss prevention + quota guard hotfix (2026-05-10 z v1.11.1):**
 - ✅ #40 P0 — fix: storage data loss + quota guard (v1.11.1). DWA bugi naprawione razem:

@@ -49,6 +49,7 @@ const FILES = [
   "content.js",
   "dashboard.js",
   "options.js",
+  "fetch_patch.js",
 ];
 
 console.log("=== test_syntax.js ===");
