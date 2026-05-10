@@ -201,7 +201,7 @@ PM 5–15 min · Dev 30–120 min · Tester 10–30 min · Commit 2–5 min.
 # CURRENT STATE
 
 ```
-Sprint:        #5 — ZAMKNIĘTY 2026-05-10 z v1.11.2 (8 wersji w ~30h)
+Sprint:        #5 — ZAMKNIĘTY 2026-05-10 z v1.11.2 (8 wersji, 2 dni kalendarzowe)
 Phase:         PM (decyzja: dystrybucja 1.11.2 OVB + smoke 3-5d, potem Sprint #6)
 Active task:   żaden
 Last commit:   5f38348 — fix: silent suppress flood `chrome-extension://invalid/` (#41, v1.11.2)
@@ -222,7 +222,7 @@ Updated:       2026-05-10
 
 **Sprint #5 — RETRO (domknięty 2026-05-10):**
 
-Original scope (z 2026-05-09): "Stabilizacja + dystrybucja 1.8.0" — 5 tasków operacyjnych. Final scope: 8 wersji wypuszczone w ~30h przez Marcin'a real-world feedback loop.
+Original scope (z 2026-05-09): "Stabilizacja + dystrybucja 1.8.0" — 5 tasków operacyjnych. Final scope: 8 wersji wypuszczone przez 2 dni kalendarzowe (2026-05-09 → 2026-05-10) napędzane real-world feedback loop'em Marcin'a (data loss, flood, bulk gubi się, quota silent fail).
 
 **Wersje wypuszczone (8):**
 - v1.8.1 — fix SyntaxError w popup.js + lint guard test_syntax.js (#30+#31, c934488)
