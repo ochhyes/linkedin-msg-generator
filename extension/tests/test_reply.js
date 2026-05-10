@@ -340,6 +340,92 @@ console.log("\n▸ I. pct edge cases");
   assertEqual(pct(5, undefined), 0, "pct(5, undefined) = 0");
 }
 
+// ── J. Storage quota guards (#40 v1.11.1) ────────────────────────
+//
+// Re-impl helpers z background.js. Synchronizuj ręcznie po zmianach.
+
+const SEVEN_DAYS_MS_TEST = 7 * 24 * 60 * 60 * 1000;
+
+function stripStaleProfiles(queue, aggressive) {
+  if (!Array.isArray(queue)) return queue;
+  const now = Date.now();
+  return queue.map((item) => {
+    if (!item || !item.scrapedProfile) return item;
+    if (aggressive && item.messageSentAt) return { ...item, scrapedProfile: null };
+    if (item.messageSentAt && now - item.messageSentAt > SEVEN_DAYS_MS_TEST) {
+      return { ...item, scrapedProfile: null };
+    }
+    return item;
+  });
+}
+
+function stripRepliedDrafts(queue) {
+  if (!Array.isArray(queue)) return queue;
+  return queue.map((item) => {
+    if (!item) return item;
+    const replied = item.messageReplyAt || item.followup1ReplyAt || item.followup2ReplyAt;
+    if (!replied) return item;
+    return { ...item, messageDraft: null, followup1Draft: null, followup2Draft: null };
+  });
+}
+
+console.log("\n▸ J. stripStaleProfiles (eager mode)");
+{
+  const now = Date.now();
+  const old = now - 8 * 24 * 60 * 60 * 1000; // 8 dni temu
+  const recent = now - 2 * 24 * 60 * 60 * 1000; // 2 dni temu
+  const queue = [
+    { slug: "a", messageSentAt: old, scrapedProfile: { about: "x" } },
+    { slug: "b", messageSentAt: recent, scrapedProfile: { about: "y" } },
+    { slug: "c", messageSentAt: null, scrapedProfile: { about: "z" } },
+    { slug: "d", messageSentAt: old, scrapedProfile: null },
+  ];
+  const out = stripStaleProfiles(queue, false);
+  assertEqual(out[0].scrapedProfile, null, "Old (>7d) sent → scrapedProfile null");
+  assert(out[1].scrapedProfile && out[1].scrapedProfile.about === "y", "Recent sent → scrapedProfile preserved");
+  assert(out[2].scrapedProfile && out[2].scrapedProfile.about === "z", "Not yet sent → scrapedProfile preserved");
+  assertEqual(out[3].scrapedProfile, null, "Already-null scrapedProfile → no-op");
+  // Other fields preserved.
+  assertEqual(out[0].slug, "a", "slug preserved after strip");
+  assertEqual(out[0].messageSentAt, old, "messageSentAt preserved");
+}
+
+console.log("\n▸ K. stripStaleProfiles (aggressive mode — quota recovery)");
+{
+  const now = Date.now();
+  const recent = now - 1000; // 1s temu
+  const queue = [
+    { slug: "a", messageSentAt: recent, scrapedProfile: { about: "x" } },
+    { slug: "b", messageSentAt: null, scrapedProfile: { about: "y" } },
+  ];
+  const out = stripStaleProfiles(queue, true);
+  assertEqual(out[0].scrapedProfile, null, "Aggressive: any sent item → strip nawet jeśli niedawno");
+  assert(out[1].scrapedProfile && out[1].scrapedProfile.about === "y", "Aggressive: not-sent item zachowuje scrapedProfile");
+}
+
+console.log("\n▸ L. stripRepliedDrafts");
+{
+  const queue = [
+    { slug: "a", messageReplyAt: 12345, messageDraft: "draft A", followup1Draft: "fu1", followup2Draft: null },
+    { slug: "b", followup1ReplyAt: 12345, messageDraft: "draft B", followup1Draft: "fu1B", followup2Draft: "fu2B" },
+    { slug: "c", messageSentAt: 12345, messageDraft: "draft C", messageReplyAt: null, followup1ReplyAt: null, followup2ReplyAt: null },
+  ];
+  const out = stripRepliedDrafts(queue);
+  assertEqual(out[0].messageDraft, null, "Replied msg → messageDraft null");
+  assertEqual(out[0].followup1Draft, null, "Replied msg → followup1Draft null");
+  assertEqual(out[1].messageDraft, null, "Replied FU#1 → messageDraft null");
+  assertEqual(out[1].followup2Draft, null, "Replied FU#1 → followup2Draft null");
+  assertEqual(out[2].messageDraft, "draft C", "No reply → messageDraft preserved");
+}
+
+console.log("\n▸ M. Strip helpers — null/empty inputs (defensive)");
+{
+  assertEqual(stripStaleProfiles(null, false), null, "null queue → null (defensive)");
+  assertEqual(stripStaleProfiles(undefined, false), undefined, "undefined queue → undefined");
+  assert(Array.isArray(stripStaleProfiles([], false)), "Empty queue → empty array");
+  assertEqual(stripRepliedDrafts(null), null, "stripRepliedDrafts null → null");
+}
+
 // ── Summary ──────────────────────────────────────────────────────
 console.log("\n=== test_reply.js ===");
 console.log(`Passed: ${passed}`);

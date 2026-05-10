@@ -228,6 +228,57 @@ const BULK_DEFAULTS = {
 const BULK_ALARM_NAME = "bulkKeepAlive";
 const BULK_TICK_TIMEOUT_MS = 30000; // czekamy max 30s na content.js response
 
+// #40 v1.11.1 — storage quota guard. chrome.storage.local ma limit
+// 5 MB per single key (QUOTA_BYTES_PER_ITEM). bulkConnect z queue items
+// zawierającymi pełen scrapedProfile (about + experience + skills, ~50-200KB
+// per item) potrafi przekroczyć ten limit po 30-100 profilach. Bez try/catch
+// chrome.storage.local.set rzucał, setBulkState propagował, callerzy nie
+// łapali → silent fail w SW console. Marcin doświadczył: "klikam Wysłałem
+// i nic się nie dzieje, queue puste po reload popup'u".
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Strip scrapedProfile z queue items które już są poza pre-message phase.
+ * scrapedProfile potrzebny TYLKO do generateMessage (Faza 2 #21). Po
+ * messageSentAt → message wysłana, follow-up generation używa wyłącznie
+ * messageDraft + headline (nie scrapedProfile). Strip zwalnia 50-200KB
+ * per item bez utraty funkcjonalności.
+ *
+ * @param {Array} queue
+ * @param {boolean} aggressive — gdy true, strip wszystkie items z messageSentAt;
+ *   gdy false (default eager), strip tylko items z messageSentAt > 7 dni temu
+ *   (tail-end items prawdopodobnie kompletne, edge case generation rare).
+ */
+function stripStaleProfiles(queue, aggressive) {
+  if (!Array.isArray(queue)) return queue;
+  const now = Date.now();
+  return queue.map((item) => {
+    if (!item || !item.scrapedProfile) return item;
+    if (aggressive && item.messageSentAt) {
+      return { ...item, scrapedProfile: null };
+    }
+    if (item.messageSentAt && now - item.messageSentAt > SEVEN_DAYS_MS) {
+      return { ...item, scrapedProfile: null };
+    }
+    return item;
+  });
+}
+
+/**
+ * Last-resort strip: drop drafts z items które już dostały reply. Drafty
+ * follow-up'ów dla replied items są zbędne (osoba odpowiedziała, nie wyślemy
+ * follow-up'a). messageDraft też niepotrzebny po reply (history-only).
+ */
+function stripRepliedDrafts(queue) {
+  if (!Array.isArray(queue)) return queue;
+  return queue.map((item) => {
+    if (!item) return item;
+    const replied = item.messageReplyAt || item.followup1ReplyAt || item.followup2ReplyAt;
+    if (!replied) return item;
+    return { ...item, messageDraft: null, followup1Draft: null, followup2Draft: null };
+  });
+}
+
 async function getBulkState() {
   const data = await chrome.storage.local.get("bulkConnect");
   return { ...BULK_DEFAULTS, ...(data.bulkConnect || {}) };
@@ -235,9 +286,70 @@ async function getBulkState() {
 
 async function setBulkState(patch) {
   const current = await getBulkState();
-  const next = { ...current, ...patch };
-  await chrome.storage.local.set({ bulkConnect: next });
-  return next;
+  let next = { ...current, ...patch };
+
+  // Eager pre-write strip: items z messageSentAt > 7d temu nie potrzebują
+  // już scrapedProfile. Tania op (no allocation gdy nic do strip), trzyma
+  // storage growth ograniczony. NIE odpalany przy każdym tick'u przez worker
+  // bo worker write'uje malutkie patche — strip wykonuje się tylko gdy
+  // patch faktycznie modyfikuje queue (większy write).
+  if (Array.isArray(next.queue) && patch && Object.prototype.hasOwnProperty.call(patch, "queue")) {
+    next.queue = stripStaleProfiles(next.queue, false);
+  }
+
+  try {
+    await chrome.storage.local.set({ bulkConnect: next });
+    return next;
+  } catch (err) {
+    const errMsg = err && err.message ? err.message : String(err);
+    const isQuotaErr = /quota/i.test(errMsg) || /QUOTA/.test(errMsg);
+
+    if (!isQuotaErr) {
+      // Inny error (rare — storage corruption / runtime invalid).
+      console.error("[LinkedIn MSG] setBulkState write fail:", errMsg);
+      reportScrapeFailure({
+        event_type: "storage_write_fail",
+        error_message: errMsg,
+        diagnostics: { queue_size: (next.queue || []).length },
+      });
+      throw err;
+    }
+
+    // Quota exceeded — recovery cascade.
+    console.warn("[LinkedIn MSG] Storage quota exceeded — aggressive strip scrapedProfile from sent items");
+    let recovered = { ...next, queue: stripStaleProfiles(next.queue, true) };
+    try {
+      await chrome.storage.local.set({ bulkConnect: recovered });
+      reportScrapeFailure({
+        event_type: "storage_quota_recovered_strip_profiles",
+        error_message: errMsg,
+        diagnostics: { queue_size: recovered.queue.length },
+      });
+      return recovered;
+    } catch (err2) {
+      // Still failing — drop drafts z replied items.
+      console.warn("[LinkedIn MSG] Quota still exceeded — dropping drafts z replied items");
+      recovered = { ...recovered, queue: stripRepliedDrafts(recovered.queue) };
+      try {
+        await chrome.storage.local.set({ bulkConnect: recovered });
+        reportScrapeFailure({
+          event_type: "storage_quota_recovered_strip_drafts",
+          error_message: String(err2),
+          diagnostics: { queue_size: recovered.queue.length },
+        });
+        return recovered;
+      } catch (err3) {
+        // Fatal — re-throw żeby caller wiedział że nic się nie zapisało.
+        console.error("[LinkedIn MSG] Storage quota FATAL — write completely failed:", err3);
+        reportScrapeFailure({
+          event_type: "storage_quota_fatal",
+          error_message: String(err3),
+          diagnostics: { queue_size: recovered.queue.length },
+        });
+        throw err3;
+      }
+    }
+  }
 }
 
 function todayDateString() {
@@ -1651,9 +1763,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 chrome.runtime.onInstalled.addListener(async (details) => {
   if (details.reason === "install") {
-    await saveSettings(DEFAULT_SETTINGS);
-    await chrome.storage.local.set({ bulkConnect: BULK_DEFAULTS });
-    console.log("[LinkedIn MSG] Extension installed, defaults saved.");
+    // #40 v1.11.1 — DEFENSIVE: NIE overwrite gdy storage już istnieje.
+    // Stable `key` field w manifest (od v1.6.0) zachowuje extension ID
+    // po Remove+Add → Chrome preservuje storage. ALE poprzednia logika
+    // bezwarunkowo overwrite'owała bulkConnect na DEFAULTS przy reason="install"
+    // → user tracił queue/follow-upy mimo że Chrome próbował je zachować.
+    // Marcin lost data 2026-05-10 — to zapobiega następnym razem.
+    const existing = await chrome.storage.local.get(["settings", "bulkConnect"]);
+    if (!existing.settings) {
+      await saveSettings(DEFAULT_SETTINGS);
+    }
+    if (!existing.bulkConnect) {
+      await chrome.storage.local.set({ bulkConnect: BULK_DEFAULTS });
+    }
+    const preserved = existing.settings ? "settings" : "";
+    const preserved2 = existing.bulkConnect
+      ? `bulkConnect (queue: ${(existing.bulkConnect.queue || []).length})`
+      : "";
+    console.log(
+      `[LinkedIn MSG] Extension installed/reinstalled — preserved: ${[preserved, preserved2].filter(Boolean).join(", ") || "(nothing, fresh install)"}`
+    );
   }
   // v1.8.0: migracja encoded slug-ów (z wcześniejszych 1.7.x) na decoded
   // lowercase form. Idempotent — items już w decoded form pozostają bez zmian.
