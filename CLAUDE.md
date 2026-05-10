@@ -224,12 +224,18 @@ Nie łącz dwóch ról w jednej sesji bez zgody usera. Loop ma sens dlatego że 
 # CURRENT STATE
 
 ```
-Sprint:        #5 — Stabilizacja + dystrybucja 1.8.0
-Phase:         Tester (Marcin smoke 1.8.0) || Dev (INSTRUKCJA.md update done)
-Active task:   #28 — Stabilizacja + dystrybucja 1.8.0 (5 tasks z planu PM)
-Last commit:   56d08d6 — feat: dashboard follow-upów + slug encoding fix (#27, v1.8.0)
-Updated:       2026-05-09
+Sprint:        #5 — Stabilizacja + UX overhaul (zamknięty 2026-05-09 z v1.9.1)
+Phase:         PM (decyzja co dalej — push + dystrybucja vs nowy sprint)
+Active task:   żaden — Sprint #5 zamknięty
+Last commit:   f30cc33 — fix: pokaż zaplanowane follow-upy w popup'ie (#37, v1.9.1)
+Updated:       2026-05-10
 ```
+
+**Workspace state (do domknięcia operacyjnego):**
+- 1 commit ahead of `origin/master` (#37 v1.9.1) — push TODO
+- `extension.zip` modified — regen pod 1.9.1 przed dystrybucją
+- `CLAUDE_CODE_GUIDE.md` untracked — świadomie poza repo
+- Dystrybucja 1.9.1 zespołowi OVB — TODO (1.8.0 nigdy nie poszedł, hotfix'y 1.8.1→1.9.1 zostały lokalnie)
 
 **Sprint #3 — kontekst handoff'u (PM done 2026-05-09):**
 
@@ -349,29 +355,7 @@ Faza 2 (#21 AI nota) i Faza 3 (#22 pagination + selection) w BACKLOG'u jako plac
 
 ## IN PROGRESS
 
-### #28 — Sprint #5: Stabilizacja + dystrybucja 1.8.0 (operacyjny)
-
-**Driver:** Sprint #4 wypuścił 5 commitów (1.7.0 → 1.8.0) w jednej sesji z 4 hotfixami. Świeże feature, ryzyko ukrytych edge case'ów. Stabilizujemy zanim dystrybuujemy zespołowi OVB.
-
-**Tasks:**
-- ⏳ **Task 1 — Smoke test 1.8.0** (Marcin, gating): URL prawidłowy, hint pokazuje, dashboard działa, polskie znaki w slug'u OK
-- ✅ **Task 2 — INSTRUKCJA.md update**: header 1.8.0, sekcja 3.5 Dashboard, "Aktualizacja" preferuje Reload, FAQ +4 nowe Q&A (1.8.0-specific)
-- ⏳ **Task 3 — Commit INSTRUKCJA.md + CLAUDE.md cleanup** (planowany w tej sesji)
-- ⏳ **Task 4 — Push origin/master + regen extension.zip 1.8.0** (Marcin manual): 5 commitów behind, zip do regen
-- ⏳ **Task 5 — Dystrybucja zespołowi OVB** (Marcin manual): zip + INSTRUKCJA + ostrzeżenie "Reload, NIE Remove+Add"
-- ⏳ **Task 6 — 3-5-dniowy production smoke** (Marcin manual): real-life follow-upy, każdy bug → patch 1.8.x
-
-**Definition of Done:**
-- Smoke test 1.8.0 ALL PASS
-- INSTRUKCJA.md commit'owana
-- 5 commitów na origin/master
-- Extension 1.8.0.zip dystrybuowany
-- 3 dni bez nowych issue → 1.8.0 stable
-
-**Risks:**
-- Smoke wykryje nowy bug → kolejny patch przed dystrybucją
-- Backward compat dla messages sprzed 1.7.0 — świadomie out-of-scope (FAQ wyjaśnia, akceptowalne)
-- Marcin nie zechce 3-5 dni czekania → dystrybucja wcześniej, większe ryzyko production hotfixa
+(none — Sprint #5 zamknięty 2026-05-09 z v1.9.1; oczekuje decyzji PM co dalej)
 
 ---
 
@@ -486,6 +470,18 @@ popup → background: {action: "followupSkip", slug}
 (none)
 
 ## DONE
+
+**Sprint #5 (Stabilizacja + UX overhaul — zamknięty 2026-05-09 z v1.9.1, 4 commity):**
+- ✅ #30+#31 P0 SyntaxError fix + lint guard (v1.8.1). Duplicate `const action` (linie 413+422 popup.js) z reorderu w 1.8.0 wywaliło parse — wszystkie buttony martwe od 1.8.0 (bug zdiagnozowany przez Claude'a Chrome MCP w realnej przeglądarce z F12 + node --check). Fix: usunięte 4 linie residual z 1.7.3. Lint guard: `extension/tests/test_syntax.js` NEW z 5 asercji `node --check` na 5 entry-pointach (popup.js, background.js, content.js, dashboard.js, options.js). Cel: wykrywanie tego klassu bugów PRZED commit, nie 5 commitów później po reportowaniu od Marcina. Bump 1.8.0 → 1.8.1. Implementacja: 2 subagenty paralelnie (A fix + bump + test_syntax NEW, B diagnostyka read-only #32). Commit: c934488.
+- ✅ #32+#33+#34 P0 Scripting fallback + NUL detection (v1.8.2). #32: SDUI search results page (`/search/results/people/?keywords=...`) nie injectowała content.js z manifest content_scripts (Chrome `run_at:document_idle` glitch — `[LinkedIn MSG]` log na profile JEST, na search BRAK). Fix: programmatic injection przez `chrome.scripting.executeScript({target, files:["content.js"]})` + 200ms delay + retry sendMessage w popup.js Bulk Connect detection (~linia 1605). Pattern reused z `scrapeCurrentTab` dla profile pages. Permission "scripting" już od 1.0.x. #33: idempotent strip-pass NULi w extension/*.js (preventive — working tree miał 0 NULi, Marcin reportował 169 NUL bytes w popup.js po commicie 1.8.1 prawdopodobnie z innego checkout/mount lag w sandbox). #34: test_syntax.js upgraded z 5 → 10 asercji (parse OK + 0 NUL bytes per plik, asercja FAIL gdy >= 1 NUL). `.git/hooks/pre-commit` NEW (executable, 1285 bajtów) — sprawdza extension/*.js: `tr -cd '\0' | wc -c == 0` + `node --check` per plik, override `--no-verify` NIE zalecane. CLAUDE.md "Konwencje kodu" bullet o hook'u + odniesienie do incydentu 1.8.0/1.8.1 jako uzasadnienie. Bump 1.8.1 → 1.8.2. Implementacja: 2 subagenty paralelnie. Commit: df03ed1.
+- ✅ #36 P1 UX overhaul — 3-tab layout + sticky toast + action bar (v1.9.0). Driver: Marcin reportował "popup pojawił się pod całym tekstem na chwilę i zniknął, trzeba było tam zescrollować" + pełen UX audit (8 problemów) — single-page layout ze wszystkimi 9 trybami pracy wymuszał scroll i zakopywał toasty pod buttonami. Architektura: 3 taby (Profil / Bulk / Follow-upy) z auto-select po URL active tab (`/in/<slug>/` → Profil, `/search/results/people/*` → Bulk, inne → Profil). Sticky toast pod headerem (success auto-hide 5s, error sticky z X close button) — replace `setStatus("success"/"error")` + `showTrackStatus`. Track-chip "✓ Śledzone · 5 min temu · FU#1: 12.05" w profile-card pod headline — zero scroll dla tracking status, replace `track-hint` pod result-area. Sticky bottom action bar w Profile tab z context-dependent buttons: no profile → [Pobierz profil] full / profile no message → [Pobierz ↻] secondary + [Generuj] primary / profile + message → [Kopiuj+śledź] primary + [Skopiuj] outline + [↻] icon. W Bulk/Follow-up action bar hidden (akcje per-row). Config (Cel/Język/Ton) w `<details id="config-section">` collapsible default closed. Empty state `#profile-empty` w Profile tab. Dashboard link `#link-dashboard` w Follow-up tab. Implementacja: 3 subagenty paralelnie (A HTML restructure 220→250 linii, B CSS overhaul 644→836 linii z nowymi tokens --space-1..5, C JS rewiring 1691→1859 linii — switchTab + autoSelectTab + showToast + renderTrackChip + renderActionBar + updateProfileEmptyState). API JS migration: `setStatus → showToast`, `showTrackStatus → showToast`, `refreshTrackingHint → renderTrackChip`. setStatus zachowany jako BC shim. Bump 1.8.2 → 1.9.0 (minor — nowy layout, kompatybilny storage/state). Testy 278/0. Commit: af735f8.
+- ✅ #37 P1 Pokaż zaplanowane follow-upy w popup'ie (v1.9.1). Bug: 1.9.0 follow-up tab pokazywał TYLKO due TERAZ (`RemindAt <= now`). Profile zaplanowane na przyszłość (FU#1 za 2 dni) niewidoczne — chip "✓ Śledzone · FU#1: 12.05" w Profile tab obiecywał śledzenie ale Follow-up tab list pusty = dezorientujące. Fix: 2 sekcje w Follow-up tab — "Do follow-up'u" (due, z akcjami, plus empty state "Nic do zrobienia teraz. ✓" gdy brak due) + "Zaplanowane" NEW (read-only, sortowane od najbliższej, dashed border żeby wizualnie odróżnić od due, neutral szary badge zamiast czerwonego, brak buttonów akcji bo data jeszcze nie nadeszła). Per row scheduled: imię + tag "FU#1 za 2 dni" + meta "Pierwsza wiadomość: DD.MM · follow-up: DD.MM". Backend: ZERO zmian, reuse `bulkListAllFollowups()` z dashboardu (v1.8.0). Tab badge (N) pokazuje TYLKO due, NIE scheduled (scheduled to "potem", nie alert do działania). Link "→ Pełny dashboard (z historią)" pod sekcją Zaplanowane. Bump 1.9.0 → 1.9.1. Testy 278/0 (pure UI change). Commit: f30cc33.
+
+**Lessons learned ze Sprintu #5:**
+- Pre-commit hook + test_syntax.js zatrzymały by 1.8.0 SyntaxError (incident `const action` duplicate). MV3 popup nie dostaje feedback'a syntax — popup po prostu nie ładuje się, buttony martwe, user nie wie czemu. Lekcja: `node --check` PRZED commitem to MUST-HAVE. Hook w repo, nie bypass'ować bez konkretnego powodu.
+- SDUI search injection bug (#32) nie był w naszym kodzie — Chrome z `run_at:document_idle` po prostu nie wstrzyknął content.js na hashed-classes search page. Programmatic fallback przez `chrome.scripting.executeScript` rozwiązał. Pattern reused z `scrapeCurrentTab`. Lesson: dla SDUI/dynamic pages manifest content_scripts to NIE gwarancja injection — ZAWSZE mieć fallback przez scripting API.
+- 4 hotfix'y w 24h od dystrybucji 1.8.0 (zaplanowanej w #28) potwierdziły że smoke test 1.8.0 PRZED dystrybucją był MUST-HAVE — Sprint #5 przerodził się w "fix-and-iterate" zamiast "smoke-then-distribute". Dystrybucja zespołowi OVB powinna iść z 1.9.1 (stabilizacja zamknięta), nie z hot 1.8.0.
+- 1.9.0 UX overhaul = 3 subagenty paralelnie (A HTML, B CSS, C JS) zadziałały bezbłędnie (~5 min wallclock). Brak konfliktu plików dzięki klarowemu kontraktowi DOM/CSS w PM phase. Worth replicating w przyszłych UI sprintach.
 
 **Sprint #4 (Follow-upy 3d/7d — zamknięty 2026-05-09 z v1.7.0):**
 - ✅ #25 P0 Follow-upy 3d/7d po pierwszej wiadomości — CRM lifecycle dla outreach. Storage queue items rozszerzone o 7 nowych pól (`followup{1,2}{RemindAt,Draft,SentAt}`, `followupStatus`). Hook idempotent w istniejącym `bulkMarkMessageSent` (background.js:441) — przy oznaczeniu "Wysłałem" automatycznie planuje follow-up #1 (now+3d) i #2 (now+7d). chrome.alarms `followup_check_due` co 6h + `chrome.storage.onChanged` listener dla live badge update. `chrome.action.setBadgeText` z licznikiem due ("99+" cap). Sekcja "Do follow-up'u" w popup'ie nad "Wiadomości po-Connect" — DOM-constructor row per profil z 4 buttonami (Generuj follow-up / Skopiuj i otwórz / Wysłałem / Pomiń) + editable textarea z auto-save debounce 500ms. AI generation reuse'uje istniejący `goal="followup"` (backend ZERO zmian) + augmentowany `sender_context` zawierający poprzednią wiadomość + numer follow-up'u + instrukcję "łagodne nawiązanie, NIE re-pitch". Bump 1.6.0 → 1.7.0. Implementacja przez 3 subagenty paralelnie (A background.js, B popup html/css/js, C test_followup.js NEW 35 asercji) + main loop integration (clipboard fix w popup.js + manifest bump + INSTRUKCJA.md Krok G + harmonogram). Testy: 320/0 (52 backend + 268 extension: 93 scraper + 27 e2e + 14 search_extractor + 45 bulk_connect + 54 message_pipeline + 35 followup). Commit: 8cac4c2.
