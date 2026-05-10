@@ -201,12 +201,52 @@ PM 5–15 min · Dev 30–120 min · Tester 10–30 min · Commit 2–5 min.
 # CURRENT STATE
 
 ```
-Sprint:        #5 — Stabilizacja + UX overhaul + Bulk worker + Reply tracking + Quota guard + Fetch patch
-Phase:         PM (Sprint #5 zamknięty z v1.11.2, oczekuje smoke + dystrybucji)
-Active task:   żaden — Sprint #5 zamknięty z v1.11.2
-Last commit:   9688561 — fix: data loss prevention + storage quota guard (#40, v1.11.1)
+Sprint:        #5 — ZAMKNIĘTY 2026-05-10 z v1.11.2 (8 wersji w ~30h)
+Phase:         PM (decyzja: dystrybucja 1.11.2 OVB + smoke 3-5d, potem Sprint #6)
+Active task:   żaden
+Last commit:   5f38348 — fix: silent suppress flood `chrome-extension://invalid/` (#41, v1.11.2)
 Updated:       2026-05-10
 ```
+
+**Workspace state (po zamknięciu Sprintu #5):**
+- origin/master up to date (commit `5f38348`)
+- `extension.zip` modified — regen pod 1.11.2 przed dystrybucją (Marcin manual)
+- `CLAUDE_CODE_GUIDE.md` untracked — świadomie poza repo
+- Marcin'a queue stracona 2026-05-10 przez Remove+Add — recovery niemożliwa, do odbudowy od zera
+
+**Pending operacyjne (poza Sprintem):**
+1. Smoke test v1.11.2 (Marcin manual ~15 min): bulk auto-navigate + reply tracking buttons w dashboardzie + storage przeżywa Reload + flood errors zniknął (z 200/min → 2 residual — akceptowalne)
+2. Regen `extension.zip` pod 1.11.2 (Marcin manual)
+3. Dystrybucja zespołowi OVB z explicit ostrzeżeniem: **"Update do 1.11.2 ZANIM zrobicie jakikolwiek Remove+Add — chroni przed data loss"**
+4. Production smoke 3-5 dni na koncie Marcina przed Sprintem #6
+
+**Sprint #5 — RETRO (domknięty 2026-05-10):**
+
+Original scope (z 2026-05-09): "Stabilizacja + dystrybucja 1.8.0" — 5 tasków operacyjnych. Final scope: 8 wersji wypuszczone w ~30h przez Marcin'a real-world feedback loop.
+
+**Wersje wypuszczone (8):**
+- v1.8.1 — fix SyntaxError w popup.js + lint guard test_syntax.js (#30+#31, c934488)
+- v1.8.2 — scripting fallback dla SDUI search + NUL detection + pre-commit hook (#32+#33+#34, df03ed1)
+- v1.9.0 — UX overhaul 3-tab layout + sticky toast + action bar (#36, af735f8)
+- v1.9.1 — pokaż "Zaplanowane" follow-upy w popup'ie (#37, f30cc33)
+- v1.10.0 — bulk worker resilience: auto-navigate + URL hint + jitter (#39, b5bc0ff)
+- v1.11.0 — reply tracking + funnel statystyki w dashboardzie (#38, d83dbdb)
+- v1.11.1 — data loss prevention (defensive onInstalled) + storage quota guard (#40, 9688561)
+- v1.11.2 — silent suppress flood `chrome-extension://invalid/` (#41, 5f38348)
+
+**Statystyki:**
+- 8 commitów release + 3 docs = 11 commits w Sprincie #5
+- Testy: 278/0 → **473/0 PASS** (+195 asercji)
+- 5 subagentów paralelnie w głównych feature sprintach (1.10.0 + 1.11.0)
+- Backend: ZERO zmian (cały Sprint #5 czysto extension)
+- Permissions: ZERO nowych
+
+**Lessons learned (top 5):**
+1. **Stable extension `key` w manifest NIE wystarcza** — chroni Chrome's extension ID po Remove+Add ale nasz własny kod w `chrome.runtime.onInstalled` z reason="install" nadpisywał storage. Defensive get-before-set MUST-HAVE w każdym onInstalled handler'ze.
+2. **Storage quota silent fail** — `chrome.storage.local.set` ma 5 MB per-key limit. Try/catch + recovery cascade + telemetria w storage write paths z dużymi blob'ami (np. `scrapedProfile`) jest must-have, nie nice-to-have.
+3. **`world: "MAIN"` content_script + `run_at: "document_start"`** — pattern do patch'owania `window.fetch` widzianego przez page bundle. Reusable dla innych "patch the page" use case'ów. Wymaga Chrome 111+ (zespół OVB ma).
+4. **Sprint scope creep z real-world feedback'u OK gdy critical** — 5-task plan rozrósł do 8 wersji bo Marcin reportował critical bugs (data loss, flood, bulk gubi się). Lesson: gdy user reportuje krytyczny bug w trakcie sprintu, OK żeby scope się rozszerzył ALE eksplicytnie zamknąć (jak teraz).
+5. **Diminishing returns na cosmetic errors** — pozostałe 2 wystąpienia `chrome-extension://invalid/` mogłyby być wyciągnięte v1.11.3 (XHR patch + property descriptor lock) ale 3-5% risk break LinkedIn flow > 0% korzyści. Świadomie odpuszczone.
 
 ---
 
@@ -214,7 +254,7 @@ Updated:       2026-05-10
 
 ## TODO (priorytet od góry)
 
-(none — Sprint #5 zamknięty, oczekuje decyzji o nowym sprincie lub dystrybucji 1.11.0)
+(none — Sprint #5 zamknięty, oczekuje decyzji PM o Sprincie #6 po dystrybucji 1.11.2)
 
 ## IN PROGRESS
 
