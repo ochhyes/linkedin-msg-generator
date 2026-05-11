@@ -1,0 +1,14 @@
+<svg viewBox="0 0 120 120" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-label="Zrobione">
+  <!-- Rounded square frame -->
+  <rect x="35" y="35" width="50" height="50" rx="10"/>
+  <!-- Checkmark -->
+  <path d="M47 60 L57 70 L73 52"/>
+  <!-- Sparkle top-right -->
+  <path d="M95 28 L95 38 M90 33 L100 33"/>
+  <!-- Sparkle bottom-left -->
+  <path d="M22 88 L22 96 M18 92 L26 92"/>
+  <!-- Sparkle top-left (smaller) -->
+  <path d="M25 42 L25 48 M22 45 L28 45"/>
+  <!-- Sparkle bottom-right (smaller) -->
+  <path d="M100 65 L100 71 M97 68 L103 68"/>
+</svg>
