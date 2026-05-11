@@ -94,6 +94,8 @@ Commity zmieniające tylko `backend/`, `deploy/` lub dokumentację — NIE bumpu
 
 **Profile pages (`/in/<slug>/`)** — klasyczny Ember (BIGPIPE), `.ph5 h1`, Voyager 9 payloadów. Hashowane klasy na `<main>` (`DHANJxr...`) to Ember + dynamic CSS modules, NIE nowy frontend stack — prefixy `pv-top-card-*` strukturalne nadal aktywne (`pv-top-card__non-self-photo-wrapper`, `[data-member-id]` na `<section>` zewnętrznym). Race na hydration: scrape w trakcie ładowania widzi pusty `<main>` → mitygacja w `content.js` (pre-wait + marker-gated retry, od v1.0.8).
 
+**SDUI variant na `/in/<slug>/` (od 2026-05-11, A/B test)** — LinkedIn rolluje SDUI również na profile pages (wcześniej tylko search). Wariant detect: brak `h1`, brak `[data-member-id]`, brak Voyager payloadów (`code[id^="bpr-guid-"]`), `<main>` z hashowanymi klasami typu `_276b182a aec1c158`. Dane w `section[componentkey*="Topcard"]` (jeden node — `name` w `<h2>`, `headline`/`company`/`location` w kolejnych `<p>` rozróżnianych heurystycznie — degree markers "· 1." filtrowane, company splitowany po " · ", location matchowany regex'em PL/EU) + `section[componentkey$="HQAbout"]` (about — `$=` ends-with rozróżnia od `HQSuggestedForYou` które zawiera "O mnie" tekstualnie w rekomendacjach LinkedIn'a). A/B test per-cookie-bucket — sesja losuje wariant przy logowaniu, ten sam użytkownik może widzieć classic Ember w jednej sesji i SDUI w drugiej. Extractor `extractFromSdui` w `content.js`, fixture `extension/tests/fixtures/profile_sdui_dump.html`. **LIMITATION**: SDUI dump w obecnej formie NIE zawiera `experience`/`skills`/`featured`/`education` inline — te pola są puste w outputcie. Gdy LinkedIn rozwinie `componentkey="*HQExperience"` lub podobne, wymagany fresh dump + osobny task.
+
 **Search results (`/search/results/people/`)** — SDUI layout, hashed classes (`d99855ad`, `_1b8a3c95`), atrybuty `componentkey`, `data-sdui-screen`, `role="radio"`. Pagination URL-based (`?page=N` przez `searchParams.set`) — stabilniejsza niż click-based "Next" button. Content script injection przez manifest `content_scripts` zawodzi na SDUI z `run_at:document_idle` → fallback przez `chrome.scripting.executeScript` w popup.js (od v1.8.2).
 
 **Pending invite detection** — `a[aria-label^="W toku"]` (PL) / `^="Pending"` (EN), NIE textContent "Oczekuje". Klik na "W toku" otwiera withdraw flow, nie invite — bulk connect MUSI filter'ować takie profile.
@@ -201,10 +203,10 @@ PM 5–15 min · Dev 30–120 min · Tester 10–30 min · Commit 2–5 min.
 # CURRENT STATE
 
 ```
-Sprint:        #5 — REOPENED 2026-05-11 (v1.11.3 + v1.11.4 + v1.11.5 hotfixe)
-Phase:         Tester (manual smoke #44: button Stop dla auto-fill)
-Active task:   #44 button Stop dla bulkAutoFillByUrl (gotowy do testu)
-Last commit:   e90de5d — fix: resolveBulkTab recovery gdy user zamknął kartę search (#43, v1.11.4)
+Sprint:        #5 (v1.11.3-1.11.5 hotfixe) + #6 OTWARTY 2026-05-11 (v1.12.0 SDUI extractor)
+Phase:         PM (decyzja: dystrybucja 1.12.0 + push 5 commits + Sprint #6 kolejne taski lub zamknąć)
+Active task:   żaden (#4 ZAMKNIĘTY 2026-05-11, smoke PASS)
+Last commit:   0290cdf — feat: SDUI extractor dla /in/<slug>/ (#4 reaktywowane, v1.12.0)
 Updated:       2026-05-11
 ```
 
@@ -335,6 +337,9 @@ Original scope (z 2026-05-09): "Stabilizacja + dystrybucja 1.8.0" — 5 tasków 
 ## DONE
 
 > Format: 1 linia per release (sha, opis, bump). Pełne treści w `git show <sha>`.
+
+**Sprint #6 — SDUI extractor /in/<slug>/ (2026-05-11 z v1.12.0):**
+- ✅ `0290cdf` v1.12.0 — feat: SDUI extractor (#4 reaktywowane po ANULOWANIU 2026-05-05). LinkedIn wdrożył SDUI A/B test 6 dni po ANULOWANIU tasku w Sprint #1 → klasyczny scraper timeout `{h1Count:0, mainClass:"_276b182a..."}`. Nowy `extractFromSdui()` w `content.js` (po `extractFromFeedLayout`, przed `extractFromJsonLd`): detect przez `section[componentkey*="Topcard"]` (jeden node), name w `<h2>`, headline/company/location z heurystyk na `<p>` (filter degree markery + samodzielne `·`, headline = literą+spacją >10 chars bez ` · `, company split " · " [0], location regex PL/EU, mutual regex "wspóln[ay] kontakt"), about w `section[componentkey$="HQAbout"]` (ends-with rozróżnia od `HQSuggestedForYou`). Orchestracja `scrapeProfileAsync`: classic Ember → **SDUI** → Voyager → JSON-LD → feed → last-resort. `_source:"sdui"` na profilu. Diagnostyka +`sduiTopcardFound`/`sduiCardCount`. **LIMITATION**: SDUI dump nie zawiera `experience`/`skills`/`featured`/`education` inline — pola puste, osobny task gdy LinkedIn doda `componentkey="*HQExperience"`. Fixture E2E F5 z dumpem Majkowskiego (`profile_sdui_dump.html` 350 KB, przeniesiony z `extension/futures/` po literówce folderu) z 11 asercjami. Testy 478/0 → **489/0 PASS**. Lessons: ANULOWANIE 2026-05-05 ("classic Ember działa") bazowane na snapshot w czasie — A/B test'y LinkedIn'a wprowadzają nowe layouts z tygodnia na tydzień, fallback chain w `scrapeProfileAsync` MUST-HAVE od początku nawet jeśli "obecnie niepotrzebny". Bump 1.11.5 → 1.12.0 (minor).
 
 **Sprint #5 — Fetch patch dla flood `chrome-extension://invalid/` (2026-05-10 z v1.11.2):**
 - ✅ #41 P1 — fix: silent suppression flood `chrome-extension://invalid/ ERR_FAILED` (v1.11.2). LinkedIn'owy obfuscated bundle (`d3jr0erc6y93o17nx3pgkd9o9.js:12275` etc.) cache'uje URL'e do extension'ów (chrome.runtime.getURL z poprzednich sesji) i pinguje je przez `window.fetch` po reload extension'a → Chrome zwraca dla nieważnych extension URL'i wirtualny `chrome-extension://invalid/` → fetch leci → `ERR_FAILED` → flood w konsoli (200+ na minutę). Mitygacja v1.2.1 (#12b orphan auto-reload jednorazowy) była częściowa — czyściła niektóre cache'y, ale LinkedIn rebuilduje runtime i znów próbuje pingować. Marcin nadal widział flood w v1.11.1. Fix: NEW `extension/fetch_patch.js` patchuje `window.fetch` w MAIN world (przez manifest content_script `world: "MAIN"` + `run_at: "document_start"` żeby załadować się PRZED LinkedIn'owym bundle'em). Patch przechwytuje requests do `chrome-extension://invalid*` i zwraca silent 204 No Content zamiast ERR_FAILED → LinkedIn'owy fetch caller dostaje resolved Promise, nie loguje error w konsoli. Idempotent (`window.__lmgFetchPatched` flag) — multiple content_script injections (SPA history nav) nie nakładają warstw. Defensywny try/catch wokół URL extraction handle'uje exotic input types (Request object, URL object). Manifest: dorzucony drugi content_script entry z `matches: linkedin.com/*` (szersze niż content.js — patch potrzebny na wszystkich LinkedIn pages, nie tylko /in/ i /search/). `world:"MAIN"` wymaga Chrome 111+ (2023, dostępne wszystkim z OVB). test_syntax.js entry list +1 (fetch_patch.js). Bump 1.11.1 → 1.11.2 (patch — bug fix). Commit: planowany w tej sesji.
