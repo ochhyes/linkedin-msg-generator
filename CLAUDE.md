@@ -201,10 +201,10 @@ PM 5–15 min · Dev 30–120 min · Tester 10–30 min · Commit 2–5 min.
 # CURRENT STATE
 
 ```
-Sprint:        #5 — REOPENED 2026-05-11 dla hotfixu bulkAutoFillByUrl performance (v1.11.3)
-Phase:         Tester (manual smoke: czy "Wypełnij" działa w ~3-5s na 1 stronie)
-Active task:   #42 fix bulkAutoFillByUrl 2-minutowy timeout (gotowy do testu)
-Last commit:   5f38348 — fix: silent suppress flood `chrome-extension://invalid/` (#41, v1.11.2)
+Sprint:        #5 — REOPENED 2026-05-11 (v1.11.3 + v1.11.4 hotfixe)
+Phase:         Tester (manual smoke #43: zamknij kartę search → worker recovery)
+Active task:   #43 fix resolveBulkTab tab-closed recovery (gotowy do testu)
+Last commit:   b110301 — fix: bulkAutoFillByUrl skip reload pierwszej strony + jitter 2-5s (#42, v1.11.3)
 Updated:       2026-05-11
 ```
 
@@ -257,6 +257,31 @@ Original scope (z 2026-05-09): "Stabilizacja + dystrybucja 1.8.0" — 5 tasków 
 (none — czeka na potwierdzenie #42 manual smoke, potem commit + dystrybucja 1.11.3)
 
 ## IN PROGRESS
+
+- **#43** P0 fix: `resolveBulkTab` — worker nie potrafi wrócić gdy user zamknął kartę search results (v1.11.4). Marcin 2026-05-11: "zamknąłem kartę z wyszukiwaniem na której odbywało się dodawanie kontaktów, rozszerzenie nie potrafi do niej wrócić". Root cause: `resolveBulkTab()` (background.js:1116) próbuje `chrome.tabs.get(state.tabId)` → throws → fallback `findLinkedInSearchTab()` querowal po URL pattern. Jeśli karty zamknięte, brak żadnej karty z URL `/search/results/people/*` → null → tick exit'uje "Lost LinkedIn search tab". #39 (v1.10.0) dodał recovery dla "user navigated away in same tab" ale NIE dla "user closed tab". `lastSearchKeywords` był persistowany od #39 ale nieużywany w resolveBulkTab path. Fix: trzeci fallback w `resolveBulkTab` — gdy oba poprzednie fail, sprawdź `state.lastSearchKeywords`, znajdź `pending.pageNumber` z queue, `buildSearchUrl(keywords, page)`, `chrome.tabs.create({url, active:false})` (active:false żeby nie zabierać user'owi focus'u — worker zwykle w tle), `waitForTabComplete(12000)` + render delay, persist nowy tabId, telemetria `event_type:"bulk_tab_recovered"`. Gating: tylko gdy `lastSearchKeywords` truthy — gdy null/empty, skip recovery (URL bez keywords pokazałby "all people search", nie to czego user chciał). Test: 4 asercje w `canRecoverClosedTab` (test_bulk_connect.js). Bump 1.11.3 → 1.11.4.
+
+  **Dev notes:**
+  - `extension/background.js:1116` (resolveBulkTab, +30 linii) — trzeci fallback z chrome.tabs.create + telemetria
+  - `extension/tests/test_bulk_connect.js` — nowa sekcja `canRecoverClosedTab`, +4 asercje
+  - `extension/manifest.json` — 1.11.3 → 1.11.4
+  - Testy: 474/0 → **478/0 PASS** (+4 z canRecoverClosedTab)
+
+  **How to test manually:**
+  1. Reload extension (sprawdź wersja 1.11.4)
+  2. Otwórz LinkedIn search results: `?keywords=ovb` lub inny
+  3. Tab "Bulk" → Start (worker zaczyna ticki)
+  4. Po 1-2 connectach zamknij CAŁKOWICIE kartę search results
+  5. Czekaj 45-120s (następny tick)
+  6. **Oczekiwane:** worker automatycznie otwiera nową kartę z tym samym keywords, kontynuuje pracę. Karta otwarta w tle (`active:false`), nie zabiera user'owi focus'u.
+  7. **Nie-oczekiwane (jeśli bug nadal):** worker exit'uje z "Lost LinkedIn search tab"
+
+  **Acceptance criteria:**
+  - [ ] Zamknięcie karty search results NIE zatrzymuje worker'a — automatyczne odtworzenie karty
+  - [ ] Nowa karta `active:false` (nie kradnie focus'u user'owi)
+  - [ ] Nowa karta ma keywords + page zgodne z pending item w queue
+  - [ ] Worker kontynuuje connect po recovery
+  - [ ] Telemetria `bulk_tab_recovered` fire'uje (sprawdź backend log SCRAPE_FAILURE_LOG_PATH)
+  - [ ] Brak `lastSearchKeywords` (legacy session bez persist'a) → graceful fail z poprzednim error msg, nie crash
 
 - **#42** P0 fix: `bulkAutoFillByUrl` — 2-minutowy timeout na pierwszej stronie (v1.11.3). Marcin 2026-05-11: kliknął "Wypełnij" na search results, czekał 2 minuty, nic się nie stało. Root cause: pierwsza iteracja loop zawsze wywołuje `chrome.tabs.update(tab.id, {url: targetUrl})` + `waitForTabComplete(12000)`. Gdy `getPageFromUrl(currentUrl) === pageNum` (user już jest na docelowej stronie — najczęstszy use case), Chrome nie wystrzeli "complete" event'u → 12s timeout zmarnowany. Plus jitter 5-15s × N pages dolicza dodatkowe sekundy. Łącznie typowy scan 1 strony zajmował 13.5s+ a 3 stron 60-90s. Fix w `bulkAutoFillByUrl` (extension/background.js linie 1278-1301): (a) skip `tabs.update` + `waitForTabComplete` + render delay gdy `pagesScanned === 0 && pageNum === startPage` — DOM zhydrowany, scrape od razu (zysk: -13.5s na pierwszej stronie); (b) jitter 5-15s → 2-5s (Marcin: "rzadko będą potrzebne następne strony" — cap=25 mieści się typowo w 1-2 stronach, a worker tick'i przy faktycznym Connect mają osobny delay 45-120s, więc 2-5s nie zagraża anti-detection). test_bulk_connect.js: `getJitterMs` helper + range assertion `[2000, 5000]`. Testy: 474/0 PASS (test_bulk_connect 176 + ostatnie 298 z innych). Bump 1.11.2 → 1.11.3.
 

@@ -1128,6 +1128,36 @@ async function resolveBulkTab() {
     await setBulkState({ tabId: fallback.id });
     return fallback;
   }
+  // #43 v1.11.4: user zamknął kartę search results całkowicie (nie tylko
+  // nawigacja na inną stronę — #39 case). Recovery: stwórz nową kartę
+  // z zapisanym lastSearchKeywords + page pending item'a. active:false
+  // żeby nie zabierać user'owi focus'u (worker zwykle działa w tle).
+  if (state.lastSearchKeywords) {
+    const pending = state.queue.find((q) => q.status === "pending");
+    const targetPage = (pending && pending.pageNumber) || 1;
+    const url = buildSearchUrl(state.lastSearchKeywords, targetPage);
+    try {
+      const newTab = await chrome.tabs.create({ url, active: false });
+      await waitForTabComplete(newTab.id, 12000);
+      await new Promise((r) => setTimeout(r, PAGINATION_RENDER_DELAY_MS));
+      await setBulkState({ tabId: newTab.id });
+      reportScrapeFailure({
+        event_type: "bulk_tab_recovered",
+        url,
+        diagnostics: {
+          lastSearchKeywords: state.lastSearchKeywords,
+          targetPage,
+        },
+        error_message: "tab_closed_recovered_by_create",
+      });
+      return newTab;
+    } catch (err) {
+      console.warn(
+        "[LinkedIn MSG] bulk tab recovery failed:",
+        err && err.message
+      );
+    }
+  }
   return null;
 }
 

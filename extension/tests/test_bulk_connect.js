@@ -415,6 +415,17 @@ console.log("\n▸ parseKeywordsFromUrl — lastSearchKeywords source");
   assertEqual(parseKeywordsFromUrl(""), null, "Empty string → null");
 }
 
+console.log("\n▸ canRecoverClosedTab — recovery gating (#43 v1.11.4)");
+{
+  function canRecoverClosedTab(state) {
+    return !!(state && state.lastSearchKeywords);
+  }
+  assertEqual(canRecoverClosedTab({ lastSearchKeywords: "ovb" }), true, "Keywords saved → can recover");
+  assertEqual(canRecoverClosedTab({ lastSearchKeywords: null }), false, "No keywords → cannot recover (skip)");
+  assertEqual(canRecoverClosedTab({ lastSearchKeywords: "" }), false, "Empty keywords → cannot recover");
+  assertEqual(canRecoverClosedTab(null), false, "No state → cannot recover");
+}
+
 console.log("\n▸ shouldAbortAfterNavigateFails — loop guard");
 {
   assertEqual(shouldAbortAfterNavigateFails(0), false, "0 fails → continue");
