@@ -401,6 +401,7 @@ Lessons: pre-commit hook + `node --check` przed commit to MUST-HAVE dla MV3 popu
 
 ## BACKLOG (poza sprintem, później)
 
+- **#45 P1 Sprint UX redesign OVB Minimal** — wymiana "discord-blue dev tool" look na corporate OVB navy. Design tokens (paleta `#002A5C`, Inter font, 4-base spacing scale), 3-typ btn system (primary/secondary/ghost), unified card + badge components, 3-fazowy action bar (no_profile / profile_no_message / message_ready), empty states z Lucide icons, dashboard polish. Spec: `UX_REDESIGN.md`. 6 podtasków (~5h Claude Code + 3h Marcin smoke). Bump major v1.x → v2.0.0 przy starcie (breaking visual change). Assety wygenerowane 2026-05-11: nowe `extension/icons/icon{16,48,128}.png` (brand favicony) + 4 WebP w `extension/assets/` + line-art SVG empty states. **Decyzja kiedy startujemy** — zależy od priorytetów vs feature backlog.
 - **#6** Self-test scraper widget w popup (settings → diagnostyka)
 - **#10** Wersjonowanie selektorów + auto-fallback chain (selectors.json + hot-update z backendu, plus refactor żeby Voyager parser nie był zduplikowany w test_e2e.js i content.js)
 - **#22 fix** Auto-pagination "Wypełnij do limitu" (1.4.1 zatrzymuje się po 1 stronie). Wymaga: DOM dump paginacji od Marcina (`extension/tests/fixtures/search_results_pagination.html`) → fix selektorów `bulkAutoExtract` w content.js (~linie 1430-1440) → test fixture'owy. Plus master-select checkboxy (Select all / 2nd degree only / Unselect Pending) + `Stop after N pages` setting (default 5). Estymata: ~0.5+0.5 sprintu Marcina.
