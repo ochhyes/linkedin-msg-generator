@@ -247,6 +247,145 @@ console.log("\n▸ extractSlugFromUrl");
   assert(extractSlugFromUrl(null) === null, "null → null");
 }
 
+// ── SDUI extractor (port z extension/content.js — #4 v1.12.0) ────
+//
+// DUPLIKAT logiki content.js extractFromSdui. Synchronizuj ręcznie
+// po zmianach.
+function extractFromSdui(doc, url) {
+  const topcard = doc.querySelector('section[componentkey*="Topcard"]');
+  if (!topcard) return null;
+
+  const name = topcard.querySelector("h2")?.textContent.trim() || null;
+  if (!name) return null;
+
+  const ps = Array.from(topcard.querySelectorAll("p"))
+    .map((p) => p.textContent.trim())
+    .filter(
+      (t) => t && t !== "·" && !/^[·•]\s*\d+\.?$/.test(t)
+    );
+
+  let headline = null;
+  let company = null;
+  let location = null;
+  let mutual = null;
+  for (const t of ps) {
+    if (
+      !headline &&
+      /[a-zA-ZąćęłńóśźżĄĆĘŁŃÓŚŹŻ]\s/.test(t) &&
+      t.length > 10 &&
+      !t.includes(" · ")
+    ) {
+      headline = t;
+      continue;
+    }
+    if (!company && t.includes(" · ")) {
+      company = t.split(" · ")[0].trim();
+      continue;
+    }
+    if (
+      !location &&
+      /,\s*(Polska|Polsk|woj|Wielkopolsk|Mazow|Pomor|United|Germany|UK)/i.test(t)
+    ) {
+      location = t;
+      continue;
+    }
+    if (
+      !mutual &&
+      /wspóln[ay]\s+kontakt|innych\s+wspólnych\s+kontaktów|mutual\s+connection/i.test(t)
+    ) {
+      mutual = t;
+    }
+  }
+
+  let about = null;
+  const aboutSection =
+    doc.querySelector('section[componentkey$="HQAbout"]') ||
+    doc.querySelector(
+      'section[componentkey*="HQAbout"]:not([componentkey*="Suggested"])'
+    );
+  if (aboutSection) {
+    const clone = aboutSection.cloneNode(true);
+    clone.querySelectorAll("h2, svg, button").forEach((el) => el.remove());
+    about = clone.textContent.replace(/\s+/g, " ").trim() || null;
+    if (about) {
+      about =
+        about.split(/\s*(?:Aktywność|obserwując|Publikacje|Komentarz)/)[0].trim() ||
+        null;
+    }
+  }
+
+  return {
+    name,
+    headline,
+    company,
+    location,
+    about,
+    mutual_connections: mutual,
+    profile_url: url,
+  };
+}
+
+console.log("\n▸ F5: profile_sdui_dump.html — Majkowski SDUI POSITIVE (#4)");
+{
+  const { doc, url } = loadFixture("profile_sdui_dump.html");
+  // Detect markery — to NIE są pełnoprawne asercje extraktora, tylko sanity
+  // że fixture rzeczywiście jest SDUI (a nie classic Ember zaczepiony przez
+  // pomyłkę).
+  assert(
+    !!doc.querySelector('[componentkey*="Topcard"]'),
+    "F5 fixture ma section componentkey*=Topcard (SDUI marker)"
+  );
+  assert(
+    !!doc.querySelector('section[componentkey$="HQAbout"]'),
+    "F5 fixture ma section componentkey$=HQAbout (ends-with)"
+  );
+  assert(
+    doc.querySelectorAll("h1").length === 0,
+    "F5 brak <h1> (classic Ember marker negatywny)"
+  );
+  assert(
+    doc.querySelectorAll('code[id^="bpr-guid-"]').length === 0,
+    "F5 brak Voyager payloadów"
+  );
+
+  const result = extractFromSdui(doc, url);
+  assert(result !== null, "F5 extractFromSdui zwraca obiekt (nie null)");
+  if (result) {
+    assert(
+      result.name === "Mateusz Majkowski",
+      "F5 name === 'Mateusz Majkowski'",
+      `got "${result.name}"`
+    );
+    assert(
+      result.headline === "Terenowy przedstawiciel handlowy w Bosch Home Comfort Group",
+      "F5 headline === 'Terenowy przedstawiciel handlowy w Bosch Home Comfort Group'",
+      `got "${result.headline}"`
+    );
+    assert(
+      result.company === "Bosch Home Comfort Group",
+      "F5 company === 'Bosch Home Comfort Group'",
+      `got "${result.company}"`
+    );
+    assert(
+      typeof result.location === "string" && result.location.startsWith("Gdynia"),
+      "F5 location startsWith 'Gdynia'",
+      `got "${result.location}"`
+    );
+    assert(
+      typeof result.about === "string" &&
+        result.about.startsWith("Liczą się dla mnie nowe doświadczenia"),
+      "F5 about startsWith 'Liczą się dla mnie nowe doświadczenia'",
+      `got "${result.about?.slice(0, 60)}…"`
+    );
+    assert(
+      typeof result.mutual_connections === "string" &&
+        result.mutual_connections.includes("wspólnych kontaktów"),
+      "F5 mutual_connections includes 'wspólnych kontaktów'",
+      `got "${result.mutual_connections}"`
+    );
+  }
+}
+
 // Summary
 console.log("\n=================================================");
 console.log(`  Results: ${passed} passed, ${failed} failed`);

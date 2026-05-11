@@ -675,6 +675,114 @@
     };
   }
 
+  // ── SDUI extraction (LinkedIn A/B variant na /in/, od 2026-05-11) ────
+  //
+  // LinkedIn rolluje SDUI (Server-Driven UI) również na profile pages —
+  // wcześniej tylko search. Wariant detect: brak <h1>, brak [data-member-id],
+  // brak Voyager <code id="bpr-guid-*">, <main> z hashowanymi klasami.
+  //
+  // Dane w section[componentkey*="Topcard"] (name w h2, headline/company/
+  // location w kolejnych <p>) i section[componentkey$="HQAbout"] (about).
+  //
+  // LIMITATION: SDUI dump w obecnej formie NIE zawiera experience/skills/
+  // featured/education inline — te pola pozostają puste. Gdy LinkedIn doda
+  // rozwinięte sekcje (np. componentkey HQExperience), wymaga osobnego
+  // tasku z fresh dumpem. (#4 v1.12.0 reaktywowane po ANULOWANIU 2026-05-05)
+  function extractFromSdui() {
+    const topcard = document.querySelector('section[componentkey*="Topcard"]');
+    if (!topcard) return null;
+
+    const name = topcard.querySelector("h2")?.textContent.trim() || null;
+    if (!name) return null; // bez nazwy = fail, fallback do innych ścieżek
+
+    // Zbierz wszystkie <p> z topcarda. Filtruj puste, samodzielne kropki
+    // i degree markery ("· 1.", "· 2.").
+    const ps = Array.from(topcard.querySelectorAll("p"))
+      .map((p) => p.textContent.trim())
+      .filter(
+        (t) =>
+          t &&
+          t !== "·" &&
+          !/^[·•]\s*\d+\.?$/.test(t)
+      );
+
+    // Heurystyka kolejności:
+    //   headline = pierwszy p z literą+spacją, >10 chars, BEZ " · " w środku
+    //   company  = pierwszy p z " · " (split [0])
+    //   location = pierwszy p z regionem (Polska/woj/UK/Germany/...)
+    //   mutual   = pierwszy p z "wspólnych kontaktów" / "mutual connection"
+    let headline = null;
+    let company = null;
+    let location = null;
+    let mutual = null;
+    for (const t of ps) {
+      if (
+        !headline &&
+        /[a-zA-ZąćęłńóśźżĄĆĘŁŃÓŚŹŻ]\s/.test(t) &&
+        t.length > 10 &&
+        !t.includes(" · ")
+      ) {
+        headline = t;
+        continue;
+      }
+      if (!company && t.includes(" · ")) {
+        company = t.split(" · ")[0].trim();
+        continue;
+      }
+      if (
+        !location &&
+        /,\s*(Polska|Polsk|woj|Wielkopolsk|Mazow|Pomor|United|Germany|UK)/i.test(t)
+      ) {
+        location = t;
+        continue;
+      }
+      if (
+        !mutual &&
+        /wspóln[ay]\s+kontakt|innych\s+wspólnych\s+kontaktów|mutual\s+connection/i.test(t)
+      ) {
+        mutual = t;
+      }
+    }
+
+    // About — osobna sekcja. Ends-with rozróżnia HQAbout od HQSuggestedForYou
+    // (rekomendacje LinkedIn'a zawierają "O mnie" tekstualnie → false positive
+    // przy `*=HQAbout`).
+    let about = null;
+    const aboutSection =
+      document.querySelector('section[componentkey$="HQAbout"]') ||
+      document.querySelector(
+        'section[componentkey*="HQAbout"]:not([componentkey*="Suggested"])'
+      );
+    if (aboutSection) {
+      const clone = aboutSection.cloneNode(true);
+      clone.querySelectorAll("h2, svg, button").forEach((el) => el.remove());
+      about = clone.textContent.replace(/\s+/g, " ").trim() || null;
+      if (about) {
+        // Bezpiecznik: ucinaj na footer-słowach gdy LinkedIn doda Aktywność
+        // / Publikacje / Komentarze w tej samej sekcji.
+        about =
+          about.split(/\s*(?:Aktywność|obserwując|Publikacje|Komentarz)/)[0].trim() ||
+          null;
+      }
+    }
+
+    return {
+      name,
+      headline,
+      company,
+      location,
+      about,
+      experience: [],
+      skills: [],
+      featured: [],
+      education: [],
+      mutual_connections: mutual,
+      follower_count: null,
+      recent_activity: [],
+      profile_url: window.location.href,
+    };
+  }
+
   // ── JSON-LD extraction (secondary source) ────────────────────────
 
   function extractFromJsonLd() {
@@ -754,6 +862,11 @@
       topSectionIds: Array.from(document.querySelectorAll("main section"))
         .slice(0, 10)
         .map((s) => s.id || s.getAttribute("aria-label") || "anon"),
+      // #4 v1.12.0 — SDUI variant markery (LinkedIn A/B test od 2026-05-11).
+      sduiTopcardFound: !!document.querySelector('[componentkey*="Topcard"]'),
+      sduiCardCount: document.querySelectorAll(
+        '[componentkey*="com.linkedin.sdui.profile.card"]'
+      ).length,
     };
   }
 
@@ -851,6 +964,28 @@
         return domResult;
       }
       // DOM path failed even though h1 existed — fall through to fallbacks.
+    }
+
+    // Fallback 0: SDUI variant (#4 v1.12.0). LinkedIn A/B test od 2026-05-11
+    // — brak h1/Voyager, dane w section[componentkey*="Topcard"]. Sprawdzamy
+    // przed Voyager bo SDUI page wprost nie zawiera bpr-guid payloadów, ale
+    // jeśli przyszłościowo będzie zawierać oba, classic-DOM-first to nasze
+    // domyślne (więcej fields).
+    const isSdui =
+      !hasClassicTopCard &&
+      !!document.querySelector('[componentkey*="Topcard"]');
+    if (isSdui) {
+      const sdui = extractFromSdui();
+      if (sdui && sdui.name) {
+        console.log("[LinkedIn MSG] Extracted via SDUI");
+        sdui._source = "sdui";
+        return {
+          success: true,
+          profile: sdui,
+          error: null,
+          timestamp: new Date().toISOString(),
+        };
+      }
     }
 
     // Fallback 1: Voyager JSON payloads embedded in <code id="bpr-guid-*">.
