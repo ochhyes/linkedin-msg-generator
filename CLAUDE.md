@@ -75,7 +75,7 @@ Każdy commit dotykający `extension/` (kod, manifest, popup, content) MUSI bump
 
 Dlaczego: Load Unpacked nie pokazuje hash'a commit'a. Bez bump'u nie wiesz w `chrome://extensions/` czy załadowałeś nowy kod, a Reload jest cichy. Bumpowana wersja widoczna obok nazwy extension'a → szybka weryfikacja.
 
-`extension/manifest.json` `key` field MUSI być stabilny (jest od v1.6.0) — bez niego ID extension'a zależy od path'y folderu Load Unpacked → utrata `chrome.storage.local` (queue, settings, follow-upy) przy update.
+`extension/manifest.json` `key` field MUSI być stabilny (jest od v1.6.0) — bez niego ID extension'a zależy od path'y folderu Load Unpacked → niespójność ID po Remove+Add. ALE: stabilny `key` chroni TYLKO ID (ikona, nazwa, manifest matches), **NIE chroni `chrome.storage.local` przy Remove**. Klik "Usuń" w `chrome://extensions/` zawsze wipe'uje storage, niezależnie od `key`. Sprawdzone empirycznie 2026-05-10 (Marcin lost queue) i potwierdzone 2026-05-11 (Marcin reportował dalszą utratę po raz drugi → diagnostyka pokazała pustą queue już PRZED Reload'em — Remove sprzed wczoraj był sprawcą, nie Reload). v1.11.1 retro (#40) miało błędną hipotezę "stable key zachowuje storage przy Remove+Add" — fix w `onInstalled` był poprawny defensywnie, ale założenie że `key` ma chronić storage przy Remove było false. **Operacyjna zasada: Reload TAK, Remove NIGDY bez backupu**. INSTRUKCJA.md ma żelazną regułę dla zespołu OVB.
 
 Commity zmieniające tylko `backend/`, `deploy/` lub dokumentację — NIE bumpują (tylko `extension/manifest.json`).
 
@@ -207,8 +207,10 @@ Sprint:        #5 (v1.11.3-1.11.5 hotfixe) + #6 OTWARTY 2026-05-11 (v1.12.0 SDUI
 Phase:         PM (decyzja: dystrybucja 1.12.0 + push 5 commits + Sprint #6 kolejne taski lub zamknąć)
 Active task:   żaden (#4 ZAMKNIĘTY 2026-05-11, smoke PASS)
 Last commit:   0290cdf — feat: SDUI extractor dla /in/<slug>/ (#4 reaktywowane, v1.12.0)
-Updated:       2026-05-11
+Updated:       2026-05-11 (diagnostyka follow-up wipe'u, korekta hipotezy v1.11.1)
 ```
+
+**Diagnostyka 2026-05-11 (follow-up wipe report od Marcina):** Marcin reportował że "wciąż się kasują dane z follow-upów" na v1.12.0. SW DevTools smoke test (`chrome.storage.local.get(null)`) pokazał pustą queue PRZED Reload'em → nie active wipe na Reload, tylko already-empty od Remove+Add z wczoraj. Korekta hipotezy v1.11.1: stable `key` NIE chroni storage przy Remove (tylko ID). v1.11.1 onInstalled defensive fix zostaje jako hardening ale nie adresuje root cause. INSTRUKCJA.md + CLAUDE.md zaktualizowane z żelazną regułą "Reload TAK, Remove NIGDY bez backupu" + procedura backup/restore przez DevTools. Memory `project_v1_11_1_distribution.md` przepisana. Bug w v1.12.0 — BRAK. Action item: zakomunikować zespołowi OVB przy dystrybucji 1.12.0 że Remove = total wipe (nawet z key field).
 
 **Workspace state (po zamknięciu Sprintu #5):**
 - origin/master up to date (commit `5f38348`)
@@ -244,7 +246,7 @@ Original scope (z 2026-05-09): "Stabilizacja + dystrybucja 1.8.0" — 5 tasków 
 - Permissions: ZERO nowych
 
 **Lessons learned (top 5):**
-1. **Stable extension `key` w manifest NIE wystarcza** — chroni Chrome's extension ID po Remove+Add ale nasz własny kod w `chrome.runtime.onInstalled` z reason="install" nadpisywał storage. Defensive get-before-set MUST-HAVE w każdym onInstalled handler'ze.
+1. **Stable extension `key` w manifest NIE chroni storage przy Remove** — początkowa hipoteza (data loss 2026-05-10) zakładała że `key` zachowuje `chrome.storage.local` a nasz onInstalled go nadpisuje. Defensive fix w onInstalled był poprawny hardening'iem ale **nie zaadresował root cause**: Chrome wipe'uje storage przy każdym Remove niezależnie od `key`. Potwierdzone 2026-05-11 gdy Marcin reportował dalszą utratę na v1.12.0 — SW DevTools `chrome.storage.local.get(null)` pokazał pustą queue już PRZED Reload'em. `key` chroni TYLKO ID (ikona/nazwa/matches). Reload TAK, Remove NIGDY bez backupu — żelazna regułą w INSTRUKCJA.md od 2026-05-11.
 2. **Storage quota silent fail** — `chrome.storage.local.set` ma 5 MB per-key limit. Try/catch + recovery cascade + telemetria w storage write paths z dużymi blob'ami (np. `scrapedProfile`) jest must-have, nie nice-to-have.
 3. **`world: "MAIN"` content_script + `run_at: "document_start"`** — pattern do patch'owania `window.fetch` widzianego przez page bundle. Reusable dla innych "patch the page" use case'ów. Wymaga Chrome 111+ (zespół OVB ma).
 4. **Sprint scope creep z real-world feedback'u OK gdy critical** — 5-task plan rozrósł do 8 wersji bo Marcin reportował critical bugs (data loss, flood, bulk gubi się). Lesson: gdy user reportuje krytyczny bug w trakcie sprintu, OK żeby scope się rozszerzył ALE eksplicytnie zamknąć (jak teraz).

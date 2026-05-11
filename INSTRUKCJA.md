@@ -16,22 +16,26 @@ Extension Chrome dla **bulk wysyłki zaproszeń** + **AI generator wiadomości**
 
 > **Aktualizacja do nowej wersji** (np. 1.6.0 → 1.8.0)
 >
-> **⚠️ ZALECANE: użyj Reload zamiast Usuń + Dodaj.** Reload zachowuje wszystkie Twoje dane, jest szybszy, mniej kliknięć.
+> **⚠️⚠️⚠️ ŻELAZNA REGUŁA: ZAWSZE Reload, NIGDY Usuń + Dodaj.**
 >
-> **Procedura Reload (ZALECANA):**
-> 1. Rozpakuj nowy zip do **TEGO SAMEGO folderu** co poprzedni (nadpisuje pliki). Np. masz `C:\linkedin-msg-extension\` z 1.6.0 → wypakuj 1.8.0 do tego samego folderu, kliknij "Tak, nadpisz" przy konflikcie.
+> Klik **"Usuń"** na ekranie `chrome://extensions/` **NIEODWRACALNIE KASUJE wszystkie Twoje dane** — kolejkę profili, drafty wiadomości, zaplanowane follow-upy, historię. Stabilny `key` w manifest (od v1.6.0) zachowuje **ID extension'a** po Remove+Add (ikona, nazwa wrócą), ale Chrome i tak wipe'uje `chrome.storage.local` przy każdym Usuń — niezależnie od `key`, niezależnie od wersji. Sprawdzone empirycznie 2026-05-10 i 2026-05-11.
+>
+> **Procedura Reload (JEDYNA POPRAWNA):**
+> 1. Rozpakuj nowy zip do **TEGO SAMEGO folderu** co poprzedni (nadpisuje pliki). Np. masz `C:\linkedin-msg-extension\` z 1.6.0 → wypakuj 1.12.0 do tego samego folderu, kliknij "Tak, nadpisz" przy konflikcie.
 > 2. W `chrome://extensions/` przy LinkedIn MSG klik **Reload** (ikona ↻).
-> 3. Sprawdź wersję `1.8.0` przy nazwie. Gotowe.
+> 3. Sprawdź nową wersję przy nazwie. Gotowe. Dane (kolejka, drafty, follow-upy) zachowane w 100%.
 >
-> **Procedura Remove + Add (NIEZALECANA, tylko gdy Reload nie działa):**
-> 1. Rozpakuj nowy zip — może być w nowym folderze.
-> 2. W `chrome://extensions/` klik **Usuń** przy starej wersji.
-> 3. Klik **Załaduj rozpakowane** → wybierz nowy folder.
-> 4. **UWAGA: Twoje dane (kolejka, drafty, follow-upy) PRZEŻYJĄ** dzięki stabilnemu `key` w manifest — Chrome traktuje extension jako tę samą niezależnie od folderu. ALE jeśli używałeś wersji < 1.6.0 (sprzed `key` field), Remove + Add WYKASUJE dane.
+> **Gdyby Reload coś popsuł (rzadkie):** zanim klikniesz Usuń, **najpierw zrób backup** (patrz niżej). Bez backupu Remove = total wipe bez recovery.
 >
-> **Gdzie są fizycznie dane:** `C:\Users\<user>\AppData\Local\Google\Chrome\User Data\Default\Local Extension Settings\<EXTENSION_ID>\` — Chrome trzyma to niezależnie od folderu z plikami extension'u. Format: LevelDB (binary).
+> **Gdzie są fizycznie dane:** `C:\Users\<user>\AppData\Local\Google\Chrome\User Data\Default\Local Extension Settings\<EXTENSION_ID>\` — folder LevelDB (binary). Klik "Usuń" w Chrome czyści ten folder.
 >
-> **Backup ręczny** (na wypadek wymiany komputera): manual przez DevTools console na popup'ie extension'u (prawym myszą na ikonie → Inspect popup): `chrome.storage.local.get(null, d => copy(JSON.stringify(d)))` — wkleja JSON do schowka, zapisz w pliku.
+> **Backup ręczny przed jakąkolwiek ryzykowną operacją:** prawym myszą na ikonie extension'u → Inspect popup → DevTools Console → wklej:
+> ```js
+> chrome.storage.local.get(null, d => copy(JSON.stringify(d)))
+> ```
+> JSON jest w schowku — wklej do pliku `backup-YYYY-MM-DD.json` i odłóż na bok.
+>
+> **Restore z backupu** (jeśli wpadniesz w pułapkę Remove+Add): popup → Inspect → Console → `chrome.storage.local.set(JSON.parse(<paste tu zawartość JSON-a w cudzysłowach>))` → Enter → reload popup'u.
 
 ---
 
