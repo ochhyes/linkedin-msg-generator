@@ -345,7 +345,7 @@ function urlMatchesSearch(urlStr) {
 }
 
 function getJitterMs() {
-  return 5000 + Math.random() * 10000;
+  return 2000 + Math.random() * 3000;
 }
 
 function parseKeywordsFromUrl(urlStr) {
@@ -397,12 +397,12 @@ console.log("\n▸ urlMatchesSearch — auto-navigate trigger condition");
   assertEqual(urlMatchesSearch(undefined), false, "undefined does NOT match");
 }
 
-console.log("\n▸ getJitterMs — anti-detection delay range 5-15s");
+console.log("\n▸ getJitterMs — anti-detection delay range 2-5s");
 {
   for (let i = 0; i < 100; i++) {
     const ms = getJitterMs();
-    assert(ms >= 5000 && ms <= 15000, `Jitter sample ${i} in [5000, 15000] (got ${ms})`);
-    if (ms < 5000 || ms > 15000) break; // early exit on first fail
+    assert(ms >= 2000 && ms <= 5000, `Jitter sample ${i} in [2000, 5000] (got ${ms})`);
+    if (ms < 2000 || ms > 5000) break; // early exit on first fail
   }
 }
 

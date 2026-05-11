@@ -201,11 +201,11 @@ PM 5–15 min · Dev 30–120 min · Tester 10–30 min · Commit 2–5 min.
 # CURRENT STATE
 
 ```
-Sprint:        #5 — ZAMKNIĘTY 2026-05-10 z v1.11.2 (8 wersji, 2 dni kalendarzowe)
-Phase:         PM (decyzja: dystrybucja 1.11.2 OVB + smoke 3-5d, potem Sprint #6)
-Active task:   żaden
+Sprint:        #5 — REOPENED 2026-05-11 dla hotfixu bulkAutoFillByUrl performance (v1.11.3)
+Phase:         Tester (manual smoke: czy "Wypełnij" działa w ~3-5s na 1 stronie)
+Active task:   #42 fix bulkAutoFillByUrl 2-minutowy timeout (gotowy do testu)
 Last commit:   5f38348 — fix: silent suppress flood `chrome-extension://invalid/` (#41, v1.11.2)
-Updated:       2026-05-10
+Updated:       2026-05-11
 ```
 
 **Workspace state (po zamknięciu Sprintu #5):**
@@ -254,11 +254,30 @@ Original scope (z 2026-05-09): "Stabilizacja + dystrybucja 1.8.0" — 5 tasków 
 
 ## TODO (priorytet od góry)
 
-(none — Sprint #5 zamknięty, oczekuje decyzji PM o Sprincie #6 po dystrybucji 1.11.2)
+(none — czeka na potwierdzenie #42 manual smoke, potem commit + dystrybucja 1.11.3)
 
 ## IN PROGRESS
 
-(none)
+- **#42** P0 fix: `bulkAutoFillByUrl` — 2-minutowy timeout na pierwszej stronie (v1.11.3). Marcin 2026-05-11: kliknął "Wypełnij" na search results, czekał 2 minuty, nic się nie stało. Root cause: pierwsza iteracja loop zawsze wywołuje `chrome.tabs.update(tab.id, {url: targetUrl})` + `waitForTabComplete(12000)`. Gdy `getPageFromUrl(currentUrl) === pageNum` (user już jest na docelowej stronie — najczęstszy use case), Chrome nie wystrzeli "complete" event'u → 12s timeout zmarnowany. Plus jitter 5-15s × N pages dolicza dodatkowe sekundy. Łącznie typowy scan 1 strony zajmował 13.5s+ a 3 stron 60-90s. Fix w `bulkAutoFillByUrl` (extension/background.js linie 1278-1301): (a) skip `tabs.update` + `waitForTabComplete` + render delay gdy `pagesScanned === 0 && pageNum === startPage` — DOM zhydrowany, scrape od razu (zysk: -13.5s na pierwszej stronie); (b) jitter 5-15s → 2-5s (Marcin: "rzadko będą potrzebne następne strony" — cap=25 mieści się typowo w 1-2 stronach, a worker tick'i przy faktycznym Connect mają osobny delay 45-120s, więc 2-5s nie zagraża anti-detection). test_bulk_connect.js: `getJitterMs` helper + range assertion `[2000, 5000]`. Testy: 474/0 PASS (test_bulk_connect 176 + ostatnie 298 z innych). Bump 1.11.2 → 1.11.3.
+
+  **Dev notes — what changed:**
+  - `extension/background.js` (bulkAutoFillByUrl, ~30 linii diff) — `alreadyOnTargetPage` guard + jitter formula 2000+rand*3000
+  - `extension/tests/test_bulk_connect.js` (2 diffy) — helper + assertion range
+  - `extension/manifest.json` — version bump
+
+  **How to test manually:**
+  1. Reload extension w `chrome://extensions/` (sprawdź wersja 1.11.3 obok nazwy)
+  2. Otwórz LinkedIn search results: `https://www.linkedin.com/search/results/people/?keywords=ovb`
+  3. Kliknij ikonę extension → tab "Bulk" → "Wypełnij do limitu"
+  4. **Pierwsza strona powinna scrape'ować się w ~3-5s** (poprzednio: 13.5s minimum, często 60-120s)
+  5. Jeśli cap mieści się w 1 stronie — nic więcej. Jeśli idzie na page 2: ~3-5s jitter potem nawigacja ~2s + scrape ~2s = łącznie ~10-15s na drugą stronę (poprzednio: ~15-30s).
+  6. Sprawdź że profile dodały się do queue (tab "Bulk" pokazuje "X w kolejce")
+
+  **Acceptance criteria:**
+  - [ ] "Wypełnij do limitu" gdy jesteś na page=1 z 10+ Connect-able profilami → kolejka zapełnia się w <5s (dla cap=10) lub <15s (dla cap=25 jeśli idzie na page 2)
+  - [ ] Nie ma reload'u karty na pierwszej stronie (sprawdź czy nie ma "ładowania" w pasku adresu)
+  - [ ] Auto-navigate na kolejne strony nadal działa (jeśli pierwsza strona miała mniej niż cap profili)
+  - [ ] Bulk worker nadal działa po Start (nic w tick'u nie zmienione, tylko auto-fill)
 
 ## READY FOR TEST
 

@@ -1274,28 +1274,31 @@ async function bulkAutoFillByUrl(maxProfiles) {
 
   let pageNum = getPageFromUrl(baseUrl); // start z aktualnej strony
   if (pageNum < 1) pageNum = 1;
+  const startPage = pageNum;
 
   for (let pagesScanned = 0; pagesScanned < PAGINATION_MAX_PAGES; pagesScanned++) {
-    // #39: anti-detection jitter 5-15s między pages. NIE przed pierwszą
-    // iteracją (już jesteśmy na page=N, scrape natychmiastowy = expected).
-    if (pagesScanned > 0) {
-      const jitter = 5000 + Math.random() * 10000;
+    // Pierwsza iteracja na bieżącej stronie — DOM zhydrowany, scrape od razu.
+    // BEZ tabs.update (Chrome nie wystrzeli "complete" gdy URL ten sam →
+    // waitForTabComplete timeout'owało 12s = root cause "czekam 2 minuty").
+    const alreadyOnTargetPage = pagesScanned === 0 && pageNum === startPage;
+    if (!alreadyOnTargetPage) {
+      // Anti-detection jitter 2-5s między pages. Krótszy niż 5-15s (#39)
+      // bo cap=25 mieści się typowo w 1-3 stronach, a worker tick'i przy
+      // faktycznym Connect mają osobny delay 45-120s.
+      const jitter = 2000 + Math.random() * 3000;
       await new Promise((r) => setTimeout(r, jitter));
+      const targetUrl = setPageInUrl(baseUrl, pageNum);
+      try {
+        await chrome.tabs.update(tab.id, { url: targetUrl });
+        await waitForTabComplete(tab.id, 12000);
+      } catch (err) {
+        // Tab load failed — przerwij, zwróć co mamy.
+        break;
+      }
+      // SDUI lazy render — extractSearchResults na świeżo loaded DOM często
+      // zwraca pustą listę. Dodatkowe 1.5s żeby listy się zrenderowały.
+      await new Promise((r) => setTimeout(r, PAGINATION_RENDER_DELAY_MS));
     }
-    // Navigate (nawet pierwsza iteracja — żeby gwarantować świeży DOM
-    // bez stale ze scrolla użytkownika; jeśli aktualnie jesteśmy na page=N
-    // ten update jest no-op — Chrome nie reload'uje gdy URL identyczny).
-    const targetUrl = setPageInUrl(baseUrl, pageNum);
-    try {
-      await chrome.tabs.update(tab.id, { url: targetUrl });
-      await waitForTabComplete(tab.id, 12000);
-    } catch (err) {
-      // Tab load failed — przerwij, zwróć co mamy.
-      break;
-    }
-    // SDUI lazy render — extractSearchResults na świeżo loaded DOM często
-    // zwraca pustą listę. Dodatkowe 1.5s żeby listy się zrenderowały.
-    await new Promise((r) => setTimeout(r, PAGINATION_RENDER_DELAY_MS));
 
     let pageProfiles = [];
     try {
