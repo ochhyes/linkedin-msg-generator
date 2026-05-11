@@ -223,6 +223,12 @@ const BULK_DEFAULTS = {
   tabId: null,
   lastSearchKeywords: null,
   navigateFailCount: 0,
+  // #44 v1.11.5 — cooperative cancel dla bulkAutoFillByUrl (pagination loop).
+  // Popup ustawia autoFillCancelRequested=true gdy user kliknie Stop. Loop
+  // sprawdza flag po każdej iteracji i breakuje z partial result.
+  // autoFillRunning żeby popup wiedział kiedy pokazać "Stop" zamiast "Wypełnij".
+  autoFillRunning: false,
+  autoFillCancelRequested: false,
 };
 
 const BULK_ALARM_NAME = "bulkKeepAlive";
@@ -1306,7 +1312,20 @@ async function bulkAutoFillByUrl(maxProfiles) {
   if (pageNum < 1) pageNum = 1;
   const startPage = pageNum;
 
+  // #44 v1.11.5 — cooperative cancel. Reset flag i zaznacz że auto-fill
+  // running, żeby popup pokazał button Stop. finally guarantee'uje
+  // wyczyszczenie nawet przy wyjątku.
+  await setBulkState({ autoFillRunning: true, autoFillCancelRequested: false });
+  let cancelled = false;
+  try {
   for (let pagesScanned = 0; pagesScanned < PAGINATION_MAX_PAGES; pagesScanned++) {
+    // Cooperative cancel — user kliknął Stop. Sprawdzamy PRZED jitter'em
+    // i navigation żeby cancel reagował szybko (max ~render delay = 1.5s).
+    const cancelCheck = await getBulkState();
+    if (cancelCheck.autoFillCancelRequested) {
+      cancelled = true;
+      break;
+    }
     // Pierwsza iteracja na bieżącej stronie — DOM zhydrowany, scrape od razu.
     // BEZ tabs.update (Chrome nie wystrzeli "complete" gdy URL ten sam →
     // waitForTabComplete timeout'owało 12s = root cause "czekam 2 minuty").
@@ -1368,6 +1387,11 @@ async function bulkAutoFillByUrl(maxProfiles) {
     if (collected.length >= cap) break;
     pageNum++;
   }
+  } finally {
+    // Zawsze resetuj running flag, nawet przy wyjątku — inaczej UI utknęłoby
+    // w stanie "Stop" bez możliwości ponownego uruchomienia.
+    await setBulkState({ autoFillRunning: false, autoFillCancelRequested: false });
+  }
 
   // Dorzuć do queue (addToQueue zachowuje pageNumber).
   let added = 0;
@@ -1381,6 +1405,7 @@ async function bulkAutoFillByUrl(maxProfiles) {
     added,
     pagesScanned: pageNum - getPageFromUrl(baseUrl),
     finalPage: pageNum,
+    cancelled,
   };
 }
 
@@ -1700,6 +1725,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         case "bulkAutoFillByUrl":
           return await bulkAutoFillByUrl(message.maxProfiles);
+
+        case "bulkAutoFillCancel":
+          await setBulkState({ autoFillCancelRequested: true });
+          return { success: true };
 
         case "getBulkState":
           return await getBulkState();

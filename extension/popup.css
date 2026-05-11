@@ -445,6 +445,18 @@ body {
   background: var(--border);
 }
 
+/* #44 v1.11.5 — modifier dla button stop dodawania (overrides --primary
+   look gdy auto-fill running). Czerwony żeby user widział że klik
+   przerwie operację, nie wystartuje kolejną. */
+.btn--danger {
+  background: #b3261e;
+  color: #fff;
+  border-color: #b3261e;
+}
+.btn--danger:hover:not(:disabled) {
+  background: #8c1d18;
+}
+
 .btn--small {
   flex: unset;
   padding: 5px 10px;

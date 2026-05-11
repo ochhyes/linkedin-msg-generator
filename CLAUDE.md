@@ -201,10 +201,10 @@ PM 5–15 min · Dev 30–120 min · Tester 10–30 min · Commit 2–5 min.
 # CURRENT STATE
 
 ```
-Sprint:        #5 — REOPENED 2026-05-11 (v1.11.3 + v1.11.4 hotfixe)
-Phase:         Tester (manual smoke #43: zamknij kartę search → worker recovery)
-Active task:   #43 fix resolveBulkTab tab-closed recovery (gotowy do testu)
-Last commit:   b110301 — fix: bulkAutoFillByUrl skip reload pierwszej strony + jitter 2-5s (#42, v1.11.3)
+Sprint:        #5 — REOPENED 2026-05-11 (v1.11.3 + v1.11.4 + v1.11.5 hotfixe)
+Phase:         Tester (manual smoke #44: button Stop dla auto-fill)
+Active task:   #44 button Stop dla bulkAutoFillByUrl (gotowy do testu)
+Last commit:   e90de5d — fix: resolveBulkTab recovery gdy user zamknął kartę search (#43, v1.11.4)
 Updated:       2026-05-11
 ```
 
@@ -257,6 +257,30 @@ Original scope (z 2026-05-09): "Stabilizacja + dystrybucja 1.8.0" — 5 tasków 
 (none — czeka na potwierdzenie #42 manual smoke, potem commit + dystrybucja 1.11.3)
 
 ## IN PROGRESS
+
+- **#44** P1 feat: button Stop dla bulkAutoFillByUrl (v1.11.5). Marcin 2026-05-11: "Dodaj też button do stop dodawania do kolejki, w razie jakby się wyjebał skrypt dodajacy nowe kontakty". Use case: gdy auto-fill (pagination loop) zacina się (LinkedIn rate-limit, DOM zmiany, slow render), user nie miał jak go przerwać — `btnBulkFill.disabled = true` przez całą operację. Fix: cooperative cancel przez storage flag. Background.js: `BULK_DEFAULTS` +2 pola (`autoFillRunning`, `autoFillCancelRequested`). `bulkAutoFillByUrl` na początku setBulkState({running:true, cancel:false}), w try/finally — finally guaranteed reset (nawet exception). W pętli for: pierwsza linia każdej iteracji `await getBulkState()` → jeśli `autoFillCancelRequested` truthy → set `cancelled=true`, break. Return zawiera `cancelled` field. Nowy handler `bulkAutoFillCancel` (router) ustawia flag. Popup.js: `_autoFillInProgress` flag, button NIE disable'owany podczas trwania (żeby user mógł kliknąć Stop) — zmienia tekst na "⏹ Stop dodawania" + class `btn--danger` (czerwony). Drugi klik wysyła `bulkAutoFillCancel`, zmienia text na "Zatrzymuję…", disable button — finally w pierwszym call'u resetuje UI gdy background return. CSS: nowy `.btn--danger` modifier (czerwony #b3261e). Bump 1.11.4 → 1.11.5.
+
+  **Dev notes:**
+  - `extension/background.js` — BULK_DEFAULTS +2 flagi, bulkAutoFillByUrl owinięty try/finally + cancel check w pętli, router +case `bulkAutoFillCancel`
+  - `extension/popup.js` — `handleAutoFillQueue` dual-mode (start vs cancel) + `_autoFillInProgress` flag
+  - `extension/popup.css` — `.btn--danger` modifier
+  - `extension/manifest.json` — 1.11.4 → 1.11.5
+  - Testy: 478/0 PASS (unchanged — cancel flow trivial dla unit testu, manual smoke wystarczy)
+
+  **How to test manually:**
+  1. Reload extension (sprawdź 1.11.5)
+  2. Search results LinkedIn → tab Bulk → "Wypełnij do limitu"
+  3. Podczas trwania (button zmienił się na czerwony "⏹ Stop dodawania") — kliknij Stop
+  4. **Oczekiwane:** button → "Zatrzymuję…" (disabled) na chwilę, potem powrót do "Wypełnij do limitu". W komunikacie: "Zatrzymano. Dodano X profili przed Stop."
+  5. Sprawdź queue — items dodane do momentu Stop są persistowane
+
+  **Acceptance criteria:**
+  - [ ] Klik podczas trwania auto-fill wyświetla Stop (czerwony, włączony)
+  - [ ] Drugi klik (Stop) przerywa loop w max ~1-2s (po zakończeniu bieżącej iteracji)
+  - [ ] Items zebrane przed Stop są zapisane do queue (partial result)
+  - [ ] Po Stop button wraca do default state ("Wypełnij do limitu", primary color)
+  - [ ] Cancel flag jest resetowany przy następnym starcie auto-fill (nie przerywa od razu)
+  - [ ] Wyjątek w środku auto-fill — finally czysci flagę, UI nie utyka w "Stop" mode
 
 - **#43** P0 fix: `resolveBulkTab` — worker nie potrafi wrócić gdy user zamknął kartę search results (v1.11.4). Marcin 2026-05-11: "zamknąłem kartę z wyszukiwaniem na której odbywało się dodawanie kontaktów, rozszerzenie nie potrafi do niej wrócić". Root cause: `resolveBulkTab()` (background.js:1116) próbuje `chrome.tabs.get(state.tabId)` → throws → fallback `findLinkedInSearchTab()` querowal po URL pattern. Jeśli karty zamknięte, brak żadnej karty z URL `/search/results/people/*` → null → tick exit'uje "Lost LinkedIn search tab". #39 (v1.10.0) dodał recovery dla "user navigated away in same tab" ale NIE dla "user closed tab". `lastSearchKeywords` był persistowany od #39 ale nieużywany w resolveBulkTab path. Fix: trzeci fallback w `resolveBulkTab` — gdy oba poprzednie fail, sprawdź `state.lastSearchKeywords`, znajdź `pending.pageNumber` z queue, `buildSearchUrl(keywords, page)`, `chrome.tabs.create({url, active:false})` (active:false żeby nie zabierać user'owi focus'u — worker zwykle w tle), `waitForTabComplete(12000)` + render delay, persist nowy tabId, telemetria `event_type:"bulk_tab_recovered"`. Gating: tylko gdy `lastSearchKeywords` truthy — gdy null/empty, skip recovery (URL bez keywords pokazałby "all people search", nie to czego user chciał). Test: 4 asercje w `canRecoverClosedTab` (test_bulk_connect.js). Bump 1.11.3 → 1.11.4.
 

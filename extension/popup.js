@@ -1907,10 +1907,32 @@
 
   // ── Auto-fill kolejki przez paginację LinkedIn'a (#22 wcielona w 1.4.1) ──
 
+  // #44 v1.11.5 — flag w popup'ie pozwala drugiemu klikowi w btnBulkFill
+  // wysłać bulkAutoFillCancel zamiast startować kolejny scan.
+  let _autoFillInProgress = false;
+
   async function handleAutoFillQueue() {
     if (!btnBulkFill) return;
-    btnBulkFill.disabled = true;
-    btnBulkFill.textContent = "Pobieranie z kolejnych stron…";
+
+    // Drugi klik podczas trwania — wyślij cancel, czekaj aż background
+    // resolve'uje pierwszy call z cancelled:true (resetuje button w finally).
+    if (_autoFillInProgress) {
+      btnBulkFill.disabled = true;
+      btnBulkFill.textContent = "Zatrzymuję…";
+      try {
+        await chrome.runtime.sendMessage({ action: "bulkAutoFillCancel" });
+      } catch (err) {
+        console.warn("[LinkedIn MSG] autoFillCancel failed:", err);
+      }
+      return;
+    }
+
+    _autoFillInProgress = true;
+    // NIE disable button — user musi mieć możliwość kliknięcia Stop podczas
+    // trwania scan'u. Text + className zmienia button na warning style.
+    btnBulkFill.textContent = "⏹ Stop dodawania";
+    btnBulkFill.classList.add("btn--danger");
+
     try {
       const state = await chrome.runtime.sendMessage({ action: "getBulkState" });
       const inQueue = state.queue.filter((q) => q.status === "pending").length;
@@ -1931,7 +1953,14 @@
         maxProfiles: remaining,
       });
 
-      if (resp?.success && resp?.added > 0) {
+      if (resp?.success && resp?.cancelled) {
+        await loadBulkState();
+        if (bulkError) {
+          bulkError.textContent = `Zatrzymano. Dodano ${resp.added || 0} profili przed Stop.`;
+          bulkError.classList.remove("hidden");
+          setTimeout(() => bulkError.classList.add("hidden"), 5000);
+        }
+      } else if (resp?.success && resp?.added > 0) {
         await loadBulkState();
         if (bulkError) {
           bulkError.textContent = `Dodano ${resp.added} profili (zeskanowano ${resp.pagesScanned || 0} stron, ostatnia: ${resp.finalPage || "?"}).`;
@@ -1956,8 +1985,10 @@
         bulkError.classList.remove("hidden");
       }
     } finally {
+      _autoFillInProgress = false;
       btnBulkFill.disabled = false;
       btnBulkFill.textContent = "Wypełnij do limitu";
+      btnBulkFill.classList.remove("btn--danger");
     }
   }
 
