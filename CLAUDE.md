@@ -207,11 +207,11 @@ PM 5–15 min · Dev 30–120 min · Tester 10–30 min · Commit 2–5 min.
 # CURRENT STATE
 
 ```
-Sprint:        #8 ZDYSTRYBUOWANY 2026-05-12 (v1.14.0→1.14.6 zespołowi OVB; smoke PASS) || #9 W TOKU — UX redesign OVB Professional Minimal: ✅ #24 Header+Tabs (v1.15.0) → #25 Buttons+ActionBar (rozpisany, do implementacji) → #26 Cards+Badges → #27 EmptyStates+Inputs → #28 Dashboard polish. Spec: UX_REDESIGN.md. + hotfixe v1.15.1 (walidacja hasła) + v1.15.2 ("Kopiuj i śledź" bez karty messaging).
+Sprint:        #8 ZDYSTRYBUOWANY 2026-05-12 (v1.14.0→1.14.6 zespołowi OVB; smoke PASS) || #9 W TOKU — UX redesign OVB Professional Minimal: ✅ #24 Header+Tabs (v1.15.0) → ✅ #25 Buttons+ActionBar (v1.16.0) + hotfix v1.16.1 ("Wyczyść" + popup 780px) → #26 Cards+Badges → #27 EmptyStates+Inputs → #28 Dashboard polish. Spec: UX_REDESIGN.md. + hotfixe v1.15.1 (walidacja hasła) + v1.15.2 ("Kopiuj i śledź" bez karty messaging).
 Phase:         Tester/PM (#25 Buttons + 3-fazowy action bar ZAKOMMITOWANY `9e6e3aa` v1.16.0 — czeka manual smoke Marcina. #24 Test PASS. PM rotuje na #26 Cards+Badges, P2 — 2 subagenty popup/dashboard.)
 Active task:   #25 ZAKOMMITOWANY `9e6e3aa` (v1.16.0) — 3-typ system przycisków (primary/secondary/ghost + sm/lg/danger) w popup.css+dashboard.css, legacy aliasy, 3-fazowy action bar (F1 primary-lg fullwidth / F2 ghost+primary / F3 ghost+ghost+primary). Czeka manual smoke. Następny: #26 (Cards + Badges unifikacja).
 Last commit:   4086547 — fix: "Kopiuj i śledź" nie otwiera karty messaging/compose (v1.15.2)  [+ 4a67d99 #24 v1.15.0 · e23b7a1 v1.15.1 hasło-walidacja · cfd8006/4cfb314/b4b8f46 docs · ba9499e zip · c0929fb PDF · b4fe596/127ec04/ce4c0f4/3542666/0484c65 Sprint #8]
-Updated:       2026-05-12 (#25 Buttons + 3-fazowy action bar zacommitowany 9e6e3aa v1.16.0 — czeka manual smoke; PM rotuje na #26)
+Updated:       2026-05-12 (#25 v1.16.0 zacommitowany; hotfix v1.16.1 — "Wyczyść" + popup rośnie do 780px; PM rotuje na #26)
 ```
 
 **Sprint #8 — podsumowanie (2026-05-12, w toku — czeka na manual smoke + dystrybucję):** Feature z `/ultraplan` rozrósł się w jednym dniu w **7 wersji + zip + PDF instrukcji** napędzane real-time feedbackiem Marcina:
