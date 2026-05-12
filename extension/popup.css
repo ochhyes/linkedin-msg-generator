@@ -118,12 +118,12 @@
 body {
   width: 380px;
   min-height: 200px;
-  /* #25.1: popup rośnie z treścią (np. po otwarciu „Ustawienia bulk")
+  /* #25.1/#28: popup rośnie z treścią (np. po otwarciu „Ustawienia bulk")
      aż do tego limitu; dopiero gdy treść go przekroczy — wewnętrzny scroll
-     w .tab-content. 780px > typowy ekran laptopa nie zmieści w okienku
+     w .tab-content. 850px > typowy ekran laptopa nie zmieści w okienku
      popupa → Chrome i tak doklamuje do dostępnej wysokości, więc realnie
      scroll pojawia się "gdy nie mieści się na ekranie". */
-  max-height: 780px;
+  max-height: 850px;
   overflow: hidden;
   background: var(--bg);
   color: var(--text);
@@ -138,7 +138,7 @@ body {
   display: flex;
   flex-direction: column;
   height: 100%;
-  max-height: 780px;
+  max-height: 850px;
 }
 
 #view-main {
@@ -1195,66 +1195,8 @@ body {
   color: var(--bg);
 }
 
-/* ── Bulk target URL hint (#39 worker resilience, v1.9.x) ────────────
-   Sticky bottom strip w Bulk tab — pokazuje user'owi gdzie powinien być
-   gdy worker bulk active a current tab URL nie matchuje search results.
-   Tab-content padding to 12px 16px (var(--space-3) var(--space-4)),
-   więc negative margin -16px sideways daje full-width strip. */
-.bulk-target-url {
-  position: sticky;
-  bottom: 0;
-  background: #fff8e1;
-  border-top: 1px solid #fbc02d;
-  padding: 8px 12px;
-  font-size: 12px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  z-index: 10;
-  margin: var(--space-3) -16px -12px;
-}
-
-.bulk-target-url.hidden,
-.bulk-target-url[hidden] {
-  display: none;
-}
-
-.bulk-target-url__icon {
-  flex-shrink: 0;
-}
-
-.bulk-target-url__label {
-  color: #5d4037;
-  white-space: nowrap;
-  font-weight: 500;
-}
-
-.bulk-target-url__link {
-  color: #1976d2;
-  text-decoration: underline;
-  word-break: break-all;
-  cursor: pointer;
-}
-
-.bulk-target-url__link:hover {
-  color: #0d47a1;
-}
-
-.bulk-target-url__close {
-  margin-left: auto;
-  flex-shrink: 0;
-  border: none;
-  background: transparent;
-  color: #5d4037;
-  font-size: 16px;
-  line-height: 1;
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
-.bulk-target-url__close:hover {
-  background: rgba(93, 64, 55, 0.12);
-}
+/* (#28: `.bulk-target-url*` usunięte — hint "📍 Powinien być na" wycofany,
+   od v1.14.5 worker łączy z profili w tle, nie nawiguje karty wyszukiwania.) */
 
 /* #38 reply tracking — read-only tag w scheduled rows */
 .followup-row__replied {

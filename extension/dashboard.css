@@ -113,7 +113,7 @@ body {
   padding-bottom: 16px;
   border-bottom: 1px solid var(--border);
 }
-.hdr__title h1 { font-size: 22px; margin: 0 0 6px; font-weight: 600; }
+.hdr__title h1 { font-size: 22px; margin: 0 0 6px; font-weight: 600; color: var(--brand-primary); letter-spacing: -0.01em; }
 .hdr__sub { margin: 0; color: var(--text-secondary); font-size: 13px; }
 
 /* ── Buttons — 3-typowy system OVB Minimal (UX redesign #25 v1.16.0) ──
@@ -403,6 +403,7 @@ body {
   font-weight: 600;
   font-size: 15px;
   color: var(--brand-primary);
+  font-variant-numeric: tabular-nums;   /* #28: liczby wyrównane w kolumnie */
 }
 
 .stats-arrow {
@@ -412,12 +413,11 @@ body {
   padding: 2px 12px;
   font-size: 11px;
   color: var(--text-muted);
-  font-style: italic;
 }
 
 .stats-row--total {
   background: var(--brand-primary-soft);
-  border: 2px solid var(--brand-primary);
+  border: 1px solid var(--brand-primary);
   margin-top: 6px;
 }
 
@@ -427,11 +427,11 @@ body {
 }
 
 .stats-empty {
-  color: var(--text-secondary);
-  font-style: italic;
+  color: var(--text-muted);
   text-align: center;
-  padding: 12px;
+  padding: var(--space-6) var(--space-4);
   margin: 0;
+  font-size: 13px;
 }
 
 /* ── Contacts table (#38 v1.11.0) ────────────────────────────── */
