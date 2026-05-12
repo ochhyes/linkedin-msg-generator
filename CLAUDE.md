@@ -208,8 +208,8 @@ PM 5–15 min · Dev 30–120 min · Tester 10–30 min · Commit 2–5 min.
 
 ```
 Sprint:        #8 ZDYSTRYBUOWANY (v1.14.0→1.14.6) || #9 UX redesign OVB Professional Minimal — **KOMPLETNY** 2026-05-12: ✅ #24 Header+Tabs (v1.15.0) → ✅ #25 Buttons+3-faz action bar (v1.16.0) → ✅ #26 Cards+Badges (v1.17.0) → ✅ #27 Inputs(focus-ring)+EmptyStates (v1.18.0) → ✅ #28 Dashboard polish + 🔧 2 szlify (v1.19.0). + hotfixe v1.15.1/v1.15.2/v1.16.1. NIEPUSHOWANE — push po smoke + dystrybucji.
-Phase:         PM (Sprint #9 zamknięty kodowo. Pending Marcin: (1) manual smoke wg `docs/SMOKE-TEST.md` (v1.19.0), (2) regen `extension 1.19.1.zip` + ew. odśwież PDF instrukcji (cover v1.14.6→1.19.0), (3) dystrybucja zespołowi OVB, (4) `git push`. Nast. sprint do wyboru: #22 reszta / #10 selectors.json / #6 self-test widget.)
-Active task:   żaden (Sprint #9 KOMPLETNY — #24-#28 + 2 szlify, v1.15.0→1.19.0, zacommitowane lokalnie. Czeka manual smoke + dystrybucja + push.)
+Phase:         PM (Sprint #9 ZAMKNIĘTY 2026-05-12 — smoke wizualny PASS, Marcin: "graficznie bardzo się podoba". Pending operacyjne: regen `extension 1.19.1.zip` + ew. odśwież PDF, dystrybucja zespołowi OVB, `git push`. Nast. sprint do wyboru: #22 reszta / #10 selectors.json / #6 self-test widget / rename→v2.0.0.)
+Active task:   żaden (Sprint #9 ZAMKNIĘTY — #24-#28 + szlify + hotfix v1.19.1, smoke PASS. Czeka tylko: regen zip + dystrybucja + git push.)
 Last commit:   a75e9ed — fix: scroll w zakładce + rename "Bulk" → "Budowanie sieci" (v1.19.1)  [+ 50223de docs · dde273f #28 v1.19.0]  [+ ddfd084 #27 v1.18.0 · 1844d59 #26 v1.17.0 · 9e6e3aa #25 v1.16.0 · 4a67d99 #24 v1.15.0 · e8433e3 v1.16.1 · 4086547 v1.15.2 · e23b7a1 v1.15.1 · … docs · Sprint #8]
 Updated:       2026-05-12 (Sprint #9 KOMPLETNY + hotfix v1.19.1: fix scroll w zakładce po "Ustawienia" + "Bulk"→"Budowanie sieci"; czeka smoke + regen zip + dystrybucja + push)
 ```
