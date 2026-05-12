@@ -207,11 +207,11 @@ PM 5–15 min · Dev 30–120 min · Tester 10–30 min · Commit 2–5 min.
 # CURRENT STATE
 
 ```
-Sprint:        #8 OTWARTY 2026-05-12 (feature z /ultraplan: trwała baza profili + auto-backup + dark mode + connect-z-profilu) — 7 wersji w 1 dniu (v1.14.0→1.14.6), zacommitowane, NIEPUSHOWANE. Sprint #7 UX redesign: #46 (tokeny v1.13.0) + dark mode (v1.14.1) ZROBIONE, zostało #24-#28 (refaktor komponentów → v2.0.0).
-Phase:         Commit/PM (cały kod v1.14.0-1.14.6 + zip + PDF instrukcji zacommitowane lokalnie. Pending Marcin: git push + manual smoke 1.14.6 + VPS .env + dystrybucja zip+PDF. Decyzja PM: następny sprint — #22 reszta / #24-#28 / #10.)
-Active task:   żaden (Sprint #8 zaimplementowany w całości — #48 baza+backup, #49 Resume fix+addCount, #50 connect-z-profilu, #51 X+master-select. Czeka manual smoke 1.14.6 + dystrybucja.)
-Last commit:   c0929fb — docs: profesjonalna instrukcja uzytkownika v1.14.6 (HTML+PDF)  [ba9499e chore: regen extension 1.14.6.zip · b4fe596 #51 v1.14.6 · 127ec04 #50 v1.14.5 · c796e0f docs · ce4c0f4 #49 v1.14.4 · 62c33ea docs cleanup · 3542666 v1.14.3 · 0484c65 #48 v1.14.0-1.14.2]
-Updated:       2026-05-12 (Sprint #8 zaimplementowany w całości: v1.14.0-1.14.6 + extension 1.14.6.zip + docs/instrukcja PDF; czeka push + manual smoke + dystrybucja)
+Sprint:        #8 CODE-COMPLETE 2026-05-12 (v1.14.0→1.14.6, 7 wersji, zacommitowane, NIEPUSHOWANE — czeka push + smoke 1.14.6 + dystrybucja zip+PDF) || #9 ZAPLANOWANY (UX redesign OVB Professional Minimal — domknięcie Sprintu #7: komponenty #24-#28; bump v2.0.0; spec UX_REDESIGN.md) — Dev GATE'owany na dystrybucję Sprintu #8.
+Phase:         PM→Developer (#24 Header+Tabs rozpisany w IN PROGRESS z planem/AC/plikami/ryzykami). GATE: Dev startuje dopiero po `git push` + manual smoke 1.14.6 + dystrybucji Sprintu #8 (żeby nie mieszać dużej zmiany wizualnej z niezweryfikowanym wave'em v1.14.x).
+Active task:   #24 (Sprint #9) — Header + Tabs refactor (jasny header + logo OVB + tytuł "Outreach", sentence-case taby z navy podkreśleniem, navy pill badge). Patrz IN PROGRESS. Czeka na otwarcie gate'u.
+Last commit:   c0929fb — docs: profesjonalna instrukcja uzytkownika v1.14.6 (HTML+PDF)  [+ ba9499e regen zip · b4fe596 #51 v1.14.6 · 127ec04 #50 v1.14.5 · ce4c0f4 #49 v1.14.4 · 3542666 v1.14.3 · 0484c65 #48 v1.14.0-1.14.2 · b4b8f46/c796e0f/62c33ea docs]
+Updated:       2026-05-12 (Sprint #8 code-complete; Sprint #9 zaplanowany — #24 Header+Tabs rozpisany, Dev gate'owany na dystrybucję #8)
 ```
 
 **Sprint #8 — podsumowanie (2026-05-12, w toku — czeka na manual smoke + dystrybucję):** Feature z `/ultraplan` rozrósł się w jednym dniu w **7 wersji + zip + PDF instrukcji** napędzane real-time feedbackiem Marcina:
@@ -276,9 +276,43 @@ Original scope (z 2026-05-09): "Stabilizacja + dystrybucja 1.8.0" — 5 tasków 
 
 ## TODO (priorytet od góry)
 
-(none — Sprint #8 czeka na manual smoke 1.14.3 + dystrybucja; następny sprint do wyboru: #22 auto-pagination [rekomendacja — bezpośrednio łagodzi limity wyszukiwania LI] / #24-#28 refaktor komponentów → v2.0.0 / #10 selectors.json — patrz BACKLOG)
+**Sprint #9 — UX redesign OVB Professional Minimal** (rozplanowany w IN PROGRESS). Kolejność tasków:
+1. **#24** Header + Tabs refactor — *rozpisany w IN PROGRESS z planem/AC*. Dev GATE'owany na dystrybucję Sprintu #8.
+2. **#25** Buttons + Action bar refactor (3-typ system primary/secondary/ghost + 3-fazowy action bar) — `UX_REDESIGN.md` 3.3+3.4. PM rozpisze po #24.
+3. **#26** Cards + Badges unifikacja (popup + dashboard, P2) — `UX_REDESIGN.md` 3.5+3.6.
+4. **#27** Empty states + Inputs polish (P2, ~0.5 sesji) — `UX_REDESIGN.md` 3.7+3.8.
+5. **#28** Dashboard cleanup + Stats funnel polish (P3) — `UX_REDESIGN.md` 3.x.
+
+Po Sprincie #9 — backlog: #22 reszta (master-select zrobiony; zostaje DOM dump paginacji + checkboxy 2nd-only/unselect-pending + "Stop after N pages") / #10 selectors.json + dedup Voyager parsera / #6 self-test scraper widget.
 
 ## IN PROGRESS
+
+> **═══ SPRINT #9 — UX redesign OVB Professional Minimal (PM plan 2026-05-12) ═══**
+> Domknięcie Sprintu #7 (#46 design tokeny v1.13.0 + dark mode v1.14.1 już zrobione) — zostały **komponenty**. Spec: `UX_REDESIGN.md` sekcje 3.1–3.8 + 4 ("Sprint #7 — dekompozycja na 6 podtasków", numeracja `#23-#28` w spec to placeholdery — #23=tokeny ZROBIONE jako v1.13.0; tu kontynuujemy #24-#28). Wizualny redesign, ZERO zmian kontraktu z backendem ani flow danych. **Wersja:** wg `UX_REDESIGN.md` bump major → **v2.0.0** przy starcie (UX_REDESIGN traktuje redesign + rename "LinkedIn MSG" → "Outreach" + 3-fazowy action bar jako breaking-visual). Alternatywa: 1.15.0 jeśli zostawiamy nazwę i flow — **decyzja Marcina przy starcie Dev'a.**
+> **Zakres (5 podtasków, kolejność = parallelizacja z UX_REDESIGN sekcja 4):** #24 Header+Tabs · #25 Buttons+ActionBar (3-typ system + 3-fazowy bar) · #26 Cards+Badges unifikacja (popup+dashboard, P2) · #27 EmptyStates+Inputs polish (P2, ~0.5) · #28 Dashboard cleanup + Stats funnel polish (P3). Estymata: ~3-4 sesje Claude (część przez subagenty: #24+#25 równolegle, #26 duża z 2 subagentami popup/dashboard, #27+#28 równolegle) + ~2-3 sesje smoke Marcina.
+> **GATE Dev'a:** zacząć dopiero gdy Sprint #8 jest **wypchnięty (`git push`) + zsmoke'owany (1.14.6) + zdystrybuowany** (żeby nie mieszać dużej zmiany wizualnej z niezweryfikowanym wave'em v1.14.x). Do tego czasu — ten plan czeka, Dev nie startuje.
+
+- **#24** (Sprint #9, P1) — **Header + Tabs refactor** (`UX_REDESIGN.md` 3.1 + 3.2). PM decomposition:
+  1. **Header** (`popup.html` `#app > header` + `popup.css` `.header*`): tło `var(--bg)` (nie ciemne), `border-bottom: 1px var(--border)`, `padding: 14px 20px`, `height: 56px`. Lewa: logo OVB 24×24 (SVG inline — wziąć z `extension/icons/source-master.svg`/`source-16.svg` albo prosty „in"-mark; jeśli brak gotowego — fallback prosty `<svg>` z literami „in" na `--brand-primary`) + tytuł **„Outreach"** 15px/600/`--brand-primary` (zmiana z „LinkedIn MSG"; pod spodem opcjonalny tagline „OVB Allfinanz" 10px/`--text-muted`). Prawa: 2 ikony (📊 dashboard + ⚙ ustawienia), hit area 32×32, ikona 18px, `:hover` `--bg-muted`.
+  2. **Tabs** (`popup.html` `.tabs` + `popup.css` `.tab*`): sentence case (Profil / Bulk / Follow-upy), **ZERO uppercase**, `font: 500 13px`, `padding: 14px 8px`, `height: 44px`. Active: `color: var(--brand-primary)` + `border-bottom: 2px var(--brand-primary)`. Badge w „Follow-upy": pill `--radius-pill`, `background: var(--brand-primary)`, `color: #fff`, 11px/500 (przepisać istniejący `.followup-tab-badge` / `followup-count-badge`).
+  3. **Manifest** — opcjonalnie `"name"` „LinkedIn Message Generator" → „Outreach (LinkedIn)" (jeśli decyzja = rename). Działa też bez zmiany name'a — wtedy tytuł w headerze ≠ name w `chrome://extensions`, ale to OK (dev-mode).
+  4. Sprawdzić że dark mode dalej działa (tokeny `--bg`/`--border`/`--brand-primary` już mają dark override z v1.14.1 — header/tabs powinny się dopasować automatycznie, ale zweryfikować kontrast logo/tytułu na ciemnym).
+  5. Bump wersji (v2.0.0 lub 1.15.0 — wg decyzji z gate'u). Pierwsza wersja sprintu — ustala tor numeracji dla #25-#28.
+
+  **Pliki:** `extension/popup.html` (sekcja header + tabs), `extension/popup.css` (`.header*`, `.tab*`, badge), `extension/manifest.json` (version, opcjonalnie name), ewentualnie `extension/icons/` (jeśli nowy inline-SVG logo trafia jako plik — raczej inline w HTML). **Bez JS** (chyba że badge re-render wymaga drobnej zmiany w `updateFollowupTabBadge` — sprawdzić).
+
+  **Ryzyka:** (1) header/tabs to widoczna zmiana — łatwo o regresje layoutu (popup ma fixed width 380px, header `height:56px` musi się zmieścić). (2) Komponenty pod headerem (action bar, profile card) NIE są jeszcze zrefaktorowane (#25-#26) — mogą wyglądać niespójnie do czasu tych tasków; TO OK, jak w #46. (3) Rename na „Outreach" w `manifest.name` zmieni nazwę w `chrome://extensions` — przy Reload (nie Remove) ID stabilne, więc bezpieczne, ale zespół zobaczy inną nazwę → zakomunikować przy dystrybucji v2.0.0.
+
+  **Acceptance criteria:**
+  - [ ] Header: jasne tło (`--bg`), `border-bottom`, logo OVB widoczne, tytuł „Outreach" 15px/600 navy, 2 ikony po prawej z hover'em
+  - [ ] Tabs: sentence case, brak uppercase, active z navy podkreśleniem 2px, badge follow-up jako navy pill
+  - [ ] Popup otwiera się bez crash'a/blank, fixed width 380px zachowany, nic nie wystaje
+  - [ ] Dark mode: header/tabs ciemne, tytuł/logo czytelne na ciemnym tle
+  - [ ] `node tests/test_syntax.js` PASS, brak regresji JS (534/0 albo aktualny baseline)
+  - [ ] Manifest version zbumpowany (v2.0.0 lub 1.15.0)
+  - [ ] Smoke: scrape profilu + generowanie wiadomości + przełączanie zakładek działa identycznie
+
+  → Po #24: PM rotuje na #25 (Buttons+ActionBar). CURRENT STATE → `Phase: Developer` (gdy Sprint #8 zdystrybuowany).
 
 - **#48** — feature z `/ultraplan` 2026-05-12: trwała baza profili + auto-backup + dark mode + UI "Hasło dostępu" + animacja "pobieram profil" (v1.14.0–1.14.3). **COMMITTED** `0484c65` (v1.14.0-1.14.2) + `3542666` (v1.14.3), testy **534/0 PASS**. Pełny opis: DONE → Sprint #8.
 
