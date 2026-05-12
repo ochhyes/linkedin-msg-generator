@@ -118,12 +118,13 @@
 body {
   width: 380px;
   min-height: 200px;
-  /* #25.1/#28: popup rośnie z treścią (np. po otwarciu „Ustawienia bulk")
-     aż do tego limitu; dopiero gdy treść go przekroczy — wewnętrzny scroll
-     w .tab-content. 850px > typowy ekran laptopa nie zmieści w okienku
-     popupa → Chrome i tak doklamuje do dostępnej wysokości, więc realnie
-     scroll pojawia się "gdy nie mieści się na ekranie". */
-  max-height: 850px;
+  /* #28.1: BEZ stałego max-height. Popup auto-sizuje się do treści (Chrome
+     mierzy dokument), a Chrome i tak doklamowuje wysokość do dostępnego
+     ekranu — więc realnie "rośnie z treścią, scroll dopiero gdy nie mieści
+     się na ekranie". Scroll-container = .tab-content (flex:1 + overflow-y:auto
+     + min-height:0); cały łańcuch #app → #view-main → .tab-content ma
+     flex:1 + min-height:0 żeby scroll się poprawnie propagował (wcześniej
+     #app miał height:100% co rozwalało scroll przy dużej treści). */
   overflow: hidden;
   background: var(--bg);
   color: var(--text);
@@ -137,8 +138,8 @@ body {
 #app {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  max-height: 850px;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 #view-main {
