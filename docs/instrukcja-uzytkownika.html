@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>LinkedIn Message Generator — Instrukcja użytkownika (v1.14.6)</title>
+<style>
+  :root {
+    --navy: #002A5C;
+    --navy-soft: #E8EEF6;
+    --ink: #1A202C;
+    --ink-2: #4A5563;
+    --muted: #6B7785;
+    --line: #D8DEE6;
+    --accent: #0A7849;
+    --warn: #B8731F;
+    --warn-bg: #FBF3E5;
+    --danger: #C8102E;
+    --danger-bg: #FBE9EC;
+  }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink);
+    font-size: 10.5pt;
+    line-height: 1.55;
+  }
+  /* Page setup for print → PDF */
+  @page {
+    size: A4;
+    margin: 18mm 16mm 18mm 16mm;
+  }
+  @media print {
+    a { color: var(--navy); text-decoration: none; }
+    .no-print { display: none; }
+  }
+  a { color: var(--navy); }
+
+  /* ── Cover ───────────────────────────────── */
+  .cover {
+    page-break-after: always;
+    min-height: 245mm;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    text-align: center;
+    padding: 0 10mm;
+  }
+  .cover .brandmark {
+    width: 64px; height: 64px; margin: 0 auto 18px;
+    border-radius: 14px; background: var(--navy);
+    color: #fff; font-weight: 800; font-size: 28px;
+    display: flex; align-items: center; justify-content: center;
+    letter-spacing: -1px;
+  }
+  .cover h1 {
+    font-size: 30pt; color: var(--navy); margin: 0 0 6px; font-weight: 800; letter-spacing: -0.5px;
+  }
+  .cover .subtitle { font-size: 13pt; color: var(--ink-2); margin: 0 0 32px; font-weight: 400; }
+  .cover .meta {
+    border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+    padding: 14px 0; margin: 0 auto; max-width: 360px; color: var(--muted); font-size: 10pt;
+  }
+  .cover .meta b { color: var(--ink); }
+  .cover .audience { margin-top: 28px; color: var(--muted); font-size: 10pt; }
+
+  /* ── Headings ────────────────────────────── */
+  h2 {
+    font-size: 16pt; color: var(--navy); margin: 26px 0 8px;
+    padding-bottom: 5px; border-bottom: 2px solid var(--navy-soft); font-weight: 700;
+    page-break-after: avoid;
+  }
+  h2.newpage { page-break-before: always; }
+  h3 { font-size: 12pt; color: var(--navy); margin: 18px 0 4px; font-weight: 700; page-break-after: avoid; }
+  h4 { font-size: 10.5pt; color: var(--ink); margin: 12px 0 2px; font-weight: 700; }
+  p { margin: 6px 0; }
+  ul, ol { margin: 6px 0 6px 0; padding-left: 20px; }
+  li { margin: 3px 0; }
+  code { font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace; font-size: 9pt; background: #F1F3F5; padding: 1px 4px; border-radius: 3px; color: #243; }
+  strong { color: var(--ink); }
+
+  /* ── TOC ─────────────────────────────────── */
+  .toc { page-break-after: always; }
+  .toc h2 { border: none; }
+  .toc ol { list-style: none; padding-left: 0; counter-reset: toc; }
+  .toc > ol > li { counter-increment: toc; margin: 5px 0; font-weight: 600; }
+  .toc > ol > li::before { content: counter(toc) ". "; color: var(--navy); }
+  .toc ol ol { list-style: none; padding-left: 22px; margin: 2px 0; font-weight: 400; color: var(--ink-2); }
+  .toc ol ol li::before { content: "– "; color: var(--muted); }
+
+  /* ── Callouts ────────────────────────────── */
+  .box {
+    border-left: 4px solid var(--navy); background: var(--navy-soft);
+    padding: 10px 14px; margin: 12px 0; border-radius: 0 6px 6px 0; font-size: 10pt;
+    page-break-inside: avoid;
+  }
+  .box.warn { border-left-color: var(--warn); background: var(--warn-bg); }
+  .box.danger { border-left-color: var(--danger); background: var(--danger-bg); }
+  .box .box-title { font-weight: 800; display: block; margin-bottom: 3px; color: var(--ink); }
+
+  /* ── Steps ───────────────────────────────── */
+  ol.steps { counter-reset: step; list-style: none; padding-left: 0; }
+  ol.steps > li {
+    counter-increment: step; position: relative; padding-left: 30px; margin: 8px 0;
+  }
+  ol.steps > li::before {
+    content: counter(step); position: absolute; left: 0; top: 0;
+    width: 20px; height: 20px; border-radius: 50%; background: var(--navy); color: #fff;
+    font-size: 9pt; font-weight: 700; display: flex; align-items: center; justify-content: center;
+  }
+
+  /* ── Tables ──────────────────────────────── */
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 9.5pt; page-break-inside: avoid; }
+  th, td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: top; }
+  th { background: var(--navy-soft); color: var(--navy); font-weight: 700; }
+  tr:nth-child(even) td { background: #FAFBFC; }
+
+  /* ── FAQ ─────────────────────────────────── */
+  .faq dt { font-weight: 700; color: var(--navy); margin-top: 12px; }
+  .faq dd { margin: 2px 0 0 0; color: var(--ink-2); }
+
+  .footer-note { margin-top: 28px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: 8.5pt; }
+  .print-hint { background: #fffae6; border: 1px dashed #d9a300; padding: 8px 12px; margin: 0 0 16px; font-size: 10pt; border-radius: 6px; }
+  .pill { display: inline-block; background: var(--navy-soft); color: var(--navy); border-radius: 999px; padding: 1px 8px; font-size: 8.5pt; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<div class="print-hint no-print">
+  <strong>Aby zapisać jako PDF:</strong> otwórz ten plik w Chrome → <code>Ctrl + P</code> → Drukarka: <em>Zapisz jako PDF</em> → Marginesy: <em>Domyślne</em> → Grafika tła: <em>WŁ.</em> → Zapisz. (Ten ekran znika w wydruku.)
+</div>
+
+<!-- ═══════════════ COVER ═══════════════ -->
+<section class="cover">
+  <div class="brandmark">in</div>
+  <h1>LinkedIn Message Generator</h1>
+  <p class="subtitle">Instrukcja użytkownika</p>
+  <div class="meta">
+    <p><b>Wersja:</b> 1.14.6</p>
+    <p><b>Typ:</b> rozszerzenie Chrome (Manifest V3) + backend AI</p>
+    <p><b>Data wydania dokumentu:</b> maj 2026</p>
+  </div>
+  <p class="audience">Dokument wewnętrzny — dla zespołu OVB Allfinanz oraz osób korzystających z rozszerzenia.<br>Zastępuje Octopus Starter.</p>
+</section>
+
+<!-- ═══════════════ TOC ═══════════════ -->
+<section class="toc">
+  <h2>Spis treści</h2>
+  <ol>
+    <li>Co to jest i co potrafi
+      <ol><li>Najważniejsze funkcje</li><li>Nowości w wersji 1.14.x</li></ol>
+    </li>
+    <li>Instalacja
+      <ol><li>Pierwsza instalacja (Load Unpacked)</li><li>Aktualizacja do nowej wersji</li></ol>
+    </li>
+    <li>Pierwsze uruchomienie — ustawienia
+      <ol><li>Hasło dostępu, URL, kontekst nadawcy</li><li>Auto-backup bazy</li></ol>
+    </li>
+    <li>Codzienny workflow
+      <ol>
+        <li>Bulk Connect — wysyłanie zaproszeń</li>
+        <li>Sprawdzanie akceptacji</li>
+        <li>Generowanie wiadomości po Connect</li>
+        <li>Manual outreach (pisanie do osób spoza Bulk)</li>
+        <li>Follow-upy 3 dni / 7 dni</li>
+        <li>Dashboard — follow-upy, statystyki, baza profili</li>
+      </ol>
+    </li>
+    <li>Baza profili i kopie zapasowe
+      <ol><li>Co trafia do bazy</li><li>Eksport CSV / JSON</li><li>Import pliku i kontaktów</li><li>Auto-backup i przywracanie</li></ol>
+    </li>
+    <li>Tryb ciemny / jasny</li>
+    <li>Bezpieczeństwo danych — zasady żelazne</li>
+    <li>FAQ i rozwiązywanie problemów</li>
+    <li>Czego rozszerzenie NIE robi</li>
+    <li>Kontakt i wsparcie</li>
+    <li>Załącznik: historia zmian (skrót)</li>
+  </ol>
+</section>
+
+<!-- ═══════════════ 1 ═══════════════ -->
+<h2 id="s1">1. Co to jest i co potrafi</h2>
+<p><strong>LinkedIn Message Generator (LinkedIn MSG)</strong> to rozszerzenie do przeglądarki Chrome, które automatyzuje pozyskiwanie kontaktów na LinkedIn i pomaga pisać spersonalizowane wiadomości z użyciem sztucznej inteligencji. Rozszerzenie komunikuje się z prywatnym backendem (serwer pod adresem <code>linkedin-api.szmidtke.pl</code>), na którym znajduje się klucz do modelu AI — ten klucz nigdy nie opuszcza serwera.</p>
+
+<h3>1.1 Najważniejsze funkcje</h3>
+<ul>
+  <li><strong>Bulk Connect</strong> — masowe wysyłanie zaproszeń do kontaktu (z bezpiecznymi limitami: losowe opóźnienia 45–120 s, dzienny limit, godziny pracy).</li>
+  <li><strong>Generator wiadomości AI</strong> — tworzy spersonalizowaną wiadomość na podstawie profilu osoby i Twojego kontekstu (kim jesteś, co oferujesz). Każdą wiadomość zatwierdzasz i wysyłasz ręcznie.</li>
+  <li><strong>Follow-upy</strong> — automatyczne przypomnienia o napisaniu follow-upu po 3 i po 7 dniach od pierwszej wiadomości.</li>
+  <li><strong>Dashboard</strong> — pełny widok: follow-upy (do zrobienia / zaplanowane / historia), lejek statystyk (od zaproszenia po odpowiedź) oraz baza profili.</li>
+  <li><strong>Trwała baza profili</strong> — wszystkie profile, które przewinęły się przez rozszerzenie, są zapisywane na stałe (niezależnie od kolejki zaproszeń) — bo LinkedIn ogranicza liczbę wyszukiwań.</li>
+  <li><strong>Kopie zapasowe</strong> — automatyczny backup do pliku co kilka dni + ręczny eksport/import (CSV i JSON).</li>
+</ul>
+
+<h3>1.2 Nowości w wersji 1.14.x</h3>
+<table>
+  <tr><th style="width:80px">Wersja</th><th>Zmiana</th></tr>
+  <tr><td>1.14.0</td><td>Trwała baza profili, auto-backup do pliku, eksport/import CSV i JSON, import kontaktów 1. stopnia z LinkedIn.</td></tr>
+  <tr><td>1.14.1</td><td>Automatyczny tryb ciemny / jasny — zgodny z ustawieniem przeglądarki/systemu.</td></tr>
+  <tr><td>1.14.2</td><td>Pole „Klucz API" zmienione na „Hasło dostępu" (to nie jest klucz AI — klucz siedzi na serwerze).</td></tr>
+  <tr><td>1.14.3</td><td>Animacja „pobieram profil" w trakcie scrapowania.</td></tr>
+  <tr><td>1.14.4</td><td>Naprawiony błąd: kolejka „Pauza" nie wznawiała się po zamknięciu karty. Nowe ustawienie: ile profili dodać do kolejki za jednym „Wypełnij".</td></tr>
+  <tr><td>1.14.5</td><td>Bulk Connect łączy się teraz przez profil osoby (otwiera jej stronę w tle), a nie przez stronę wyników wyszukiwania — odporne na to, że osoba „zniknęła" z aktualnego wyszukiwania.</td></tr>
+  <tr><td>1.14.6</td><td>Przycisk „×" do zamknięcia podpowiedzi w popupie; przyciski „Zaznacz wszystkie możliwe / Odznacz wszystkie" w liście profili.</td></tr>
+</table>
+
+<!-- ═══════════════ 2 ═══════════════ -->
+<h2 id="s2" class="newpage">2. Instalacja</h2>
+
+<h3>2.1 Pierwsza instalacja (Load Unpacked)</h3>
+<ol class="steps">
+  <li>Rozpakuj otrzymany plik <code>extension 1.14.6.zip</code> do stałego miejsca na dysku — np. <code>C:\Users\TwojaNazwa\linkedin-msg-extension\</code>. <strong>Folder musi tam zostać</strong> — nie usuwaj go po instalacji, rozszerzenie się z niego ładuje.</li>
+  <li>Otwórz Chrome → w pasku adresu wpisz <code>chrome://extensions/</code> i naciśnij Enter.</li>
+  <li>W prawym górnym rogu włącz przełącznik <strong>Tryb dewelopera</strong> (Developer mode).</li>
+  <li>Kliknij <strong>Załaduj rozpakowane</strong> (Load unpacked) → wskaż rozpakowany folder.</li>
+  <li>Na liście pojawi się „LinkedIn Message Generator" — sprawdź, że obok nazwy widnieje wersja <strong>1.14.6</strong>.</li>
+  <li>(Opcjonalnie) Przypnij ikonę do paska Chrome: kliknij ikonę puzzla 🧩 → przy „LinkedIn Message Generator" kliknij pinezkę 📌.</li>
+</ol>
+
+<div class="box danger">
+  <span class="box-title">⚠ Wybierz Chrome, nie Operę/Edge — jeśli możesz</span>
+  Opera i Edge mają ustawienie „wyczyść dane przy zamknięciu", a niektóre narzędzia czyszczące / antywirusy potrafią wyrzucać rozszerzenia załadowane z folderu. Efekt: rozszerzenie znika po zamknięciu przeglądarki razem z wszystkimi danymi. Jeśli to się dzieje — patrz rozdział 7. Trzymaj folder rozszerzenia w bezpiecznym miejscu (dysk lokalny, nie czyszczony, poza folderami serwerowymi).
+</div>
+
+<h3>2.2 Aktualizacja do nowej wersji</h3>
+<div class="box danger">
+  <span class="box-title">ŻELAZNA REGUŁA: zawsze „Wczytaj ponownie" (Reload), NIGDY „Usuń + Dodaj"</span>
+  Kliknięcie <strong>„Usuń"</strong> na ekranie <code>chrome://extensions/</code> <strong>NIEODWRACALNIE KASUJE wszystkie Twoje dane</strong> — kolejkę profili, drafty wiadomości, zaplanowane follow-upy, historię, bazę profili. Chrome czyści pamięć rozszerzenia przy każdym „Usuń" — niezależnie od czegokolwiek. Sprawdzone empirycznie.
+</div>
+<p><strong>Poprawna procedura aktualizacji:</strong></p>
+<ol class="steps">
+  <li>Rozpakuj nowy <code>extension X.Y.Z.zip</code> do <strong>tego samego folderu</strong> co poprzednia wersja (potwierdź nadpisanie plików).</li>
+  <li>W <code>chrome://extensions/</code> przy LinkedIn MSG kliknij ikonę <strong>Wczytaj ponownie</strong> (↻ Reload).</li>
+  <li>Sprawdź nową wersję obok nazwy. Gotowe — wszystkie dane zachowane.</li>
+</ol>
+<div class="box">
+  <span class="box-title">Zanim zrobisz cokolwiek ryzykownego — zrób kopię</span>
+  Najprościej: otwórz rozszerzenie → kliknij ikonę 📊 (dashboard) → sekcja „🗄️ Baza profili" → <strong>„Eksport JSON (pełny backup)"</strong>. Plik z całą bazą i kolejką zostanie pobrany. Przywracanie: ta sama sekcja → „Import pliku". (Dodatkowo rozszerzenie samo robi backup co 3 dni — patrz rozdział 5.4.)
+</div>
+
+<!-- ═══════════════ 3 ═══════════════ -->
+<h2 id="s3" class="newpage">3. Pierwsze uruchomienie — ustawienia</h2>
+
+<h3>3.1 Hasło dostępu, URL backendu, kontekst nadawcy</h3>
+<ol class="steps">
+  <li>Kliknij ikonę LinkedIn MSG → kliknij ikonę <strong>koła zębatego</strong> (prawy górny róg).</li>
+  <li>Wpisz:
+    <ul>
+      <li><strong>URL backendu:</strong> <code>https://linkedin-api.szmidtke.pl</code></li>
+      <li><strong>Hasło dostępu:</strong> wspólne hasło zespołu (otrzymasz je od administratora — np. <code>DreamComeTrue!</code>). <em>To nie jest klucz do AI</em> — klucz znajduje się na serwerze i nigdy go nie widzisz. To tylko hasło, żeby serwer wiedział, że pisze ktoś z zespołu.</li>
+      <li><strong>Kontekst nadawcy:</strong> krótki opis Ciebie i tego, czym się zajmujesz — np. <em>„Jan Kowalski, doradca finansowy w OVB Allfinanz Polska. Pomagam w inwestycjach długoterminowych i ubezpieczeniach na życie."</em> Generator dodaje to do każdej wiadomości.</li>
+      <li><strong>Auto-backup bazy co (dni):</strong> zostaw <code>3</code> (wpisanie <code>0</code> wyłącza). Co tyle dni rozszerzenie zapisze plik backupu do folderu <em>Pobrane</em>.</li>
+    </ul>
+  </li>
+  <li>Kliknij <strong>Zapisz</strong>.</li>
+</ol>
+<div class="box">
+  <span class="box-title">Co działa bez hasła?</span>
+  Bulk Connect (wysyłanie zaproszeń) i baza profili działają nawet bez hasła. Generator wiadomości AI go wymaga.
+</div>
+
+<h3>3.2 (Opcjonalnie) Personalizacja stylu AI</h3>
+<p>W ustawieniach jest link „Personalizacja stylu AI →" — można tam dodać przykłady dobrych/złych wiadomości, anty-wzorce i własny styl pisania. To rozszerzona personalizacja, niewymagana do startu.</p>
+
+<!-- ═══════════════ 4 ═══════════════ -->
+<h2 id="s4" class="newpage">4. Codzienny workflow</h2>
+<p>Typowy dzień: rano uruchamiasz Bulk Connect → przez dzień rozszerzenie wysyła zaproszenia w tle → później sprawdzasz akceptacje → generujesz i wysyłasz wiadomości → po 3 i 7 dniach robisz follow-upy.</p>
+
+<h3>4.1 Bulk Connect — wysyłanie zaproszeń</h3>
+<h4>Krok 1 — wybór profili</h4>
+<ol class="steps">
+  <li>Na LinkedIn wejdź w wyszukiwarkę ludzi (np. <code>linkedin.com/search/results/people/?keywords=doradca finansowy Warszawa</code>) i wykonaj wyszukiwanie.</li>
+  <li>Kliknij ikonę rozszerzenia → zakładka <strong>Bulk</strong>. Zobaczysz listę profili z tej strony, z oznaczeniem statusu (Connect / Oczekuje / Wiadomość / „✓ w bazie" — jeśli już go znasz).</li>
+  <li>Pod listą masz <strong>„Zaznacz wszystkie możliwe"</strong> i <strong>„Odznacz wszystkie"</strong>. Domyślnie zaznaczone są tylko profile, do których można wysłać zaproszenie. Profile niedostępne (oczekujące, już w kontaktach, już w bazie) są wyszarzone i nie da się ich zaznaczyć.</li>
+  <li>Kliknij <strong>„Dodaj zaznaczone"</strong> — trafiają do kolejki.</li>
+</ol>
+<h4>Krok 1b — „Wypełnij do limitu" (automatyczne dobieranie z wielu stron)</h4>
+<p>Zamiast zaznaczać ręcznie, możesz kliknąć <strong>„Wypełnij do limitu"</strong> — rozszerzenie samo przejdzie przez kolejne strony wyników i doda do kolejki tyle nowych profili, ile ustawisz w <em>Ustawieniach bulk → „Ile dodać za 'Wypełnij'"</em> (domyślnie 50, można do 500). Skanuje maksymalnie ~20 stron za jednym razem — jeśli chcesz więcej, kliknij ponownie.</p>
+<div class="box">
+  <span class="box-title">„Daily cap" ≠ „Ile dodać za Wypełnij"</span>
+  <strong>Daily cap</strong> = ile zaproszeń rozszerzenie <em>wysyła dziennie</em> (domyślnie 25). <strong>„Ile dodać za Wypełnij"</strong> = ile profili wpada do <em>kolejki</em> za jednym kliknięciem (np. 200 „na zapas"). Kolejka może być dużo większa niż dzienny limit — rozszerzenie i tak wysyła max tyle, ile ustawiono w „Daily cap".
+</div>
+<h4>Krok 2 — ustawienia bulk (jednorazowo)</h4>
+<p>W zakładce Bulk rozwiń „Ustawienia bulk connect":</p>
+<table>
+  <tr><th>Ustawienie</th><th>Co robi</th><th>Domyślnie</th></tr>
+  <tr><td>Min / Max delay (s)</td><td>Losowe opóźnienie między zaproszeniami (anti-detection)</td><td>45 / 120</td></tr>
+  <tr><td>Daily cap (wysyłka/dzień)</td><td>Limit wysłanych zaproszeń na dobę</td><td>25</td></tr>
+  <tr><td>Ile dodać za „Wypełnij"</td><td>Ile profili dorzucić do kolejki za jednym kliknięciem</td><td>50</td></tr>
+  <tr><td>Godz. start / end</td><td>Rozszerzenie działa tylko w tych godzinach</td><td>9 / 18</td></tr>
+</table>
+<h4>Krok 3 — Start</h4>
+<ol class="steps">
+  <li>Kliknij <strong>Start</strong>. Rozszerzenie zaczyna wysyłać zaproszenia w tle — co losowy odstęp (45–120 s) otwiera profil danej osoby w karcie w tle, klika „Połącz" → „Wyślij bez notatki", po czym kartę zamyka. <strong>Nic nie miga na pierwszym planie</strong> — nie przejmuje Ci aktywnej karty.</li>
+  <li>Status kolejki: <strong>● Aktywne</strong> (z odliczaniem do następnej akcji) / <strong>Pauza</strong> (po osiągnięciu limitu, poza godzinami, lub po błędzie) / <strong>Bezczynne</strong> (kolejka pusta).</li>
+  <li><strong>Stop</strong> — zatrzymuje. <strong>Resume</strong> — wznawia (nie potrzebuje otwartej karty wyszukiwania).</li>
+  <li>Jeśli rozszerzenie nie potrafi wysłać zaproszenia do konkretnej osoby (np. profil tylko „Obserwuj", już połączeni) — oznacza tę pozycję i przechodzi do następnej. Nie zatrzymuje całej kolejki.</li>
+</ol>
+<div class="box">
+  <span class="box-title">Bezpieczeństwo konta</span>
+  Domyślne ustawienia są konserwatywne (losowe 45–120 s, 25/dzień, 9–18). To poziom, na którym typowo nie ma problemów. Anty-bot LinkedIn reaguje raczej na nagłe serie (np. 50 zaproszeń w 5 minut) niż na rytm zbliżony do człowieka. Nie pompuj limitów bez potrzeby.
+</div>
+
+<h3>4.2 Sprawdzanie akceptacji</h3>
+<p>Raz dziennie w zakładce Bulk kliknij <strong>„Sprawdź akceptacje"</strong> — rozszerzenie sprawdzi (z 4-godzinnym odstępem na osobę), które zaproszenia zostały przyjęte. Zaakceptowane osoby przechodzą do etapu „Wiadomości po-Connect".</p>
+
+<h3>4.3 Generowanie wiadomości po Connect</h3>
+<ol class="steps">
+  <li>W zakładce Bulk, sekcja „Wiadomości po-Connect" → kliknij <strong>„Generuj wszystkie"</strong> (albo per osoba). AI tworzy draft na podstawie profilu osoby + Twojego kontekstu nadawcy.</li>
+  <li>Przeczytaj draft. Możesz go edytować w polu tekstowym — zmiany zapisują się automatycznie.</li>
+  <li>Kliknij <strong>„Skopiuj i otwórz"</strong> — wiadomość ląduje w schowku, otwiera się czat z tą osobą na LinkedIn. Wklej (Ctrl+V), <strong>przeczytaj jeszcze raz</strong>, wyślij.</li>
+  <li>Wróć do rozszerzenia i kliknij <strong>„Wysłałem"</strong> — to oznacza wiadomość jako wysłaną i automatycznie planuje follow-up #1 (za 3 dni) i #2 (za 7 dni).</li>
+</ol>
+<div class="box warn">
+  <span class="box-title">Dlaczego ręcznie?</span>
+  Rozszerzenie celowo NIE wysyła wiadomości za Ciebie. Zawsze czytasz i klikasz „Wyślij" sam — to zabezpieczenie przed wysłaniem czegoś, co AI źle sformułowała.
+</div>
+
+<h3>4.4 Manual outreach — pisanie do osób spoza Bulk</h3>
+<p>Możesz też pisać do dowolnej osoby (nie tylko z kolejki). Wejdź na jej profil → kliknij ikonę rozszerzenia → <strong>„Pobierz profil"</strong> (zobaczysz animację pobierania) → <strong>„Generuj wiadomość"</strong> → <strong>„📨 Kopiuj + śledź"</strong>. To kopiuje wiadomość, otwiera czat i tworzy wpis w bazie + planuje follow-upy. Możesz kliknąć „Kopiuj + śledź" wielokrotnie — drugi raz aktualizuje draft, ale nie nadpisuje dat follow-upów.</p>
+
+<h3>4.5 Follow-upy 3 dni / 7 dni</h3>
+<p>Po wysłaniu pierwszej wiadomości rozszerzenie pilnuje dwóch follow-upów: <strong>#1 za 3 dni</strong> (łagodne przypomnienie) i <strong>#2 za 7 dni</strong> (ostatnie zaczepienie).</p>
+<ul>
+  <li>Na ikonie rozszerzenia w pasku Chrome pojawia się czerwona liczba <span class="pill">3</span> — tyle follow-upów czeka.</li>
+  <li>Po otwarciu popupa, na górze zakładki <strong>Follow-upy</strong>, widać listę „Do follow-upu". Per osoba: <strong>„Generuj follow-up"</strong> → przeczytaj/edytuj → <strong>„Skopiuj i otwórz"</strong> → wyślij → <strong>„Wysłałem"</strong>. Możesz też <strong>„Pomiń"</strong>.</li>
+  <li>Jeśli ktoś odpowiedział — oznacz to w dashboardzie (przyciski ↪Msg / ↪FU1 / ↪FU2 w tabeli kontaktów). Zaplanowane follow-upy dla tej osoby zostaną anulowane (nie ma sensu pisać dalej, skoro odpisała).</li>
+</ul>
+
+<h3>4.6 Dashboard — follow-upy, statystyki, baza profili</h3>
+<p>Kliknij ikonę <strong>📊</strong> w nagłówku popupa — otworzy się pełna strona dashboardu w nowej karcie. Sekcje:</p>
+<ul>
+  <li><strong>📊 Statystyki</strong> — lejek od zaproszenia do odpowiedzi: ile wysłano, ile zaakceptowano (accept rate), ile odpowiedzi na 1. wiadomość / FU#1 / FU#2, łączny reply rate. Liczby liczą się z tabeli kontaktów poniżej.</li>
+  <li><strong>Do follow-upu TERAZ</strong> — co wymaga działania dziś.</li>
+  <li><strong>Zaplanowane</strong> — co pojawi się jutro/pojutrze.</li>
+  <li><strong>Historia</strong> — wysłane follow-upy + pominięte + osoby, które odpowiedziały.</li>
+  <li><strong>📋 Wszystkie kontakty w pipeline</strong> — pełna tabela: imię, status, daty (zaproszenie / akceptacja / wiadomość / odpowiedź / FU#1 / FU#2). Tu oznaczasz odpowiedzi. Klik imienia otwiera profil osoby.</li>
+  <li><strong>🗄️ Baza profili</strong> — patrz rozdział 5.</li>
+</ul>
+
+<!-- ═══════════════ 5 ═══════════════ -->
+<h2 id="s5" class="newpage">5. Baza profili i kopie zapasowe</h2>
+<p>LinkedIn ogranicza liczbę wyszukiwań (po wyczerpaniu miesięcznego limitu nie wyszukasz nowych ludzi). Dlatego rozszerzenie buduje <strong>trwałą bazę profili</strong> — niezależną od kolejki zaproszeń — żeby raz „widziane" osoby i ich dane nie przepadły. Bazę znajdziesz w dashboardzie (📊) → sekcja <strong>„🗄️ Baza profili"</strong>.</p>
+
+<h3>5.1 Co trafia do bazy (automatycznie)</h3>
+<ul>
+  <li>Każdy wynik wyszukiwania, który zobaczy popup (zakładka Bulk) — imię, headline, lokalizacja, stopień, adres profilu.</li>
+  <li>Każdy zescrapowany profil (z podglądu albo z generowania wiadomości) — z pełnymi danymi (o mnie / doświadczenie / umiejętności, jeśli były dostępne).</li>
+  <li>Profile dodane do kolejki Bulk Connect oraz z manual outreach.</li>
+  <li>Zaimportowane kontakty 1. stopnia (patrz 5.3).</li>
+</ul>
+<p>Profile się nie duplikują (klucz = adres profilu), a bogatsze dane nie są nadpisywane uboższymi — raz zescrapowany pełny profil przeżyje kolejny przelot przez wyszukiwarkę. W zakładce Bulk profile, które już są w bazie/kontaktach, mają tag <strong>„✓ w bazie"</strong> i nie zaznaczają się do bulk-connect.</p>
+
+<h3>5.2 Eksport CSV / JSON</h3>
+<ul>
+  <li><strong>„Eksport CSV"</strong> — plik <code>linkedin-profiles-DATA.csv</code> (otwórz w Excelu): lista profili z kolumnami imię / headline / lokalizacja / stopień / adres / źródło / „w kontaktach" itd. Wygodne do ręcznego zarządzania bazą.</li>
+  <li><strong>„Eksport JSON (pełny backup)"</strong> — kompletny zrzut bazy + kolejki zaproszeń. To plik do przywracania (patrz 5.4) i do przenoszenia na inny komputer.</li>
+</ul>
+
+<h3>5.3 Import pliku i import kontaktów z LinkedIn</h3>
+<ul>
+  <li><strong>„Importuj kontakty z LinkedIn"</strong> — otworzy się karta z Twoimi kontaktami, rozszerzenie przewinie ją do końca i zapisze wszystkich do bazy z oznaczeniem „kontakt". <strong>Nie zamykaj tej karty w trakcie</strong> — przy dużej liczbie kontaktów może to potrwać kilka minut. Dzięki temu wiesz, do kogo już nie pisać (są w sieci), i masz bazę do odbudowy.</li>
+  <li><strong>„Import pliku"</strong> — wybierz plik <code>.json</code> (pełny backup) lub <code>.csv</code>. Baza zostanie scalona z tym, co już masz (nic nie kasuje). Jeśli importujesz pełny backup JSON, możesz dodatkowo zaznaczyć <em>„przywróć też kolejkę zaproszeń"</em>.</li>
+</ul>
+
+<h3>5.4 Auto-backup i przywracanie</h3>
+<p>Co tyle dni, ile ustawisz w ustawieniach (domyślnie 3; <code>0</code> = wyłączone), rozszerzenie samo zapisuje pełny backup do <code>Pobrane/linkedin-msg-backup/backup-RRRR-MM-DD.json</code>. Na górze sekcji „Baza profili" jest banner z datą ostatniego backupu — jeśli zrobi się czerwony (ponad 7 dni albo wyłączony), kliknij <strong>„⬇ Pobierz backup teraz"</strong>.</p>
+<div class="box">
+  <span class="box-title">To jedyna rzecz, która przeżyje „Usuń + Dodaj"</span>
+  Chrome czyści pamięć rozszerzenia przy „Usuń", ale plik backupu w folderze Pobrane zostaje. Przywracanie / przeniesienie na nowy komputer: zainstaluj rozszerzenie → dashboard → „🗄️ Baza profili" → <strong>„Import pliku"</strong> → wybierz <code>backup-*.json</code> → (opcjonalnie) zaznacz „przywróć kolejkę" → Import.
+</div>
+
+<!-- ═══════════════ 6 ═══════════════ -->
+<h2 id="s6" class="newpage">6. Tryb ciemny / jasny</h2>
+<p>Rozszerzenie automatycznie dopasowuje się do trybu jasny/ciemny ustawionego w przeglądarce lub systemie — nic nie musisz przełączać. Jeśli masz w Windowsie/Chrome włączony tryb ciemny, popup, dashboard i ustawienia będą ciemne; jasny → jasne.</p>
+
+<!-- ═══════════════ 7 ═══════════════ -->
+<h2 id="s7" class="newpage">7. Bezpieczeństwo danych — zasady żelazne</h2>
+<ol>
+  <li><strong>Aktualizacja = „Wczytaj ponownie" (Reload), nigdy „Usuń + Dodaj".</strong> „Usuń" kasuje wszystkie dane bezpowrotnie.</li>
+  <li><strong>Włącz auto-backup</strong> (Ustawienia → „Auto-backup bazy co dni" = 3). Sprawdzaj banner w dashboardzie.</li>
+  <li><strong>Przed czymkolwiek ryzykownym</strong> (np. reinstalacja, czyszczenie przeglądarki) → najpierw „Eksport JSON (pełny backup)".</li>
+  <li><strong>Trzymaj folder rozszerzenia w bezpiecznym miejscu</strong> — dysk lokalny, nie czyszczony, poza folderami serwerowymi / synchronizowanymi.</li>
+  <li><strong>Jeśli rozszerzenie znika po zamknięciu przeglądarki</strong> (zdarza się na Operze/Edge): wyłącz „wyczyść dane przy zamknięciu" w przeglądarce, wyłącz czyszczenie przeglądarek w narzędziach typu CCleaner, dodaj folder rozszerzenia do wyjątków antywirusa. Najlepiej: używaj Chrome.</li>
+  <li><strong>Dane są lokalne</strong> — nic nie wychodzi na zewnątrz poza wywołaniami AI (generowanie wiadomości / follow-upów), telemetrią błędów scrapowania i pobieranymi plikami backupu (zapisywane lokalnie).</li>
+</ol>
+<div class="box warn">
+  <span class="box-title">Gdzie fizycznie są dane</span>
+  <code>C:\Users\&lt;Ty&gt;\AppData\Local\Google\Chrome\User Data\Default\Local Extension Settings\&lt;ID rozszerzenia&gt;\</code> — folder bazy danych (binarny). Klik „Usuń" w Chrome czyści ten folder.
+</div>
+
+<!-- ═══════════════ 8 ═══════════════ -->
+<h2 id="s8" class="newpage">8. FAQ i rozwiązywanie problemów</h2>
+<dl class="faq">
+  <dt>LinkedIn nie pozwala mi już wyszukiwać ludzi („osiągnięto limit wyszukiwania w tym miesiącu").</dt>
+  <dd>To limit LinkedIn (konto darmowe). Dlatego masz <strong>trwałą bazę profili</strong> — pracuj z tego, co już zobaczyłeś (dashboard 📊 → „Baza profili"). Dodatkowo zaimportuj swoje kontakty 1. stopnia („⬇ Importuj kontakty z LinkedIn") — to nie zużywa limitu wyszukiwania.</dd>
+
+  <dt>Kolejka Bulk pokazuje „Pauza" i nie chce wystartować.</dt>
+  <dd>Sprawdź, czy nie minęły godziny pracy (domyślnie 9–18) lub czy nie osiągnąłeś dziennego limitu (Daily cap) — wtedy „Pauza" jest normalna, wznowi się sama. Jeśli to inny powód, komunikat błędu jest widoczny w sekcji Bulk. Kliknij <strong>Resume</strong> — od wersji 1.14.4+ działa nawet bez otwartej karty wyszukiwania.</dd>
+
+  <dt>Worker pokazał błąd przy konkretnej osobie i przeszedł dalej.</dt>
+  <dd>To poprawne zachowanie — jeśli nie da się wysłać zaproszenia do danego profilu (tylko „Obserwuj", już połączeni, nietypowy układ strony), rozszerzenie oznacza tę pozycję jako pominiętą/nieudaną i przechodzi do następnej. Cała kolejka leci dalej.</dd>
+
+  <dt>Po aktualizacji widzę w konsoli LinkedIn błąd „chrome-extension://invalid/" albo „Extension orphaned — reloading page".</dt>
+  <dd>To normalne po kliknięciu „Wczytaj ponownie" — stare skrypty na otwartych kartach LinkedIn tracą połączenie, rozszerzenie odświeża stronę raz, żeby to wyczyścić. Poczekaj 2–3 s i odśwież popup.</dd>
+
+  <dt>Gdzie ląduje auto-backup?</dt>
+  <dd><code>Pobrane/linkedin-msg-backup/backup-RRRR-MM-DD.json</code>, co 3 dni (interwał w Ustawieniach). Banner w dashboardzie pokazuje datę ostatniego. Przywracanie: „Import pliku" tamże.</dd>
+
+  <dt>Chcę przenieść wszystko na nowy komputer.</dt>
+  <dd>Stary: dashboard → „Baza profili" → „Eksport JSON (pełny backup)". Nowy: zainstaluj rozszerzenie → dashboard → „Import pliku" → wybierz ten plik (zaznacz „przywróć też kolejkę zaproszeń"). Gotowe.</dd>
+
+  <dt>Import kontaktów się zaciął / nic nie zaimportował.</dt>
+  <dd>Otwórz ręcznie <code>linkedin.com/mynetwork/invite-connect/connections/</code>, przewiń trochę listę, by się załadowała, i spróbuj ponownie z dashboardu. Nie zamykaj karty z kontaktami w trakcie importu.</dd>
+
+  <dt>Wiadomość wysłana, ale status nadal „draft".</dt>
+  <dd>„Skopiuj i otwórz" sam oznacza status jako wysłany. Jeśli skopiowałeś ręcznie z pola tekstowego bez tego przycisku — kliknij „Wysłałem" lub „Pomiń".</dd>
+
+  <dt>Mogę używać Bulk Connect bez generatora AI?</dt>
+  <dd>Tak. Generator wymaga hasła dostępu, samo dodawanie do kontaktów nie wymaga. Po akceptacji możesz pisać własne wiadomości ręcznie.</dd>
+
+  <dt>Stare leady (sprzed 1.7.0) nie mają zaplanowanych follow-upów.</dt>
+  <dd>Follow-upy planują się dopiero przy kliknięciu „Wysłałem" / „Kopiuj + śledź" (od wersji 1.7.0+). Starych nie da się retroaktywnie zaplanować — kolejne wiadomości będą miały follow-upy automatycznie.</dd>
+</dl>
+
+<!-- ═══════════════ 9 ═══════════════ -->
+<h2 id="s9" class="newpage">9. Czego rozszerzenie NIE robi</h2>
+<ul>
+  <li>❌ <strong>Nie wysyła zaproszeń z notatką</strong> — LinkedIn ma limit ~5 notatek/tydzień (konto darmowe). Wysyłamy bez notatki, personalizujemy dopiero po akceptacji.</li>
+  <li>❌ <strong>Nie ma automatycznej synchronizacji między urządzeniami</strong> — każdy komputer ma osobną kolejkę i bazę. Ręcznie: Eksport JSON → Import pliku.</li>
+  <li>❌ <strong>Nie ma wspólnego dashboardu zespołu</strong> — każdy ma własne statystyki i bazę.</li>
+  <li>❌ <strong>Nie wysyła wiadomości automatycznie</strong> — Ty klikasz „Wyślij" w LinkedIn po przeczytaniu.</li>
+</ul>
+
+<!-- ═══════════════ 10 ═══════════════ -->
+<h2 id="s10" class="newpage">10. Kontakt i wsparcie</h2>
+<p>Błędy, pytania, prośby o funkcje → <strong>Marcin Szmidtke</strong>: <a href="mailto:ochh.yes@gmail.com">ochh.yes@gmail.com</a>.</p>
+<p>Backend działa pod <code>https://linkedin-api.szmidtke.pl</code>. Status serwera: <code>https://linkedin-api.szmidtke.pl/api/health</code>.</p>
+
+<!-- ═══════════════ APPENDIX ═══════════════ -->
+<h2 id="app" class="newpage">Załącznik — historia zmian (skrót)</h2>
+<table>
+  <tr><th style="width:80px">Wersja</th><th>Najważniejsze zmiany</th></tr>
+  <tr><td>1.14.6</td><td>Przycisk „×" do podpowiedzi w popupie; „Zaznacz wszystkie możliwe / Odznacz wszystkie" w liście profili.</td></tr>
+  <tr><td>1.14.5</td><td>Bulk Connect łączy przez profil osoby (otwiera jej stronę w tle) zamiast przez stronę wyników wyszukiwania.</td></tr>
+  <tr><td>1.14.4</td><td>Naprawa: kolejka „Pauza" nie wznawiała się po zamknięciu karty. Nowe ustawienie „Ile dodać za Wypełnij".</td></tr>
+  <tr><td>1.14.3</td><td>Animacja „pobieram profil".</td></tr>
+  <tr><td>1.14.2</td><td>„Klucz API" → „Hasło dostępu".</td></tr>
+  <tr><td>1.14.1</td><td>Automatyczny tryb ciemny/jasny.</td></tr>
+  <tr><td>1.14.0</td><td>Trwała baza profili, auto-backup do pliku, eksport/import CSV+JSON, import kontaktów 1. stopnia.</td></tr>
+  <tr><td>1.13.0</td><td>Nowa identyfikacja wizualna (paleta OVB navy, font Inter).</td></tr>
+  <tr><td>1.12.0</td><td>Obsługa nowego (SDUI) układu profili LinkedIn.</td></tr>
+  <tr><td>1.11.x</td><td>Statystyki + śledzenie odpowiedzi; zabezpieczenia przed utratą danych; odporność workera; mniejsza ilość błędów w konsoli.</td></tr>
+  <tr><td>1.10.0</td><td>Auto-powrót workera na wyniki wyszukiwania; jitter anti-detection.</td></tr>
+  <tr><td>1.7.0–1.9.x</td><td>Follow-upy 3d/7d; manual outreach; dashboard follow-upów; przebudowa popupa (3 zakładki).</td></tr>
+  <tr><td>1.6.0</td><td>Bulk Connect — masowe zaproszenia + wiadomości po-Connect.</td></tr>
+</table>
+
+<div class="footer-note">
+  LinkedIn Message Generator — instrukcja użytkownika, wersja 1.14.6. Dokument wewnętrzny.
+  Wygenerowano automatycznie z repozytorium projektu (maj 2026). „LinkedIn" jest znakiem towarowym LinkedIn Corporation; rozszerzenie nie jest powiązane z LinkedIn.
+</div>
+
+</body>
+</html>
