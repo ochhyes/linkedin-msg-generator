@@ -382,6 +382,21 @@
 
   // ── Action bar (#1.9.0) — context-dependent buttons in sticky bottom ─
 
+  // Ustawia widoczność / wariant / etykietę przycisku action bara.
+  // opts: { show?:bool, variant?:string ("btn--primary btn--lg" itp.), label?:string }
+  function setActionBtn(id, opts) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (!opts || opts.show === false) { el.classList.add("hidden"); return; }
+    el.className = "btn " + (opts.variant || "");
+    if (opts.label != null) {
+      const lab = el.querySelector(".btn__label");
+      if (lab) lab.textContent = opts.label;
+    }
+  }
+
+  // 3-fazowy action bar (#25 v1.16.0 — UX_REDESIGN.md 3.4). Max 1 primary,
+  // max 3 przyciski na widok. Ghost'y po lewej, primary po prawej (DOM order).
   function renderActionBar() {
     if (!actionBar || _activeTab !== "profile") {
       if (actionBar) actionBar.classList.add("hidden");
@@ -392,33 +407,27 @@
     const hasProfile = !!currentProfile;
     const hasMessage = !!currentMessage;
 
-    // Profile mode states:
-    // 1. No profile → [Pobierz profil] (full width)
-    // 2. Profile, no message → [Pobierz ↻] secondary + [Generuj] primary
-    // 3. Profile + message → [Kopiuj+śledź] primary + [Skopiuj] outline + [↻] icon
-    const show = (id, visible) => {
-      const el = document.getElementById(id);
-      if (el) el.classList.toggle("hidden", !visible);
-    };
-
     if (!hasProfile) {
-      show("btn-scrape", true);
-      show("btn-generate", false);
-      show("btn-copy", false);
-      show("btn-copy-track", false);
-      show("btn-regenerate", false);
+      // Faza 1 — jeden duży primary, fullwidth.
+      setActionBtn("btn-scrape", { variant: "btn--primary btn--lg", label: "Pobierz profil" });
+      setActionBtn("btn-regenerate", { show: false });
+      setActionBtn("btn-copy", { show: false });
+      setActionBtn("btn-generate", { show: false });
+      setActionBtn("btn-copy-track", { show: false });
     } else if (!hasMessage) {
-      show("btn-scrape", true);
-      show("btn-generate", true);
-      show("btn-copy", false);
-      show("btn-copy-track", false);
-      show("btn-regenerate", false);
+      // Faza 2 — ghost (pobierz ponownie) + primary (generuj).
+      setActionBtn("btn-scrape", { variant: "btn--ghost btn--sm", label: "↻ Pobierz ponownie" });
+      setActionBtn("btn-regenerate", { show: false });
+      setActionBtn("btn-copy", { show: false });
+      setActionBtn("btn-generate", { variant: "btn--primary", label: "Generuj wiadomość" });
+      setActionBtn("btn-copy-track", { show: false });
     } else {
-      show("btn-scrape", false);
-      show("btn-generate", false);
-      show("btn-copy", true);
-      show("btn-copy-track", true);
-      show("btn-regenerate", true);
+      // Faza 3 — ghost (nowa wersja) + ghost (kopiuj tylko) + primary (kopiuj i śledź).
+      setActionBtn("btn-scrape", { show: false });
+      setActionBtn("btn-regenerate", { variant: "btn--ghost btn--sm", label: "↻ Nowa wersja" });
+      setActionBtn("btn-copy", { variant: "btn--ghost btn--sm", label: "Kopiuj tylko" });
+      setActionBtn("btn-generate", { show: false });
+      setActionBtn("btn-copy-track", { variant: "btn--primary", label: "Kopiuj i śledź" });
     }
   }
 
@@ -589,14 +598,17 @@
   btnGenerate.addEventListener("click", doGenerate);
   btnRegenerate.addEventListener("click", doGenerate);
 
-  // Copy to clipboard
+  // Copy to clipboard. #25: zmieniamy tekst w .btn__label (nie innerHTML),
+  // żeby nie zniszczyć struktury którą renderActionBar() oczekuje.
   btnCopy.addEventListener("click", async () => {
     try {
       await navigator.clipboard.writeText(resultText.value);
-      btnCopy.querySelector("svg + *")?.remove();
-      const origHTML = btnCopy.innerHTML;
-      btnCopy.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg> Skopiowano!`;
-      setTimeout(() => { btnCopy.innerHTML = origHTML; }, 1500);
+      const lab = btnCopy.querySelector(".btn__label");
+      if (lab) {
+        const orig = lab.textContent;
+        lab.textContent = "Skopiowano!";
+        setTimeout(() => { lab.textContent = orig; }, 1500);
+      }
     } catch {
       // Fallback
       resultText.select();
@@ -622,8 +634,10 @@
       }
 
       btnCopyTrack.disabled = true;
-      const origText = btnCopyTrack.textContent;
-      btnCopyTrack.textContent = "Zapisuję…";
+      const ctLabel = btnCopyTrack.querySelector(".btn__label");
+      const origText = ctLabel ? ctLabel.textContent : "Kopiuj i śledź";
+      const setCtLabel = (t) => { if (ctLabel) ctLabel.textContent = t; };
+      setCtLabel("Zapisuję…");
 
       try {
         // Clipboard najpierw — gdy przy nim coś pójdzie nie tak, nie wpisujemy
@@ -638,6 +652,8 @@
 
         if (!resp?.success) {
           showToast(`Błąd: ${resp?.error || "unknown"}`, "error", 0);
+          setCtLabel(origText);
+          btnCopyTrack.disabled = false;
           return;
         }
 
@@ -649,7 +665,7 @@
           `✓ ${action}. Wiadomość w schowku — kliknij „Wiadomość" na profilu tej osoby i wklej (Ctrl+V → wyślij). Follow-up #1 za 3 dni, #2 za 7.`,
           "success"
         );
-        btnCopyTrack.textContent = "✓ Zapisano";
+        setCtLabel("✓ Zapisano");
         renderTrackChip(currentProfile);
 
         // Re-enable button po 2s — jakby user chciał ponowić (np. zmienił
@@ -657,13 +673,13 @@
         // chroni RemindAt'y.
         setTimeout(() => {
           btnCopyTrack.disabled = false;
-          btnCopyTrack.textContent = origText;
+          setCtLabel(origText);
         }, 2000);
       } catch (err) {
         console.warn("[LinkedIn MSG] copy+track failed:", err);
         showToast(`Błąd: ${(err && err.message) || err}`, "error", 0);
         btnCopyTrack.disabled = false;
-        btnCopyTrack.textContent = origText;
+        setCtLabel(origText);
       }
     });
   }

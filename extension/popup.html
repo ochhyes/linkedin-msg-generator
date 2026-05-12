@@ -228,31 +228,34 @@
 
       </div>
 
-      <!-- Sticky bottom action bar -->
+      <!-- Sticky bottom action bar — 3-fazowy (#25 v1.16.0). Kolejność DOM:
+           scrape · regenerate · copy · generate · copy-track — żeby w fazach
+           2/3 primary (flex:1) lądował po prawej. Klasy/etykiety ustawia
+           renderActionBar() w popup.js per faza. -->
       <div id="action-bar" class="action-bar">
-        <button id="btn-scrape" class="btn btn--secondary">
+        <button id="btn-scrape" class="btn btn--primary btn--lg">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
             <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/>
           </svg>
-          Pobierz profil
+          <span class="btn__label">Pobierz profil</span>
         </button>
-        <button id="btn-generate" class="btn btn--primary" disabled>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-          </svg>
-          Generuj wiadomość
+        <button id="btn-regenerate" class="btn btn--ghost btn--sm hidden">
+          <span class="btn__label">↻ Nowa wersja</span>
         </button>
-        <button id="btn-copy" class="btn btn--small hidden">
+        <button id="btn-copy" class="btn btn--ghost btn--sm hidden">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
           </svg>
-          Kopiuj
+          <span class="btn__label">Kopiuj tylko</span>
         </button>
-        <button id="btn-copy-track" class="btn btn--primary hidden" title="Kopiuje wiadomość, otwiera czat LinkedIn i planuje follow-up #1 za 3 dni, #2 za 7 dni">
-          📨 Kopiuj + śledź
+        <button id="btn-generate" class="btn btn--primary hidden" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+          </svg>
+          <span class="btn__label">Generuj wiadomość</span>
         </button>
-        <button id="btn-regenerate" class="btn btn--outline btn--small hidden">
-          ↻ Nowa wersja
+        <button id="btn-copy-track" class="btn btn--primary hidden" title="Kopiuje wiadomość do schowka i planuje follow-up #1 za 3 dni, #2 za 7 dni — wklej na profilu osoby pod „Wiadomość”">
+          <span class="btn__label">Kopiuj i śledź</span>
         </button>
       </div>
 
