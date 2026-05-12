@@ -145,95 +145,131 @@ body {
 
 .hidden { display: none !important; }
 
-/* ── Header ─────────────────────────────────────────────────────── */
+/* ── Header (UX redesign #24 v1.15.0) ───────────────────────────── */
 .header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
+  padding: 14px 20px;
+  min-height: 56px;
   border-bottom: 1px solid var(--border);
-  background: var(--bg-card);
+  background: var(--bg);
   flex-shrink: 0;
 }
 
 .header__brand {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  min-width: 0;
 }
 
-.header__icon {
-  width: 20px;
-  height: 20px;
-  color: var(--accent);
+.header__logo {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: var(--radius);
+  background: var(--brand-primary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.header__brandtext {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.12;
+  min-width: 0;
 }
 
 .header__title {
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--brand-primary);
+  letter-spacing: -0.01em;
+}
+
+.header__tagline {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.header__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 .btn-icon {
   background: none;
   border: none;
-  color: var(--text-dim);
+  color: var(--text-secondary);
   cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius);
   transition: color var(--transition), background var(--transition);
 }
 
 .btn-icon:hover {
   color: var(--text);
-  background: var(--bg-input);
+  background: var(--bg-muted);
 }
 
-/* ── Tabs (v1.9.0) ──────────────────────────────────────────────── */
+/* ── Tabs (UX redesign #24 v1.15.0) ─────────────────────────────── */
 .tabs {
   display: flex;
   border-bottom: 1px solid var(--border);
-  background: var(--bg-card);
+  background: var(--bg);
   flex-shrink: 0;
 }
 
 .tab {
   flex: 1;
-  padding: 12px 8px;
+  padding: 14px 8px;
+  min-height: 44px;
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
-  color: var(--text-dim);
+  color: var(--text-secondary);
   font-family: var(--font);
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
   transition: color var(--transition), border-color var(--transition);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 6px;
 }
 
 .tab:hover { color: var(--text); }
 
 .tab--active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
+  color: var(--brand-primary);
+  border-bottom-color: var(--brand-primary);
 }
 
 .tab__badge {
-  display: inline-block;
-  background: var(--error);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--brand-primary);
   color: #fff;
-  font-size: 10px;
-  font-weight: 700;
-  padding: 1px 6px;
-  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
   min-width: 18px;
-  text-align: center;
   line-height: 1.4;
 }
 .tab__badge:empty { display: none; }
