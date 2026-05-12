@@ -1576,8 +1576,18 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 // ── API Calls ────────────────────────────────────────────────────────
 
+// v1.15.1: nagłówek X-API-Key musi być Latin-1-safe (fetch rzuca
+// "non ISO-8859-1 code point" przy polskich literach / emoji / smart-quotes
+// wciągniętych do "Hasła dostępu"). Czytelny błąd zamiast kryptycznego.
+function assertApiKeyHeaderSafe(apiKey) {
+  if (apiKey && /[^\x00-\xFF]/.test(apiKey)) {
+    throw new Error('Hasło dostępu zawiera niedozwolony znak (polska litera / emoji / "inteligentny" cudzysłów). Otwórz Ustawienia i wpisz je ręcznie, używając tylko podstawowych znaków (np. DreamComeTrue!).');
+  }
+}
+
 async function generateMessage(profile, options = {}) {
   const settings = await getSettings();
+  assertApiKeyHeaderSafe(settings.apiKey);
   const userSettings = await getUserSettings();
 
   const apiUrl = `${settings.apiUrl.replace(/\/$/, "")}/api/generate-message`;
@@ -1617,6 +1627,7 @@ async function generateMessage(profile, options = {}) {
 
 async function getSettingsDefaults() {
   const settings = await getSettings();
+  assertApiKeyHeaderSafe(settings.apiKey);
   const apiUrl = `${settings.apiUrl.replace(/\/$/, "")}/api/settings/defaults`;
 
   const response = await fetch(apiUrl, {

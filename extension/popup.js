@@ -741,9 +741,18 @@
     let backupDays = parseInt(setBackupDays && setBackupDays.value, 10);
     if (!Number.isFinite(backupDays) || backupDays < 0) backupDays = 3;
     if (backupDays > 90) backupDays = 90;
+    const apiKey = setApiKey.value.trim();
+    // v1.15.1: hasło dostępu leci w nagłówku X-API-Key — nagłówki HTTP nie
+    // mogą zawierać znaków spoza Latin-1 (fetch rzuca "non ISO-8859-1 code
+    // point"). Najczęstsza pułapka: polska litera albo "inteligentny" cudzysłów
+    // wciągnięty przy kopiuj-wklej. Blokujemy zapis i mówimy co poprawić.
+    if (/[^\x20-\x7E]/.test(apiKey)) {
+      showError('Hasło dostępu zawiera niedozwolony znak (polska litera / emoji / "inteligentny" cudzysłów). Wpisz je RĘCZNIE używając tylko podstawowych znaków, np. DreamComeTrue!');
+      return;
+    }
     const settings = {
       apiUrl: setApiUrl.value.trim(),
-      apiKey: setApiKey.value.trim(),
+      apiKey,
       senderContext: setSender.value.trim(),
       defaultMaxChars: parseInt(setMaxChars.value, 10) || 1000,
       backupIntervalDays: backupDays,
