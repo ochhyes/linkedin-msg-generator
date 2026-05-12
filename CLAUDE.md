@@ -207,11 +207,11 @@ PM 5–15 min · Dev 30–120 min · Tester 10–30 min · Commit 2–5 min.
 # CURRENT STATE
 
 ```
-Sprint:        #8 OTWARTY 2026-05-12 (trwała baza profili + auto-backup — feature z ultraplan, v1.14.x) | Sprint #7 UX redesign #46 wisi (tokeny v1.13.0, czeka manual smoke)
-Phase:         Commit (kod v1.14.0–1.14.3 gotowy, testy 534/0 PASS, czeka commit + manual smoke Marcin)
-Active task:   #48 P1 trwała baza profili + eksport CSV/JSON + import kontaktów + auto-backup (v1.14.0) → auto dark/light mode (v1.14.1) → UI "Hasło dostępu" (v1.14.2) → animacja "pobieram profil" (v1.14.3)
-Last commit:   f087853 — chore: assety OVB brand dla Sprintu #7 — favicony + WebP + SVG (v1.14.x NIESKOMMITOWANE w working tree)
-Updated:       2026-05-12 (implementacja v1.14.0-1.14.3 done, docs zaktualizowane, czeka commit)
+Sprint:        #8 — trwała baza profili + auto-backup + dark mode (v1.14.3) COMMITTED 2026-05-12, czeka manual smoke + dystrybucja | Sprint #7 UX redesign #46 wisi (tokeny v1.13.0, czeka manual smoke)
+Phase:         PM (decyzja: dystrybucja 1.14.3 + push + co dalej — Sprint #7 #46 manual smoke / kolejne taski UX_REDESIGN / feature backlog)
+Active task:   żaden (#48 ZAKOMMITOWANY — `0484c65` + `3542666`, pending: manual smoke Marcin + VPS .env + zip + dystrybucja)
+Last commit:   3542666 — tutaj jest dark/normal mode, plus baza, plus hasło dostępu, plus loading anim (v1.14.3) [+ 0484c65 feat: trwala baza profili + auto-backup + dark mode + haslo dostepu (v1.14.0-1.14.2)]
+Updated:       2026-05-12 (#48 zacommitowany v1.14.0-1.14.3, docs zaktualizowane, czeka manual smoke + dystrybucja)
 ```
 
 **Diagnostyka 2026-05-11 (follow-up wipe report od Marcina):** Marcin reportował że "wciąż się kasują dane z follow-upów" na v1.12.0. SW DevTools smoke test (`chrome.storage.local.get(null)`) pokazał pustą queue PRZED Reload'em → nie active wipe na Reload, tylko already-empty od Remove+Add z wczoraj. Korekta hipotezy v1.11.1: stable `key` NIE chroni storage przy Remove (tylko ID). v1.11.1 onInstalled defensive fix zostaje jako hardening ale nie adresuje root cause. INSTRUKCJA.md + CLAUDE.md zaktualizowane z żelazną regułą "Reload TAK, Remove NIGDY bez backupu" + procedura backup/restore przez DevTools. Memory `project_v1_11_1_distribution.md` przepisana. Bug w v1.12.0 — BRAK. Action item: zakomunikować zespołowi OVB przy dystrybucji 1.12.0 że Remove = total wipe (nawet z key field).
@@ -262,146 +262,18 @@ Original scope (z 2026-05-09): "Stabilizacja + dystrybucja 1.8.0" — 5 tasków 
 
 ## TODO (priorytet od góry)
 
-(none — czeka na potwierdzenie #42 manual smoke, potem commit + dystrybucja 1.11.3)
+(none — Sprint #8 czeka na manual smoke 1.14.3 + dystrybucja; następny sprint do wyboru: #22 auto-pagination [rekomendacja — bezpośrednio łagodzi limity wyszukiwania LI] / #24-#28 refaktor komponentów → v2.0.0 / #10 selectors.json — patrz BACKLOG)
 
 ## IN PROGRESS
 
-- **#48** (v1.14.0–1.14.3) — feature z `/ultraplan` 2026-05-12: trwała baza profili (jak Octopus) bo LinkedIn wprowadził limity wyszukiwania, Marcin ma wyczerpany limit. Trzy zmiany na stosie (baza+backup → dark mode → "Hasło dostępu" → loading anim), **NIESKOMMITOWANE** (working tree), wszystko `node --check` czyste, testy **489 → 534/0 PASS**. (Uwaga: `#45` w BACKLOG to osobny task — UX redesign sprint — nie mylić.)
+- **#48** — feature z `/ultraplan` 2026-05-12: trwała baza profili + auto-backup + dark mode + UI "Hasło dostępu" + animacja "pobieram profil" (v1.14.0–1.14.3). **COMMITTED** `0484c65` (v1.14.0-1.14.2) + `3542666` (v1.14.3), testy **534/0 PASS**. Pełny opis: DONE → Sprint #8. **Pending zanim zamkniemy:**
+  - **Manual smoke 1.14.3 (Marcin):** (1) Reload, wersja 1.14.3. (2) Wyszukiwarka LinkedIn → tab Bulk → SW DevTools `chrome.storage.local.get("profileDb")` ma profile z tej strony; strona 2 → brak dup, `lastSeenAt` update; profile w kontaktach mają `✓ w bazie`. (3) Preview profilu → `profileDb.profiles[slug].scrapedProfile` wypełnione, kolejny upsert z search go nie kasuje. (4) Dashboard 📊 → "Baza profili": Eksport CSV/JSON pobierają pliki. (5) "Importuj kontakty z LinkedIn" → otwiera/scrolluje stronę kontaktów, lista z `isConnection:true`. (6) "Pobierz backup teraz" → plik w `Pobrane/linkedin-msg-backup/`; w ustawieniach "Auto-backup co 0 dni" → banner czerwony. (7) Import pliku JSON → baza scalona; checkbox "przywróć kolejkę" → kolejka dorzucona. (8) Windows dark mode → popup/dashboard/options ciemne; light → jasne. (9) Regresja: scrape Joanny/Grzegorza + Generuj wiadomość OK; przy "Pobierz profil" widać spinner+szkielet. (10) Reload → `profileDb` i `bulkConnect` nietknięte.
+  - **Operacyjne (Marcin, VPS):** `API_KEYS=DreamComeTrue!` w prod `.env` → `cd deploy && docker compose up -d --build` → `curl http://127.0.0.1:8321/api/health` → wpisać hasło w ustawieniach rozszerzenia.
+  - **Dystrybucja:** regen `extension.zip` pod 1.14.3 → zespołowi OVB (zakomunikować: auto-backup + import kontaktów + dark mode + "Hasło dostępu"; przypomnieć "Reload TAK, Remove NIGDY bez backupu"; folder rozszerzenia w bezpiecznym miejscu, nie Opera/Edge "clear on close").
+  - **Push:** `0484c65` + `3542666` (+ docs commit) na origin.
+  - → Po smoke PASS: oznaczyć #48 zamknięty, usunąć ten blok (wpis zostaje w DONE).
 
-  **v1.14.0 — trwała baza profili + eksport/import + auto-backup:**
-  - `manifest.json` — bump 1.14.0, `+unlimitedStorage` `+downloads`, content_scripts matches `+/mynetwork/invite-connect/connections/*`.
-  - `background.js` — nowa sekcja "Profile DB": `profileDb` w storage (`{version, profiles:{[slug]:rec}, lastBackupAt}`), `getProfileDb/writeProfileDb`, `profileRecordFromInput/mergeProfileRecord` (merge: truthy nie nadpisywane falsy, `lastSeenAt` update, `source` rośnie tylko "w górę" search→bulk→manual→connections_import→profile_scrape, `isConnection` sticky, slug-norm), `upsertProfilesToDb(profiles, source)`, `profileDbList(filter)` (`inQueue` liczony lazy z cross-ref do kolejki), `buildProfileDbCsv` (CSV-escape) / `buildFullBackupJson` / `parseCsv` (import), `doAutoBackup(force)`/`backupNow` (alarm `dbBackupAlarm` co 720 min sprawdza `settings.backupIntervalDays` def. 3; `chrome.downloads.download` data:URL base64 → `linkedin-msg-backup/backup-YYYY-MM-DD.json`; lite-fallback bez `scrapedProfile` gdy >20 MB), `profileDbImport({json|csv, restoreQueue})` (merge bazy + opcjonalnie dorzucenie brakujących slug-ów do kolejki), `importConnectionsFlow(maxPages)` (otwiera/reusuje kartę kontaktów, content scrolluje, upsert `connections_import` z `isConnection:true`). Hooki upsertu w `addToQueue`/`bulkScrapeProfileForQueue`/`bulkAddManualSent`. Router: `profileDbUpsert/List/ExportCsv/ExportJson/Import`, `importConnections`, `backupNow`, `getBackupStatus`. `onInstalled`/`onStartup` — defensywny init `profileDb` (jak `bulkConnect`) + tworzenie `dbBackupAlarm`; `DEFAULT_SETTINGS.backupIntervalDays = 3`.
-  - `content.js` — `extractConnectionsList()` (parsuje karty `/mynetwork/.../connections/` — link `/in/`, imię z heurystyki, occupation z `<p>`/`<span>` filtrując "Połączono X dni temu"), `importAllConnections(maxPages)` (infinite-scroll aż lista przestanie rosnąć, 2x stale → koniec, klik "Pokaż więcej" fallback), handlery `extractConnectionsList`/`importAllConnections`.
-  - `popup.js`/`popup.css`/`popup.html` — upsert wyników wyszukiwania (`source:"search"`) i scrape'ów (`source:"profile_scrape"`) fire-and-forget; w liście Bulk profile już w bazie/kontaktach oznaczone `✓ w bazie` i pominięte z zaznaczenia (rozwiązuje uwagę: 2nd/3rd i tak nie pokazuje dodanych); nowe pole "Auto-backup bazy co (dni)" w ustawieniach; `.badge--known`.
-  - `dashboard.html`/`dashboard.js`/`dashboard.css` — sekcja "🗄️ Baza profili": banner statusu backupu (czerwony gdy >7 dni / wyłączony) + "⬇ Pobierz backup teraz", przyciski Eksport CSV / Eksport JSON / Import pliku (`<input type=file>` → `profileDbImport`, checkbox "przywróć też kolejkę") / "⬇ Importuj kontakty z LinkedIn", filtry (tekst / źródło / kontakt), tabela (imię/headline/stopień/źródło/kontakt/kolejka/pełny scrape/ostatnio widziany), auto-refresh na `storage.onChanged.profileDb`.
-  - testy: `tests/test_profile_db.js` NEW (35 asercji: merge/dedup/slug-norm/csvEscape/CSV round-trip/backup round-trip), `tests/test_connections_extractor.js` NEW + fixture `tests/fixtures/connections_page.html` (11 asercji).
-
-  **v1.14.1 — auto dark/light mode:** `popup.css`/`dashboard.css`/`options.css` — blok `@media (prefers-color-scheme: dark)` odgated'owany (`:root[data-theme="auto"]` → `:root`, więc działa zawsze automatycznie wg przeglądarki/OS, bez opt-in) i uzupełniony (`--brand-primary-hover`, `--text-disabled`, jaśniejsze semantyczne `--success #34D399`/`--warning #FBBF24`/`--error #F87171` — komponenty miały `border-color: rgba(52,211,153,.4)` pisane pod te wartości, miękkie tła jako niskoalfowe tinty zamiast jasnej mięty/beżu, cienie `rgba(0,0,0,.4)`); `popup.html`/`dashboard.html`/`options.html` `+<meta name="color-scheme" content="light dark">` (natywne kontrolki w pasującym schemacie). Bump 1.14.1. Atrybut `data-theme` teraz bez znaczenia. Komponentowe hardcoded hexy → drobne kosmetyczne glitche w dark = znany dług #24-#28.
-
-  **v1.14.2 — UI "Hasło dostępu":** `popup.html` label "Klucz API" → "Hasło dostępu" + placeholder + `small.control-hint` ("to nie jest klucz Anthropic, ten siedzi na serwerze"); `popup.css` `.control-hint`; `backend/.env.example` komentarz przy `API_KEYS` przepisany + przykład `DreamComeTrue!`. Backend kod bez zmian. Bump 1.14.2.
-
-  **v1.14.3 — animacja "pobieram profil":** `popup.html` nowy `#profile-loading` (spinner + tekst "Pobieram dane profilu z LinkedIn…" z animowanymi kropkami + szkielet z shimmerem) w miejscu karty profilu; `popup.js` `showScrapeLoading(on)` + hook w `btnScrape` handler (pokaż przed scrape'em, schowaj po `showProfile`/`resetProfileUI`) + `updateProfileEmptyState` uwzględnia loading; `popup.css` `.profile-loading*` + `@keyframes lmg-blink`/`lmg-shimmer`. Bump 1.14.3.
-
-  **Operacyjne po commit (Marcin, VPS):** `API_KEYS=DreamComeTrue!` w prod `.env` → `docker compose up -d --build` → wpisać hasło w ustawieniach rozszerzenia → rozdać zespołowi OVB. Regen `extension.zip` pod 1.14.3.
-
-  **Manual smoke (Marcin):**
-  1. Reload extension, sprawdź wersja **1.14.3**.
-  2. Wyszukiwarka LinkedIn → popup tab Bulk → SW DevTools `chrome.storage.local.get("profileDb")` pokazuje profile z tej strony; przejdź na stronę 2 → brak duplikatów, `lastSeenAt` zaktualizowany. Profile już w kontaktach mają `✓ w bazie`.
-  3. Preview profilu → `profileDb.profiles[slug].scrapedProfile` wypełnione; ponowny upsert z search nie kasuje `scrapedProfile`.
-  4. Dashboard (📊) → sekcja "Baza profili": Eksport CSV pobiera plik, Eksport JSON pobiera pełny backup.
-  5. "⬇ Importuj kontakty z LinkedIn" → otwiera/scrolluje stronę kontaktów, po końcu lista z `isConnection:true`.
-  6. "⬇ Pobierz backup teraz" → plik w `Pobrane/linkedin-msg-backup/`, banner "przed chwilą". W options ustaw "Auto-backup co 0 dni" → wyłączony (banner czerwony).
-  7. Import pliku: zmień coś, zaimportuj wcześniejszy JSON → baza scalona; checkbox "przywróć kolejkę" → kolejka dorzucona.
-  8. Dark mode: Windows → Personalizacja → Kolory → Ciemny → Reload → popup/dashboard/options ciemne. Z powrotem na jasny → jasne.
-  9. Regresja: scrape Joanny/Grzegorza + Generuj wiadomość nadal działa (tylko CSS/HTML + dodane hooki, core JS nietknięty).
-  10. Reload extension → `profileDb` i `bulkConnect` nietknięte (defensywny `onInstalled`).
-
-  **AC:** [ ] wersja 1.14.3 · [ ] `profileDb` rośnie z search/scrape, brak dup · [ ] `scrapedProfile` sticky · [ ] Eksport CSV/JSON pobiera pliki · [ ] Import kontaktów działa, `isConnection` mark w Bulk · [ ] Import pliku scala (+ opcjonalnie kolejka) · [ ] auto-backup → plik w Pobranych, `lastBackupAt` set, banner OK · [ ] dark mode auto wg OS, miękkie tła czytelne · [ ] Reload nie wipe'uje storage · [ ] brak regresji scrape/generate · [ ] testy 534/0 PASS
-
-- **#46** P1 feat: design tokens OVB Minimal — pierwszy podtask Sprintu #7 (placeholder #23 w UX_REDESIGN.md sekcja 4). Wymiana `:root` w `extension/popup.css`, `extension/dashboard.css`, `extension/options.css` na paletę OVB navy (`--brand-primary: #002A5C`, light bg `#FFFFFF`, neutrals z UX_REDESIGN sekcja 2.1) + spacing scale 4-base (`--space-1..10`) + radii (`--radius-sm/-/-lg/-pill`) + shadows + Inter font stack + transitions + layout dims. **Backwards-compat layer:** legacy aliases (`--bg-card`, `--bg-elevated`, `--bg-input`, `--accent`, `--accent-hover`, `--accent-bg`, `--text-dim`, `--success-bg`, `--error-bg`) mapowane na nowe tokeny — bez tego komponenty pękną na `unset` (refaktor komponentów dopiero w #24-#28). Dorzucenie `<link rel="stylesheet" href="https://rsms.me/inter/inter.css">` do `<head>` w popup.html, dashboard.html, options.html. Bump 1.12.0 → 1.13.0 (minor — visible design change, nawet bez komponentów). Dark mode override przez `@media (prefers-color-scheme: dark)` z `data-theme="auto"` opt-in.
-
-  **Dev notes — what changed:**
-  - `extension/popup.css` — :root sekcja przepisana (38 linii → ~95 z aliases + dark override). Komponenty NIE TKNIĘTE.
-  - `extension/dashboard.css` — :root przepisany analogicznie.
-  - `extension/options.css` — :root przepisany analogicznie.
-  - `extension/popup.html`, `extension/dashboard.html`, `extension/options.html` — dorzucony `<link>` Inter w `<head>` (przed local stylesheet).
-  - `extension/manifest.json` — 1.12.0 → 1.13.0.
-  - Testy: 489/0 PASS (CSS/HTML zmiana nie dotyka JS, smoke przez Marcin'a wizualnie).
-
-  **How to test manually (Tester / Marcin):**
-  1. Reload extension w `chrome://extensions/` → ikona reload obok "LinkedIn Message Generator". Sprawdź że wersja obok nazwy = **1.13.0**.
-  2. Otwórz LinkedIn profil dowolnej osoby (Anna Rutkowska, Joanna Kowalska, sam siebie).
-  3. Klik ikona extension'a → popup powinien się otworzyć:
-     - **Light tło** (białe/jasne, NIE ciemne)
-     - Tekst czytelny (granatowy `#1A202C` na białym `#FFFFFF`)
-     - Font Inter (zaokrąglone "a"/"g", subtle różnica vs Segoe UI)
-     - Przyciski mogą wyglądać **brzydko** (gradient/hover hardcoded values nie pasujące do navy) — TO OK, refaktor komponentów w #24-#28.
-  4. Otwórz dashboard (button 📊 w header'ze popup'a) — to samo: light bg + Inter.
-  5. Otwórz options (`chrome://extensions/` → Details → Extension options) — to samo.
-  6. **Dark mode test (opcjonalne):** `document.documentElement.setAttribute("data-theme", "auto")` w DevTools popup'a + Chrome ma OS-level dark mode → tło ciemne `#0F1216`, tekst `#E8EBF0`. Bez `data-theme="auto"` zostaje light, nawet w OS dark mode.
-  7. **Smoke regresji:** Pobierz profil (scrape) + Generuj wiadomość (AI) → nadal działa? Tylko CSS/HTML zmieniony, JS nietknięty — funkcje powinny działać identycznie. Brand favicons (zaktualizowane PNG icon16/48/128) w toolbar — sprawdź czy nowe.
-
-  **Acceptance criteria:**
-  - [ ] Popup otwiera się bez crash'a/blank screen
-  - [ ] Tło popup'a = light (#FFFFFF lub #FAFBFC), NIE ciemne
-  - [ ] `getComputedStyle(document.body).getPropertyValue('--brand-primary')` (F12 w popup'ie) → `#002A5C`
-  - [ ] `getComputedStyle(document.body).getPropertyValue('--bg-card')` (legacy alias) → cokolwiek dziedziczy z nowego (nie pusty string)
-  - [ ] Dashboard light theme po klik 📊
-  - [ ] Options light theme
-  - [ ] Inter font loaded (DevTools Network: `inter.css` 200)
-  - [ ] Manifest version `1.13.0`
-  - [ ] Smoke: pobranie profilu + generowanie wiadomości nadal działa (brak regresji JS)
-  - [ ] Dark mode override działa po `data-theme="auto"` + OS dark
-
-- **#44** P1 feat: button Stop dla bulkAutoFillByUrl (v1.11.5). Marcin 2026-05-11: "Dodaj też button do stop dodawania do kolejki, w razie jakby się wyjebał skrypt dodajacy nowe kontakty". Use case: gdy auto-fill (pagination loop) zacina się (LinkedIn rate-limit, DOM zmiany, slow render), user nie miał jak go przerwać — `btnBulkFill.disabled = true` przez całą operację. Fix: cooperative cancel przez storage flag. Background.js: `BULK_DEFAULTS` +2 pola (`autoFillRunning`, `autoFillCancelRequested`). `bulkAutoFillByUrl` na początku setBulkState({running:true, cancel:false}), w try/finally — finally guaranteed reset (nawet exception). W pętli for: pierwsza linia każdej iteracji `await getBulkState()` → jeśli `autoFillCancelRequested` truthy → set `cancelled=true`, break. Return zawiera `cancelled` field. Nowy handler `bulkAutoFillCancel` (router) ustawia flag. Popup.js: `_autoFillInProgress` flag, button NIE disable'owany podczas trwania (żeby user mógł kliknąć Stop) — zmienia tekst na "⏹ Stop dodawania" + class `btn--danger` (czerwony). Drugi klik wysyła `bulkAutoFillCancel`, zmienia text na "Zatrzymuję…", disable button — finally w pierwszym call'u resetuje UI gdy background return. CSS: nowy `.btn--danger` modifier (czerwony #b3261e). Bump 1.11.4 → 1.11.5.
-
-  **Dev notes:**
-  - `extension/background.js` — BULK_DEFAULTS +2 flagi, bulkAutoFillByUrl owinięty try/finally + cancel check w pętli, router +case `bulkAutoFillCancel`
-  - `extension/popup.js` — `handleAutoFillQueue` dual-mode (start vs cancel) + `_autoFillInProgress` flag
-  - `extension/popup.css` — `.btn--danger` modifier
-  - `extension/manifest.json` — 1.11.4 → 1.11.5
-  - Testy: 478/0 PASS (unchanged — cancel flow trivial dla unit testu, manual smoke wystarczy)
-
-  **How to test manually:**
-  1. Reload extension (sprawdź 1.11.5)
-  2. Search results LinkedIn → tab Bulk → "Wypełnij do limitu"
-  3. Podczas trwania (button zmienił się na czerwony "⏹ Stop dodawania") — kliknij Stop
-  4. **Oczekiwane:** button → "Zatrzymuję…" (disabled) na chwilę, potem powrót do "Wypełnij do limitu". W komunikacie: "Zatrzymano. Dodano X profili przed Stop."
-  5. Sprawdź queue — items dodane do momentu Stop są persistowane
-
-  **Acceptance criteria:**
-  - [ ] Klik podczas trwania auto-fill wyświetla Stop (czerwony, włączony)
-  - [ ] Drugi klik (Stop) przerywa loop w max ~1-2s (po zakończeniu bieżącej iteracji)
-  - [ ] Items zebrane przed Stop są zapisane do queue (partial result)
-  - [ ] Po Stop button wraca do default state ("Wypełnij do limitu", primary color)
-  - [ ] Cancel flag jest resetowany przy następnym starcie auto-fill (nie przerywa od razu)
-  - [ ] Wyjątek w środku auto-fill — finally czysci flagę, UI nie utyka w "Stop" mode
-
-- **#43** P0 fix: `resolveBulkTab` — worker nie potrafi wrócić gdy user zamknął kartę search results (v1.11.4). Marcin 2026-05-11: "zamknąłem kartę z wyszukiwaniem na której odbywało się dodawanie kontaktów, rozszerzenie nie potrafi do niej wrócić". Root cause: `resolveBulkTab()` (background.js:1116) próbuje `chrome.tabs.get(state.tabId)` → throws → fallback `findLinkedInSearchTab()` querowal po URL pattern. Jeśli karty zamknięte, brak żadnej karty z URL `/search/results/people/*` → null → tick exit'uje "Lost LinkedIn search tab". #39 (v1.10.0) dodał recovery dla "user navigated away in same tab" ale NIE dla "user closed tab". `lastSearchKeywords` był persistowany od #39 ale nieużywany w resolveBulkTab path. Fix: trzeci fallback w `resolveBulkTab` — gdy oba poprzednie fail, sprawdź `state.lastSearchKeywords`, znajdź `pending.pageNumber` z queue, `buildSearchUrl(keywords, page)`, `chrome.tabs.create({url, active:false})` (active:false żeby nie zabierać user'owi focus'u — worker zwykle w tle), `waitForTabComplete(12000)` + render delay, persist nowy tabId, telemetria `event_type:"bulk_tab_recovered"`. Gating: tylko gdy `lastSearchKeywords` truthy — gdy null/empty, skip recovery (URL bez keywords pokazałby "all people search", nie to czego user chciał). Test: 4 asercje w `canRecoverClosedTab` (test_bulk_connect.js). Bump 1.11.3 → 1.11.4.
-
-  **Dev notes:**
-  - `extension/background.js:1116` (resolveBulkTab, +30 linii) — trzeci fallback z chrome.tabs.create + telemetria
-  - `extension/tests/test_bulk_connect.js` — nowa sekcja `canRecoverClosedTab`, +4 asercje
-  - `extension/manifest.json` — 1.11.3 → 1.11.4
-  - Testy: 474/0 → **478/0 PASS** (+4 z canRecoverClosedTab)
-
-  **How to test manually:**
-  1. Reload extension (sprawdź wersja 1.11.4)
-  2. Otwórz LinkedIn search results: `?keywords=ovb` lub inny
-  3. Tab "Bulk" → Start (worker zaczyna ticki)
-  4. Po 1-2 connectach zamknij CAŁKOWICIE kartę search results
-  5. Czekaj 45-120s (następny tick)
-  6. **Oczekiwane:** worker automatycznie otwiera nową kartę z tym samym keywords, kontynuuje pracę. Karta otwarta w tle (`active:false`), nie zabiera user'owi focus'u.
-  7. **Nie-oczekiwane (jeśli bug nadal):** worker exit'uje z "Lost LinkedIn search tab"
-
-  **Acceptance criteria:**
-  - [ ] Zamknięcie karty search results NIE zatrzymuje worker'a — automatyczne odtworzenie karty
-  - [ ] Nowa karta `active:false` (nie kradnie focus'u user'owi)
-  - [ ] Nowa karta ma keywords + page zgodne z pending item w queue
-  - [ ] Worker kontynuuje connect po recovery
-  - [ ] Telemetria `bulk_tab_recovered` fire'uje (sprawdź backend log SCRAPE_FAILURE_LOG_PATH)
-  - [ ] Brak `lastSearchKeywords` (legacy session bez persist'a) → graceful fail z poprzednim error msg, nie crash
-
-- **#42** P0 fix: `bulkAutoFillByUrl` — 2-minutowy timeout na pierwszej stronie (v1.11.3). Marcin 2026-05-11: kliknął "Wypełnij" na search results, czekał 2 minuty, nic się nie stało. Root cause: pierwsza iteracja loop zawsze wywołuje `chrome.tabs.update(tab.id, {url: targetUrl})` + `waitForTabComplete(12000)`. Gdy `getPageFromUrl(currentUrl) === pageNum` (user już jest na docelowej stronie — najczęstszy use case), Chrome nie wystrzeli "complete" event'u → 12s timeout zmarnowany. Plus jitter 5-15s × N pages dolicza dodatkowe sekundy. Łącznie typowy scan 1 strony zajmował 13.5s+ a 3 stron 60-90s. Fix w `bulkAutoFillByUrl` (extension/background.js linie 1278-1301): (a) skip `tabs.update` + `waitForTabComplete` + render delay gdy `pagesScanned === 0 && pageNum === startPage` — DOM zhydrowany, scrape od razu (zysk: -13.5s na pierwszej stronie); (b) jitter 5-15s → 2-5s (Marcin: "rzadko będą potrzebne następne strony" — cap=25 mieści się typowo w 1-2 stronach, a worker tick'i przy faktycznym Connect mają osobny delay 45-120s, więc 2-5s nie zagraża anti-detection). test_bulk_connect.js: `getJitterMs` helper + range assertion `[2000, 5000]`. Testy: 474/0 PASS (test_bulk_connect 176 + ostatnie 298 z innych). Bump 1.11.2 → 1.11.3.
-
-  **Dev notes — what changed:**
-  - `extension/background.js` (bulkAutoFillByUrl, ~30 linii diff) — `alreadyOnTargetPage` guard + jitter formula 2000+rand*3000
-  - `extension/tests/test_bulk_connect.js` (2 diffy) — helper + assertion range
-  - `extension/manifest.json` — version bump
-
-  **How to test manually:**
-  1. Reload extension w `chrome://extensions/` (sprawdź wersja 1.11.3 obok nazwy)
-  2. Otwórz LinkedIn search results: `https://www.linkedin.com/search/results/people/?keywords=ovb`
-  3. Kliknij ikonę extension → tab "Bulk" → "Wypełnij do limitu"
-  4. **Pierwsza strona powinna scrape'ować się w ~3-5s** (poprzednio: 13.5s minimum, często 60-120s)
-  5. Jeśli cap mieści się w 1 stronie — nic więcej. Jeśli idzie na page 2: ~3-5s jitter potem nawigacja ~2s + scrape ~2s = łącznie ~10-15s na drugą stronę (poprzednio: ~15-30s).
-  6. Sprawdź że profile dodały się do queue (tab "Bulk" pokazuje "X w kolejce")
-
-  **Acceptance criteria:**
-  - [ ] "Wypełnij do limitu" gdy jesteś na page=1 z 10+ Connect-able profilami → kolejka zapełnia się w <5s (dla cap=10) lub <15s (dla cap=25 jeśli idzie na page 2)
-  - [ ] Nie ma reload'u karty na pierwszej stronie (sprawdź czy nie ma "ładowania" w pasku adresu)
-  - [ ] Auto-navigate na kolejne strony nadal działa (jeśli pierwsza strona miała mniej niż cap profili)
-  - [ ] Bulk worker nadal działa po Start (nic w tick'u nie zmienione, tylko auto-fill)
+> Pozostałe wpisy które tu wisiały (#42/#43/#44 v1.11.3-1.11.5, #46 v1.13.0 design tokeny) — **ZASHIPPOWANE** (kod w repo zweryfikowany 2026-05-12: `autoFillCancelRequested`/`canRecoverClosedTab`/`btn--danger`/tokeny `--brand-primary` obecne), przeniesione do DONE → "Sprint #5 hotfixe + Sprint #7 #46". #46 plan dark-mode-opt-in nadpisany przez v1.14.1 (zawsze automatyczny).
 
 ## READY FOR TEST
 
@@ -410,6 +282,17 @@ Original scope (z 2026-05-09): "Stabilizacja + dystrybucja 1.8.0" — 5 tasków 
 ## DONE
 
 > Format: 1 linia per release (sha, opis, bump). Pełne treści w `git show <sha>`.
+
+**Sprint #5 hotfixe (v1.11.3-1.11.5) + Sprint #7 #46 (v1.13.0) — wpisy zaległe w IN PROGRESS, przeniesione do DONE 2026-05-12 (kod w repo zweryfikowany):**
+- ✅ v1.11.3 (#42) — fix: `bulkAutoFillByUrl` 2-min timeout na 1. stronie. Skip `tabs.update`+`waitForTabComplete`+render delay gdy `pagesScanned===0 && pageNum===startPage` (DOM już zhydrowany, `alreadyOnTargetPage` guard); jitter 5-15s → 2-5s (`getJitterMs` 2000+rand*3000). test_bulk_connect.js +helper +range `[2000,5000]`. Bump 1.11.2→1.11.3.
+- ✅ v1.11.4 (#43) — fix: `resolveBulkTab` trzeci fallback gdy user zamknął kartę search results — `state.lastSearchKeywords` + `pending.pageNumber` → `buildSearchUrl` → `chrome.tabs.create({active:false})` → `waitForTabComplete` → persist tabId + telemetria `bulk_tab_recovered`. Gating: tylko gdy `lastSearchKeywords` truthy. +4 asercje `canRecoverClosedTab`. Testy →478/0. Bump 1.11.3→1.11.4.
+- ✅ v1.11.5 (#44) — feat: button Stop dla `bulkAutoFillByUrl` (cooperative cancel przez storage flag `autoFillCancelRequested`; `BULK_DEFAULTS` +2 pola; try/finally guaranteed reset; cancel check w pętli; router +`bulkAutoFillCancel`). popup.js dual-mode button "⏹ Stop dodawania" (czerwony, nie disable'owany w trakcie). CSS `.btn--danger`. Bump 1.11.4→1.11.5.
+- ✅ v1.13.0 (#46) — feat: design tokeny OVB Minimal (Sprint #7 #23 z `UX_REDESIGN.md`). `:root` w popup/dashboard/options.css przepisany na paletę navy `#002A5C` + light bg + spacing 4-base (`--space-1..10`) + radii + shadows + Inter font + transitions + legacy aliases (`--bg-card`/`--bg-elevated`/`--accent`/`--text-dim`/`--success-bg`/etc.) jako shim do refaktoru #24-#28; `<link>` Inter w 3 HTML; brand favicony PNG. Komponenty NIE tknięte (refaktor #24-#28). Bump 1.12.0→1.13.0. UWAGA: planowany dark-mode-opt-in (`data-theme="auto"`) nadpisany w v1.14.1 (zawsze automatyczny). Shippowane bundled w `0484c65`.
+
+**Sprint #8 — trwała baza profili + auto-backup + dark mode (2026-05-12, feature z `/ultraplan`):**
+- ✅ `0484c65` v1.14.0-1.14.2 — feat: trwała baza profili + auto-backup + dark mode + hasło dostępu (#48). **v1.14.0:** LinkedIn wprowadził limity wyszukiwania (Marcin wyczerpał miesięczny) → potrzebna trwała baza profili niezależna od kolejki. Nowy klucz storage `profileDb` (`{version, profiles:{[slug]:rec}, lastBackupAt}`) + `unlimitedStorage` (zdjęty limit 5 MB) + `downloads` permission. `background.js` sekcja "Profile DB": `getProfileDb/writeProfileDb`, `profileRecordFromInput/mergeProfileRecord` (merge: truthy nie nadpisywane falsy, `source` rośnie tylko "w górę" search→bulk→manual→connections_import→profile_scrape, `isConnection` sticky, slug-norm), `upsertProfilesToDb`, `profileDbList` (`inQueue` lazy z cross-ref), `buildProfileDbCsv`/`buildFullBackupJson`/`parseCsv`, `doAutoBackup(force)`/`backupNow` (alarm `dbBackupAlarm` 720 min, sprawdza `settings.backupIntervalDays` def. 3, `chrome.downloads.download` data:URL base64 → `Pobrane/linkedin-msg-backup/backup-YYYY-MM-DD.json`, lite-fallback bez `scrapedProfile` >20 MB), `profileDbImport({json|csv, restoreQueue})`, `importConnectionsFlow(maxPages)` (otwiera/reusuje kartę `/mynetwork/.../connections/`, content scrolluje, upsert `connections_import` z `isConnection:true`). Hooki upsertu w `addToQueue`/`bulkScrapeProfileForQueue`/`bulkAddManualSent`. Router +`profileDbUpsert/List/ExportCsv/ExportJson/Import`, `importConnections`, `backupNow`, `getBackupStatus`. `onInstalled`/`onStartup` defensywny init `profileDb` + `dbBackupAlarm`. `content.js`: `extractConnectionsList()` + `importAllConnections(maxPages)` (infinite-scroll, 2x stale → koniec) + handlery. `popup.js`/`popup.css`/`popup.html`: upsert search (`source:"search"`) + scrape (`profile_scrape`) fire-and-forget, profile już w bazie/kontaktach oznaczone `✓ w bazie` i pominięte z zaznaczenia w Bulk, nowe pole "Auto-backup co (dni)" w ustawieniach, `.badge--known`. `dashboard.html`/`js`/`css`: sekcja "🗄️ Baza profili" — banner statusu backupu (czerwony >7 dni / wyłączony) + "Pobierz backup teraz", Eksport CSV/JSON, Import pliku (checkbox "przywróć kolejkę"), "Importuj kontakty z LinkedIn", filtry (tekst/źródło/kontakt), tabela, auto-refresh na `storage.onChanged.profileDb`. Testy: `test_profile_db.js` NEW (35 asercji), `test_connections_extractor.js` NEW + fixture `connections_page.html` (11 asercji) → **489 → 534/0 PASS**. **v1.14.1:** auto dark/light mode — `popup/dashboard/options.css` blok `@media (prefers-color-scheme: dark)` odgated'owany (`:root[data-theme="auto"]` → `:root`, zawsze automatycznie wg OS, bez opt-in) i uzupełniony (jaśniejsze semantyczne `--success #34D399`/`--warning #FBBF24`/`--error #F87171` — komponenty miały `border-color: rgba(52,211,153,.4)` pisane pod te wartości, miękkie tła jako niskoalfowe tinty, cienie `rgba(0,0,0,.4)`, `--brand-primary-hover`, `--text-disabled`), `+<meta name="color-scheme" content="light dark">` w 3 HTML. Atrybut `data-theme` teraz bez znaczenia. Komponentowe hardcoded hexy → drobne glitche w dark = dług #24-#28. **v1.14.2:** UI "Klucz API" → "Hasło dostępu" (`popup.html` label+placeholder+`small.control-hint`, `popup.css` `.control-hint`) — to zawsze był tylko współdzielony sekret do backendu (`X-API-Key` ↔ `API_KEYS` w `.env`), NIE klucz Anthropic (ten w `ANTHROPIC_API_KEY`, nigdy nie opuszcza serwera); `backend/.env.example` komentarz przepisany + `API_KEYS=DreamComeTrue!`. Backend kod ZERO zmian. CLAUDE.md + INSTRUKCJA.md zaktualizowane. Bump 1.13.0 → 1.14.0 → 1.14.1 → 1.14.2.
+- ✅ `3542666` v1.14.3 — feat: animacja "pobieram profil". `popup.html` nowy `#profile-loading` (spinner + tekst "Pobieram dane profilu z LinkedIn…" z animowanymi kropkami + szkielet z shimmerem) w miejscu karty profilu; `popup.js` `showScrapeLoading(on)` + hook w `btnScrape` handler + `updateProfileEmptyState` uwzględnia loading; `popup.css` `.profile-loading*` + `@keyframes lmg-blink`/`lmg-shimmer`. Bump 1.14.3.
+- ⏳ **Pending operacyjne (Marcin):** (1) manual smoke 1.14.3 — patrz dev notes w IN PROGRESS #48; (2) na VPS `API_KEYS=DreamComeTrue!` w prod `.env` → `docker compose up -d --build` → wpisać hasło w ustawieniach rozszerzenia; (3) regen `extension.zip` pod 1.14.3 + dystrybucja zespołowi OVB (zakomunikować: nowy auto-backup + import kontaktów + dark mode + "Hasło dostępu" + przypomnieć regułę "Reload TAK, Remove NIGDY" + folder rozszerzenia w bezpiecznym miejscu, nie Opera/Edge "clear on close"); (4) push commitów na origin.
 
 **Sprint #6 — SDUI extractor /in/<slug>/ (2026-05-11 z v1.12.0):**
 - ✅ `0290cdf` v1.12.0 — feat: SDUI extractor (#4 reaktywowane po ANULOWANIU 2026-05-05). LinkedIn wdrożył SDUI A/B test 6 dni po ANULOWANIU tasku w Sprint #1 → klasyczny scraper timeout `{h1Count:0, mainClass:"_276b182a..."}`. Nowy `extractFromSdui()` w `content.js` (po `extractFromFeedLayout`, przed `extractFromJsonLd`): detect przez `section[componentkey*="Topcard"]` (jeden node), name w `<h2>`, headline/company/location z heurystyk na `<p>` (filter degree markery + samodzielne `·`, headline = literą+spacją >10 chars bez ` · `, company split " · " [0], location regex PL/EU, mutual regex "wspóln[ay] kontakt"), about w `section[componentkey$="HQAbout"]` (ends-with rozróżnia od `HQSuggestedForYou`). Orchestracja `scrapeProfileAsync`: classic Ember → **SDUI** → Voyager → JSON-LD → feed → last-resort. `_source:"sdui"` na profilu. Diagnostyka +`sduiTopcardFound`/`sduiCardCount`. **LIMITATION**: SDUI dump nie zawiera `experience`/`skills`/`featured`/`education` inline — pola puste, osobny task gdy LinkedIn doda `componentkey="*HQExperience"`. Fixture E2E F5 z dumpem Majkowskiego (`profile_sdui_dump.html` 350 KB, przeniesiony z `extension/futures/` po literówce folderu) z 11 asercjami. Testy 478/0 → **489/0 PASS**. Lessons: ANULOWANIE 2026-05-05 ("classic Ember działa") bazowane na snapshot w czasie — A/B test'y LinkedIn'a wprowadzają nowe layouts z tygodnia na tydzień, fallback chain w `scrapeProfileAsync` MUST-HAVE od początku nawet jeśli "obecnie niepotrzebny". Bump 1.11.5 → 1.12.0 (minor).
@@ -472,7 +355,7 @@ Lessons: pre-commit hook + `node --check` przed commit to MUST-HAVE dla MV3 popu
 
 ## BACKLOG (poza sprintem, później)
 
-- **#45 P1 Sprint UX redesign OVB Minimal** — wymiana "discord-blue dev tool" look na corporate OVB navy. Design tokens (paleta `#002A5C`, Inter font, 4-base spacing scale), 3-typ btn system (primary/secondary/ghost), unified card + badge components, 3-fazowy action bar (no_profile / profile_no_message / message_ready), empty states z Lucide icons, dashboard polish. Spec: `UX_REDESIGN.md`. 6 podtasków (~5h Claude Code + 3h Marcin smoke). Bump major v1.x → v2.0.0 przy starcie (breaking visual change). Assety wygenerowane 2026-05-11: nowe `extension/icons/icon{16,48,128}.png` (brand favicony) + 4 WebP w `extension/assets/` + line-art SVG empty states. **Decyzja kiedy startujemy** — zależy od priorytetów vs feature backlog.
+- **#45 P1 Sprint UX redesign OVB Minimal** — wymiana "discord-blue dev tool" look na corporate OVB navy. Spec: `UX_REDESIGN.md`. **Postęp 2026-05-12:** ✅ design tokeny (#46 → v1.13.0), ✅ auto dark/light mode (v1.14.1, nadpisał oryginalny plan opt-in), ✅ assety/favicony. **Zostało: #24-#28 — refaktor komponentów** (~5h Claude): 3-typ btn system (primary/secondary/ghost — teraz przyciski mają hardcoded "discord-blue" hexy nie pasujące do navy, np. `.btn:hover{background:#232831}`), unified card + badge components, 3-fazowy action bar (no_profile / profile_no_message / message_ready), empty states z Lucide icons, dashboard polish. Bump major v1.x → v2.0.0 przy starcie (breaking visual change). **Decyzja kiedy startujemy** — vs #22 auto-pagination (większa wartość biznesowa) vs feature backlog.
 - **#6** Self-test scraper widget w popup (settings → diagnostyka)
 - **#10** Wersjonowanie selektorów + auto-fallback chain (selectors.json + hot-update z backendu, plus refactor żeby Voyager parser nie był zduplikowany w test_e2e.js i content.js)
 - **#22 fix** Auto-pagination "Wypełnij do limitu" (1.4.1 zatrzymuje się po 1 stronie). Wymaga: DOM dump paginacji od Marcina (`extension/tests/fixtures/search_results_pagination.html`) → fix selektorów `bulkAutoExtract` w content.js (~linie 1430-1440) → test fixture'owy. Plus master-select checkboxy (Select all / 2nd degree only / Unselect Pending) + `Stop after N pages` setting (default 5). Estymata: ~0.5+0.5 sprintu Marcina.
