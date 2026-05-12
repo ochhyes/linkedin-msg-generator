@@ -1584,6 +1584,116 @@
     return { success: true, profiles: collected, stopped: "max_pages_reached" };
   }
 
+  // ── Import kontaktów 1st-degree (#45 v1.14.0) ────────────────────
+  //
+  // Strona /mynetwork/invite-connect/connections/ renderuje listę kontaktów
+  // jako karty (każda z linkiem /in/<slug>/, imieniem i occupation). Lista
+  // ładuje się infinite-scroll'em ("Pokaż więcej wyników" / lazy load przy
+  // scrollu do dołu). extractConnectionsList() parsuje aktualnie wyrenderowane
+  // karty; importAllConnections() scrolluje aż lista przestanie rosnąć.
+
+  function extractConnectionsList() {
+    const results = [];
+    const seen = new Set();
+    // Karty kontaktów: kontener z linkiem do /in/. LinkedIn używał różnych
+    // klas (mn-connection-card, .reusable-search__result-container) — chwytamy
+    // strukturalnie: każdy <a href*="/in/"> i wspinamy do najbliższego
+    // sensownego kontenera (li / [componentkey] / .artdeco-* card).
+    const links = Array.from(document.querySelectorAll('a[href*="/in/"]'));
+    for (const link of links) {
+      try {
+        const href = link.getAttribute("href") || "";
+        const m = href.match(/\/in\/([^/?#]+)/);
+        if (!m) continue;
+        let slug;
+        try { slug = decodeURIComponent(m[1]).toLowerCase(); } catch (_) { slug = m[1].toLowerCase(); }
+        if (!slug || seen.has(slug)) continue;
+
+        const card = link.closest('li, [componentkey], .mn-connection-card, .artdeco-list__item, [data-view-name]') || link.parentElement;
+        if (!card) continue;
+        // Filtruj false-positives: sidebar "People you may know", reklamy itp.
+        // Sygnał: karta kontaktu ma datę połączenia ("Połączono") lub przycisk
+        // "Wiadomość". Ale nie wymuszamy tego twardo — jeśli karta ma imię
+        // i slug, bierzemy. Pomijamy tylko gdy link jest pusty.
+        const linkText = (link.innerText || link.textContent || "").trim();
+        // Imię — preferuj tekst linku jeśli wygląda na imię (litery, spacja,
+        // < 60 znaków, brak "obserwuj"/"wiadomość"), inaczej pierwszy <span>/<p>.
+        let name = "";
+        const looksLikeName = (s) => s && s.length > 1 && s.length < 60 &&
+          !/obserwuj|wiadomo|connect|follow|message|stopni|·/i.test(s) && /\p{L}/u.test(s);
+        if (looksLikeName(linkText)) {
+          name = linkText.split("\n").map((x) => x.trim()).find(looksLikeName) || linkText.trim();
+        }
+        if (!name) {
+          const cand = Array.from(card.querySelectorAll("span, p"))
+            .map((el) => (el.innerText || el.textContent || "").trim())
+            .find(looksLikeName);
+          if (cand) name = cand;
+        }
+        // Headline / occupation — pierwszy <p>/<span> po imieniu z tekstem
+        // dłuższym niż imię i niewyglądający na datę połączenia.
+        let headline = null;
+        const texts = Array.from(card.querySelectorAll("p, span"))
+          .map((el) => (el.innerText || el.textContent || "").trim())
+          .filter(Boolean);
+        for (const t of texts) {
+          if (!t || t === name) continue;
+          if (/^połączono|^connected|^zaproszenie|^stopień|·\s*\d/i.test(t)) continue;
+          if (t.length < 3) continue;
+          headline = t;
+          break;
+        }
+
+        seen.add(slug);
+        results.push({
+          slug,
+          name: name || "",
+          headline: headline || "",
+          location: null,
+          degree: "1st",
+          profileUrl: `https://www.linkedin.com/in/${slug}/`,
+          mutual_connections: null,
+          pageNumber: null,
+        });
+      } catch (_) { /* jedna zepsuta karta nie zabija listy */ }
+    }
+    return results;
+  }
+
+  async function importAllConnections(maxPages) {
+    const cap = Math.max(1, Math.min(maxPages || 50, 200));
+    // Poczekaj aż lista się wstępnie załaduje.
+    await waitFor(() => extractConnectionsList().length > 0, 12000);
+
+    let lastCount = 0;
+    let stale = 0;
+    let pagesProcessed = 0;
+    for (let i = 0; i < cap; i++) {
+      pagesProcessed = i + 1;
+      const cur = extractConnectionsList();
+      if (cur.length === lastCount) {
+        stale += 1;
+        // Spróbuj kliknąć "Pokaż więcej wyników" zanim się poddamy.
+        const moreBtn = Array.from(document.querySelectorAll("button"))
+          .find((b) => /pokaż więcej|show more|see more/i.test((b.innerText || b.textContent || "")));
+        if (moreBtn && !moreBtn.disabled) {
+          try { moreBtn.click(); } catch (_) {}
+        }
+        if (stale >= 2) break; // dwa razy z rzędu bez przyrostu → koniec
+      } else {
+        stale = 0;
+      }
+      lastCount = cur.length;
+      // Scroll do dołu — wyzwala lazy load kolejnej porcji.
+      window.scrollTo(0, document.body.scrollHeight);
+      await new Promise((r) => setTimeout(r, 1200));
+      await waitFor(() => extractConnectionsList().length > lastCount, 2500);
+    }
+
+    const profiles = extractConnectionsList();
+    return { success: true, profiles, pagesProcessed, total: profiles.length, hitCap: pagesProcessed >= cap };
+  }
+
   // ── Profile degree detection (#21 v1.5.0) ────────────────────────
   //
   // Wywoływane z background tab podczas bulkCheckAccepts. Sprawdza czy
@@ -1765,6 +1875,21 @@
           });
         });
       return true; // Keep channel open for async response.
+    } else if (message.action === "extractConnectionsList") {
+      // SYNC — pure DOM walk.
+      try {
+        sendResponse({ success: true, profiles: extractConnectionsList() });
+      } catch (err) {
+        sendResponse({ success: false, profiles: [], error: err && err.message ? err.message : String(err) });
+      }
+    } else if (message.action === "importAllConnections") {
+      // ASYNC — infinite-scroll po stronie kontaktów.
+      importAllConnections(message.maxPages)
+        .then((result) => { if (isContextValid()) sendResponse(result); })
+        .catch((err) => {
+          if (isContextValid()) sendResponse({ success: false, profiles: [], error: `import_connections_exception: ${(err && err.message) || err}` });
+        });
+      return true; // keep channel open
     } else if (message.action === "checkProfileDegree") {
       // SYNC response — DOM walk jest synchroniczny. Try/catch żeby fail
       // nie zamknął channel'a bez response'a.

@@ -34,6 +34,7 @@
   const setApiKey = $("#set-api-key");
   const setSender = $("#set-sender");
   const setMaxChars = $("#set-max-chars");
+  const setBackupDays = $("#set-backup-days");
   const btnSaveSettings = $("#btn-save-settings");
   const btnBack = $("#btn-back");
   // Bulk Connect (#18) refs
@@ -472,6 +473,14 @@
           ));
           return;
         }
+        // #45 v1.14.0: każdy zescrape'owany profil trafia do trwałej bazy.
+        try {
+          chrome.runtime.sendMessage({
+            action: "profileDbUpsert",
+            source: "profile_scrape",
+            profiles: [{ ...response.profile, scrapedProfile: response.profile }],
+          });
+        } catch (_) { /* fire-and-forget */ }
         resolve(response.profile);
       });
     });
@@ -675,6 +684,7 @@
     setApiKey.value = settings.apiKey || "";
     setSender.value = settings.senderContext || "";
     setMaxChars.value = settings.defaultMaxChars || 300;
+    if (setBackupDays) setBackupDays.value = settings.backupIntervalDays != null ? settings.backupIntervalDays : 3;
   });
 
   btnBack.addEventListener("click", () => {
@@ -708,11 +718,15 @@
   }
 
   btnSaveSettings.addEventListener("click", async () => {
+    let backupDays = parseInt(setBackupDays && setBackupDays.value, 10);
+    if (!Number.isFinite(backupDays) || backupDays < 0) backupDays = 3;
+    if (backupDays > 90) backupDays = 90;
     const settings = {
       apiUrl: setApiUrl.value.trim(),
       apiKey: setApiKey.value.trim(),
       senderContext: setSender.value.trim(),
       defaultMaxChars: parseInt(setMaxChars.value, 10) || 1000,
+      backupIntervalDays: backupDays,
     };
 
     try {
@@ -757,7 +771,7 @@
    * pending invites and follow-only profiles are rendered greyed-out and
    * non-clickable so the user still sees them but can't open them by mistake.
    */
-  function renderProfilesList(profiles) {
+  function renderProfilesList(profiles, knownConnectionSlugs) {
     profilesList.innerHTML = "";
 
     if (!Array.isArray(profiles) || profiles.length === 0) {
@@ -765,13 +779,17 @@
       return;
     }
 
+    const connSet = knownConnectionSlugs instanceof Set ? knownConnectionSlugs : new Set();
     let connectable = 0;
+    let alreadyKnown = 0;
     for (const p of profiles) {
-      const slug = p?.slug || "";
+      const slug = p?.slug ? String(p.slug).toLowerCase() : "";
       const state = p?.buttonState || "Unknown";
       const degree = p?.degree || "";
       const isFirstDegree = typeof degree === "string" && degree.trim().startsWith("1");
-      const disabled = state !== "Connect" || isFirstDegree;
+      const inDb = slug && connSet.has(slug);
+      if (inDb) alreadyKnown += 1;
+      const disabled = state !== "Connect" || isFirstDegree || inDb;
       if (!disabled) connectable += 1;
 
       const li = document.createElement("li");
@@ -803,15 +821,18 @@
       textCol.appendChild(headlineEl);
 
       const badge = document.createElement("span");
-      badge.className = `badge badge--${String(state).toLowerCase()}`;
-      badge.textContent = badgeLabel(state);
+      badge.className = `badge badge--${inDb ? "known" : String(state).toLowerCase()}`;
+      badge.textContent = inDb ? "✓ w bazie" : badgeLabel(state);
+      if (inDb) badge.title = "Ten profil jest już w Twojej bazie / kontaktach";
 
       li.appendChild(textCol);
       li.appendChild(badge);
       profilesList.appendChild(li);
     }
 
-    bulkInfo.textContent = `${profiles.length} profili, ${connectable} dostępnych do Connect`;
+    bulkInfo.textContent =
+      `${profiles.length} profili, ${connectable} dostępnych do Connect` +
+      (alreadyKnown ? ` · ${alreadyKnown} już w bazie` : "");
   }
 
   /**
@@ -831,7 +852,21 @@
       }
       const response = await chrome.tabs.sendMessage(tab.id, { action: "extractSearchResults" });
       if (response?.success) {
-        renderProfilesList(response.profiles || []);
+        const profiles = response.profiles || [];
+        // #45 v1.14.0: zapisz wyniki wyszukiwania do trwałej bazy
+        // (fire-and-forget) — to główny chokepoint łapania profili.
+        try {
+          chrome.runtime.sendMessage({ action: "profileDbUpsert", source: "search", profiles });
+        } catch (_) { /* noop */ }
+        // Cross-ref z bazą: oznacz profile które już znamy / mamy w kontaktach.
+        let connSet = new Set();
+        try {
+          const dbResp = await chrome.runtime.sendMessage({ action: "profileDbList", filter: {} });
+          if (dbResp?.success && Array.isArray(dbResp.list)) {
+            connSet = new Set(dbResp.list.filter((r) => r.isConnection).map((r) => String(r.slug).toLowerCase()));
+          }
+        } catch (_) { /* noop — render bez adnotacji */ }
+        renderProfilesList(profiles, connSet);
       } else {
         bulkInfo.textContent = "Nie udało się pobrać listy profili";
       }

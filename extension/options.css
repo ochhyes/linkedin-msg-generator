@@ -2,23 +2,97 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg: #0f1117;
-  --bg-card: #1a1d27;
-  --bg-input: #252833;
-  --border: #2e3240;
-  --text: #e4e6ed;
-  --text-dim: #8b8fa3;
-  --accent: #4f8ff7;
-  --accent-hover: #6ba0f9;
-  --accent-bg: rgba(79, 143, 247, 0.1);
-  --success: #34d399;
-  --success-bg: rgba(52, 211, 153, 0.15);
-  --error: #f87171;
-  --error-bg: rgba(248, 113, 113, 0.1);
-  --warning: #fbbf24;
-  --radius: 8px;
-  --radius-sm: 6px;
-  --font: "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+  /* ── Brand (OVB navy) ──────────────────────────────────── */
+  --brand-primary: #002A5C;
+  --brand-primary-hover: #001F47;
+  --brand-primary-soft: #E8EEF6;
+  --brand-secondary: #6B7785;
+
+  /* ── Neutrals (light mode default) ─────────────────────── */
+  --bg: #FFFFFF;
+  --bg-subtle: #FAFBFC;
+  --bg-muted: #F1F3F5;
+  --border: #E1E5EB;
+  --border-strong: #C8D0D9;
+  --text: #1A202C;
+  --text-secondary: #4A5563;
+  --text-muted: #6B7785;
+  --text-disabled: #A0AAB8;
+
+  /* ── Semantic ──────────────────────────────────────────── */
+  --success: #0A7849;
+  --success-soft: #E8F4EE;
+  --warning: #B8731F;
+  --warning-soft: #FBF3E5;
+  --error: #C8102E;
+  --error-soft: #FBE9EC;
+
+  /* ── Spacing scale (4-base) ────────────────────────────── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  /* ── Radii ─────────────────────────────────────────────── */
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 8px;
+  --radius-pill: 999px;
+
+  /* ── Shadows ───────────────────────────────────────────── */
+  --shadow-sm: 0 1px 2px rgba(0, 42, 92, 0.04);
+  --shadow: 0 2px 8px rgba(0, 42, 92, 0.06);
+  --shadow-lg: 0 8px 24px rgba(0, 42, 92, 0.08);
+
+  /* ── Typography ────────────────────────────────────────── */
+  --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+
+  /* ── Transitions ───────────────────────────────────────── */
+  --transition: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ── Legacy aliases (Sprint #7 migration shim) ─────────── */
+  --bg-card: var(--bg-subtle);
+  --bg-elevated: var(--bg-subtle);
+  --bg-input: var(--bg-muted);
+  --accent: var(--brand-primary);
+  --accent-hover: var(--brand-primary-hover);
+  --accent-bg: var(--brand-primary-soft);
+  --text-dim: var(--text-secondary);
+  --success-bg: var(--success-soft);
+  --error-bg: var(--error-soft);
+}
+
+/* Dark mode — automatyczne dopasowanie do schematu przeglądarki/OS (v1.14.1). */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0F1216;
+    --bg-subtle: #161A20;
+    --bg-muted: #1F242B;
+    --border: #2A2F37;
+    --border-strong: #3A4049;
+    --text: #E8EBF0;
+    --text-secondary: #B5BCC8;
+    --text-muted: #8B92A0;
+    --text-disabled: #5D6470;
+    --brand-primary: #5B9CFF;
+    --brand-primary-hover: #7DB0FF;
+    --brand-primary-soft: rgba(91, 156, 255, 0.14);
+    --success: #34D399;
+    --success-soft: rgba(52, 211, 153, 0.15);
+    --warning: #FBBF24;
+    --warning-soft: rgba(251, 191, 36, 0.15);
+    --error: #F87171;
+    --error-soft: rgba(248, 113, 113, 0.15);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+  }
 }
 
 body {

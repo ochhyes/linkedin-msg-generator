@@ -1,6 +1,8 @@
-# LinkedIn MSG — instrukcja dla zespołu OVB (v1.11.2)
+# LinkedIn MSG — instrukcja dla zespołu OVB (v1.14.2)
 
-Extension Chrome dla **bulk wysyłki zaproszeń** + **AI generator wiadomości** dla nowo zaakceptowanych kontaktów. Zastępuje Octopus Starter.
+Extension Chrome dla **bulk wysyłki zaproszeń** + **AI generator wiadomości** dla nowo zaakceptowanych kontaktów + **trwała baza profili z auto-backupem**. Zastępuje Octopus Starter.
+
+> **Nowości w 1.14.x:** trwała baza wszystkich profili (przeżywa nawet utratę rozszerzenia), auto-backup do pliku co kilka dni, eksport/import CSV+JSON, import Twoich kontaktów 1st z LinkedIn, automatyczny dark/light mode wg ustawień przeglądarki, pole "API Key" przemianowane na "Hasło dostępu".
 
 ---
 
@@ -27,28 +29,31 @@ Extension Chrome dla **bulk wysyłki zaproszeń** + **AI generator wiadomości**
 >
 > **Gdyby Reload coś popsuł (rzadkie):** zanim klikniesz Usuń, **najpierw zrób backup** (patrz niżej). Bez backupu Remove = total wipe bez recovery.
 >
+> **🟢 NAJPROSTSZY backup (od 1.14.0):** w rozszerzeniu klik 📊 (dashboard) → sekcja "🗄️ Baza profili" → **"Eksport JSON (pełny backup)"** — pobierze plik z całą bazą + kolejką. Restore: ta sama sekcja → **"Import pliku"** → wybierz plik (zaznacz "przywróć też kolejkę zaproszeń" jeśli chcesz odzyskać też kolejkę). Plus rozszerzenie **samo robi backup co 3 dni** do `Pobrane/linkedin-msg-backup/backup-YYYY-MM-DD.json` (interwał ustawisz w ustawieniach, 0 = wyłącz). Banner na górze sekcji pokazuje kiedy był ostatni backup — jak zrobi się czerwony, kliknij "⬇ Pobierz backup teraz".
+>
 > **Gdzie są fizycznie dane:** `C:\Users\<user>\AppData\Local\Google\Chrome\User Data\Default\Local Extension Settings\<EXTENSION_ID>\` — folder LevelDB (binary). Klik "Usuń" w Chrome czyści ten folder.
 >
-> **Backup ręczny przed jakąkolwiek ryzykowną operacją:** prawym myszą na ikonie extension'u → Inspect popup → DevTools Console → wklej:
+> **Backup ręczny przez DevTools (awaryjny, gdy nie masz jeszcze 1.14.0):** prawym myszą na ikonie extension'u → Inspect popup → DevTools Console → wklej:
 > ```js
 > chrome.storage.local.get(null, d => copy(JSON.stringify(d)))
 > ```
-> JSON jest w schowku — wklej do pliku `backup-YYYY-MM-DD.json` i odłóż na bok.
+> JSON jest w schowku — wklej do pliku `backup-YYYY-MM-DD.json` i odłóż na bok. Restore: `chrome.storage.local.set(JSON.parse(<paste JSON w cudzysłowach>))` → Enter → reload popup'u.
 >
-> **Restore z backupu** (jeśli wpadniesz w pułapkę Remove+Add): popup → Inspect → Console → `chrome.storage.local.set(JSON.parse(<paste tu zawartość JSON-a w cudzysłowach>))` → Enter → reload popup'u.
+> **⚠️ Opera / Edge / „znika po zamknięciu przeglądarki":** jeśli rozszerzenie kasuje się samo przy każdym zamknięciu przeglądarki — to NIE jest bug rozszerzenia, tylko Twoje środowisko. Sprawdź: (1) ustawienie „Wyczyść dane przy zamknięciu" w przeglądarce → wyłącz; (2) narzędzia czyszczące (CCleaner itp.) → wyłącz czyszczenie przeglądarek; (3) antywirus → dodaj folder rozszerzenia do wyjątków. Trzymaj folder Load Unpacked w miejscu którego nic nie rusza (np. `C:\Users\<user>\linkedin-ext\`, nie na dyskach z czyszczonymi/serwerowymi danymi). Jeśli da się — **używaj Chrome** zamiast Opery/Edge. Niezależnie: auto-backup z 1.14.0 jest siatką bezpieczeństwa.
 
 ---
 
-## 2. Pierwsze uruchomienie — ustawienia API (jednorazowo, ~1 min)
+## 2. Pierwsze uruchomienie — ustawienia (jednorazowo, ~1 min)
 
 1. Klik ikonę LinkedIn MSG → klik **kółko ustawień** (top-right).
 2. Wpisz:
-   - **API URL:** `https://linkedin-api.szmidtke.pl`
-   - **API Key:** `(klucz dostarczony przez Marcina)`
-   - **Sender Context:** krótki opis Twojej osoby + co robisz (np. *"Jan Kowalski, doradca finansowy w OVB Allfinanz Polska. Pomagam w inwestycjach długoterminowych i ubezpieczeniach na życie."*). Generator dorzuca to do każdej wiadomości.
+   - **URL backendu:** `https://linkedin-api.szmidtke.pl`
+   - **Hasło dostępu:** `DreamComeTrue!` (lub cokolwiek Marcin powie — to wspólne hasło zespołu). **To nie jest klucz API Anthropic** — ten siedzi na serwerze. To tylko hasło, żeby backend wiedział że to ktoś z zespołu.
+   - **Kontekst nadawcy:** krótki opis Twojej osoby + co robisz (np. *"Jan Kowalski, doradca finansowy w OVB Allfinanz Polska. Pomagam w inwestycjach długoterminowych i ubezpieczeniach na życie."*). Generator dorzuca to do każdej wiadomości.
+   - **Auto-backup bazy co (dni):** zostaw `3` (0 = wyłącz). Co tyle dni rozszerzenie zapisze plik backupu do `Pobrane/linkedin-msg-backup/`.
 3. Klik **Zapisz**.
 
-> **Bez API key extension nie wygeneruje wiadomości.** Bulk Connect (zaproszenia) działa nawet bez klucza, ale generator wymaga.
+> **Bez hasła dostępu extension nie wygeneruje wiadomości.** Bulk Connect (zaproszenia) i baza profili działają nawet bez hasła, ale generator AI wymaga.
 
 ---
 
@@ -264,6 +269,36 @@ Dane wszystkie lokalnie u Ciebie (`chrome.storage.local`), nic nie idzie do żad
 
 ---
 
+### 3.7 Baza profili + auto-backup (NOWE w 1.14.0)
+
+LinkedIn wprowadził **limity wyszukiwania** (po wyczerpaniu miesięcznego limitu nie wyszukasz nowych ludzi). Dlatego rozszerzenie buduje **trwałą bazę profili** — niezależną od kolejki zaproszeń — żeby raz zescrape'owane profile, wyniki wyszukiwania i adresy nie przepadły.
+
+**Co trafia do bazy automatycznie:**
+- Każdy wynik wyszukiwania który zobaczy popup (zakładka Bulk) — imię, headline, lokalizacja, stopień, adres profilu.
+- Każdy zescrape'owany profil (z preview albo z generowania wiadomości) — z pełnymi danymi (about/doświadczenie/skills jeśli były).
+- Profile dodane do kolejki Bulk Connect i z manual outreach.
+- Zaimportowane kontakty 1st (patrz niżej).
+
+Profile w bazie się nie duplikują (klucz = adres profilu) i bogatsze dane nigdy nie nadpisują uboższych — jak raz mamy pełny scrape, kolejny przelot przez wyszukiwarkę go nie skasuje.
+
+**Gdzie to widać:** dashboard (📊 w popup'ie) → sekcja **"🗄️ Baza profili"** — liczba profili, filtry (szukaj po imieniu / źródło / tylko kontakty), tabela. W zakładce Bulk popup'u profile które już masz w bazie/kontaktach mają tag `✓ w bazie` i nie zaznaczają się do bulk-connect (i tak są w sieci albo już dodane).
+
+**Import Twoich kontaktów z LinkedIn:** dashboard → "Baza profili" → **"⬇ Importuj kontakty z LinkedIn"** → otworzy się karta z Twoimi kontaktami, rozszerzenie przewinie ją do końca i zapisze wszystkich do bazy z oznaczeniem "kontakt". **Nie zamykaj tej karty w trakcie** — przy dużej liczbie kontaktów może trwać kilka minut. Po imporcie wiesz do kogo już nie pisać (są w sieci) i masz bazę do odbudowy gdyby coś się skasowało.
+
+**Eksport (na wszelki wypadek / na inny komputer):**
+- **"Eksport CSV"** — plik `linkedin-profiles-DATA.csv` (otwierasz w Excelu) — lista profili z kolumnami imię/headline/lokalizacja/stopień/adres/źródło/kontakt itd.
+- **"Eksport JSON (pełny backup)"** — kompletny zrzut bazy + kolejki zaproszeń. To plik do **restore** przez "Import pliku".
+
+**Auto-backup:** rozszerzenie samo zapisuje pełny backup do `Pobrane/linkedin-msg-backup/backup-YYYY-MM-DD.json` co tyle dni ile ustawisz w ustawieniach (domyślnie 3, `0` = wyłącz). Banner na górze sekcji "Baza profili" pokazuje kiedy był ostatni — czerwony = ponad 7 dni temu albo wyłączony, kliknij wtedy "⬇ Pobierz backup teraz". **To jedyna rzecz która przeżyje "Usuń + Dodaj"** (Chrome wipe'uje storage przy Usuń, ale plik w Pobranych zostaje).
+
+**Restore z backupu / przeniesienie na nowy komputer:** dashboard → "Baza profili" → **"Import pliku"** → wybierz `backup-*.json` → (opcjonalnie zaznacz "przywróć też kolejkę zaproszeń") → Import. Baza zostanie scalona z tym co już masz (nic nie kasuje).
+
+### 3.8 Dark mode (NOWE w 1.14.1)
+
+Rozszerzenie automatycznie dopasowuje się do trybu jasny/ciemny ustawionego w przeglądarce/systemie — nic nie musisz klikać. Jeśli masz w Windowsie/Edge włączony tryb ciemny, popup, dashboard i ustawienia będą ciemne; jasny → jasne.
+
+---
+
 ## 4. Typowy harmonogram (przykład)
 
 **Poniedziałek 9:00:** Nowa kampania.
@@ -326,13 +361,28 @@ A: AI dostaje treść Twojej pierwszej wiadomości jako kontekst i instrukcję "
 **Q: URL nowej karty z czatem ma dziwne `%25c5%2582` w slugu i otwiera ogólne /messaging zamiast czatu z osobą.**  
 A: Bug 1.7.x — naprawiony w **1.8.0**. Sprawdź wersję, jeśli stara — Reload.
 
+**Q: LinkedIn nie pozwala mi już wyszukiwać ludzi ("osiągnięto limit wyszukiwania w tym miesiącu").**  
+A: To limit LinkedIn'a (free konto). Dlatego od 1.14.0 jest **trwała baza profili** — wszystko co już zobaczyłeś (wyniki wyszukiwania, scrape'y) jest zapisane na stałe (dashboard 📊 → "Baza profili"). Pracuj z tego co masz. Dodatkowo zaimportuj swoje kontakty 1st ("⬇ Importuj kontakty z LinkedIn") — to nie zużywa limitu wyszukiwania.
+
+**Q: Gdzie ląduje auto-backup?**  
+A: `Pobrane/linkedin-msg-backup/backup-YYYY-MM-DD.json`, co 3 dni (interwał w ustawieniach). Banner w dashboardzie (sekcja "Baza profili") pokazuje datę ostatniego. Restore: "Import pliku" tamże.
+
+**Q: Chcę przenieść wszystko na nowy komputer.**  
+A: Stary komputer: dashboard → "Baza profili" → "Eksport JSON (pełny backup)". Nowy: zainstaluj rozszerzenie, dashboard → "Import pliku" → wybierz ten plik (zaznacz "przywróć też kolejkę zaproszeń"). Gotowe.
+
+**Q: Import kontaktów się zaciął / nic nie zaimportował.**  
+A: Otwórz ręcznie `https://www.linkedin.com/mynetwork/invite-connect/connections/`, przewiń trochę listę żeby się załadowała, i spróbuj ponownie z dashboardu. Nie zamykaj karty z kontaktami w trakcie importu.
+
+**Q: Rozszerzenie znika samo po zamknięciu przeglądarki (Opera/Edge).**  
+A: To nie bug rozszerzenia — to ustawienie przeglądarki ("wyczyść dane przy zamknięciu"), narzędzie czyszczące (CCleaner itp.) albo antywirus kwarantannujący pliki .js. Patrz ramka w sekcji 1 ("⚠️ Opera / Edge / znika po zamknięciu"). Najlepiej: Chrome + folder rozszerzenia w bezpiecznym miejscu + auto-backup włączony.
+
 ---
 
 ## 6. Co NIE robi (limitations)
 
 - ❌ **Nie wysyła zaproszeń z notatką** — LinkedIn ma limit 5 not/tydzień dla free konta. Niewarte. Wysyłamy bez noty, personalizujemy DOPIERO po accept (sekcja Wiadomości po-Connect).
-- ❌ **Nie ma cross-device sync** — każdy laptop / komputer ma osobną kolejkę. Praca z jednego urządzenia.
-- ❌ **Nie ma team-wide dashboardu** — każdy członek OVB ma własną statystykę.
+- ❌ **Nie ma automatycznego cross-device sync** — każdy komputer ma osobną kolejkę i bazę. ALE od 1.14.0 możesz **ręcznie** przenieść/zsynchronizować przez Eksport JSON → Import pliku.
+- ❌ **Nie ma team-wide dashboardu** — każdy członek OVB ma własną statystykę i bazę.
 - ❌ **Nie wysyła wiadomości automatycznie po Generate** — anti-halucynacja wymaga że TY klikniesz Send w LinkedIn'ie po review.
 
 ---

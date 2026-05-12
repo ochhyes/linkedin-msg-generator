@@ -3,7 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
   <title>Dashboard follow-upów — LinkedIn MSG</title>
+  <link rel="preconnect" href="https://rsms.me">
+  <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
   <link rel="stylesheet" href="dashboard.css">
 </head>
 <body>
@@ -97,10 +100,70 @@
         </div>
       </section>
 
+      <!-- Section 5: PROFILE DB (#45 v1.14.0) -->
+      <section id="profiledb-section" class="block block--profiledb">
+        <h2>
+          🗄️ Baza profili
+          <span id="profiledb-count" class="count-badge">0</span>
+          <button id="btn-refresh-profiledb" class="btn btn--small btn--outline" title="Odśwież bazę">↻</button>
+        </h2>
+        <p class="hint">Trwała baza wszystkich profili które przewinęły się przez rozszerzenie (wyniki wyszukiwania, scrape'y, manual outreach) + zaimportowane kontakty 1st. Niezależna od kolejki zaproszeń. Auto-backup do pliku co kilka dni — to jedyna rzecz która przeżyje Remove+Add rozszerzenia.</p>
+
+        <div id="backup-banner" class="backup-banner">
+          <span id="backup-banner-text">Sprawdzam status backupu…</span>
+          <button id="btn-backup-now" class="btn btn--small btn--primary">⬇ Pobierz backup teraz</button>
+        </div>
+
+        <div class="profiledb-actions">
+          <button id="btn-export-csv" class="btn btn--small btn--outline">Eksport CSV</button>
+          <button id="btn-export-json" class="btn btn--small btn--outline">Eksport JSON (pełny backup)</button>
+          <label class="btn btn--small btn--outline file-btn">Import pliku<input type="file" id="import-file" accept=".json,.csv" hidden></label>
+          <label class="profiledb-restore-queue"><input type="checkbox" id="import-restore-queue"> przy imporcie pełnego backupu — przywróć też kolejkę zaproszeń</label>
+          <button id="btn-import-connections" class="btn btn--small btn--primary">⬇ Importuj kontakty z LinkedIn</button>
+          <span id="profiledb-status" class="profiledb-status"></span>
+        </div>
+
+        <div class="profiledb-filters">
+          <input type="text" id="profiledb-search" placeholder="Szukaj po imieniu / headline / slug…">
+          <select id="profiledb-source-filter">
+            <option value="">Wszystkie źródła</option>
+            <option value="search">Wyszukiwanie</option>
+            <option value="profile_scrape">Scrape profilu</option>
+            <option value="connections_import">Import kontaktów</option>
+            <option value="manual">Manual outreach</option>
+            <option value="bulk">Bulk Connect</option>
+          </select>
+          <select id="profiledb-conn-filter">
+            <option value="">Kontakty: wszyscy</option>
+            <option value="yes">Tylko kontakty (1st)</option>
+            <option value="no">Tylko niezconnectowani</option>
+          </select>
+        </div>
+
+        <div class="table-wrapper">
+          <table id="profiledb-table" class="contacts-table">
+            <thead>
+              <tr>
+                <th>Imię</th>
+                <th>Headline</th>
+                <th title="Stopień znajomości">Stopień</th>
+                <th title="Skąd profil trafił do bazy">Źródło</th>
+                <th title="1st degree / zaimportowany kontakt">Kontakt</th>
+                <th title="Jest w kolejce zaproszeń">Kolejka</th>
+                <th title="Mamy pełny scrape (about/experience/skills)">Pełny scrape</th>
+                <th>Ostatnio widziany</th>
+              </tr>
+            </thead>
+            <tbody id="profiledb-tbody"></tbody>
+          </table>
+          <p id="profiledb-empty" class="empty-state hidden">Baza pusta. Otwórz wyszukiwarkę LinkedIn albo kliknij „Importuj kontakty z LinkedIn".</p>
+        </div>
+      </section>
+
     </main>
 
     <footer class="ftr">
-      <p>Dane są lokalne (chrome.storage.local). Nic nie wychodzi poza Twój komputer poza wywołaniami AI generuj/follow-up.</p>
+      <p>Dane są lokalne (chrome.storage.local + unlimitedStorage). Nic nie wychodzi poza Twój komputer poza wywołaniami AI generuj/follow-up i pobieranymi plikami backupu (zapisywane lokalnie do folderu Pobrane/linkedin-msg-backup/).</p>
     </footer>
 
   </div>

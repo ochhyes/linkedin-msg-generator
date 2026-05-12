@@ -16,6 +16,8 @@ const DEFAULT_SETTINGS = {
   defaultLanguage: "pl",
   defaultMaxChars: 1000,
   senderContext: "",
+  // #45 v1.14.0: co ile dni auto-backup bazy profili do pliku (0 = wyłączony).
+  backupIntervalDays: 3,
 };
 
 // ── Settings (local — API creds + runtime defaults) ──────────────────
@@ -420,6 +422,9 @@ async function addToQueue(profiles) {
       followup2ReplyAt: null,
     }));
   const next = await setBulkState({ queue: [...state.queue, ...fresh] });
+  // #45: każdy profil który przewija się przez kolejkę trafia też do trwałej
+  // bazy (źródło "bulk"). Fire-and-forget — nie blokuje add-to-queue.
+  upsertProfilesToDb(fresh, "bulk").catch(() => {});
   return { success: true, queueSize: next.queue.length, added: fresh.length };
 }
 
@@ -524,6 +529,7 @@ async function bulkScrapeProfileForQueue(slug) {
     const resp = await probeProfileTab(slug, "scrapeProfile");
     if (resp?.success && resp?.profile) {
       await updateQueueItem(slug, { scrapedProfile: resp.profile });
+      upsertProfilesToDb([{ slug, ...resp.profile, scrapedProfile: resp.profile }], "profile_scrape").catch(() => {});
       return { success: true, profile: resp.profile };
     }
     return { success: false, error: resp?.error || "scrape_returned_no_profile" };
@@ -665,6 +671,9 @@ async function bulkAddManualSent(profile, messageDraft) {
   // bulkMarkMessageSent ustawia messageSentAt + idempotent hook na follow-up
   // RemindAt'y. Drugi klik nie nadpisuje (per #25 hook guard).
   await bulkMarkMessageSent(slug);
+
+  // #45: zapisz profil do trwałej bazy (źródło "manual").
+  upsertProfilesToDb([{ ...profile, slug, scrapedProfile: profile }], "manual").catch(() => {});
 
   return { success: true, slug, action: existing ? "updated" : "added" };
 }
@@ -1620,6 +1629,9 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     // Re-compute badge co 6h — łapie case'y kiedy user nie otwierał
     // popup'u przez dni, a follow-up #1 (3d) lub #2 (7d) stał się due.
     updateFollowupBadge();
+  } else if (alarm.name === DB_BACKUP_ALARM_NAME) {
+    // #45: sprawdź czy minął interwał auto-backupu; jeśli tak — zapisz plik.
+    doAutoBackup(false).catch((e) => console.warn("[LinkedIn MSG] auto-backup tick fail:", e && e.message));
   }
 });
 
@@ -1687,6 +1699,466 @@ async function getSettingsDefaults() {
     throw new Error(err.detail || `Błąd serwera: ${response.status}`);
   }
   return await response.json();
+}
+
+// ── Profile DB — trwała baza profili (#45 v1.14.0) ────────────────────
+//
+// LinkedIn wprowadził limity wyszukiwania → zescrape'owane profile i wyniki
+// wyszukiwania trzeba zachować NA STAŁE, niezależnie od `bulkConnect.queue`
+// (kolejka zaproszeń bywa czyszczona, a wyszukać ponownie się nie da po
+// wyczerpaniu limitu). `profileDb` to osobny, rosnący zbiór — kolejka jest
+// jego podzbiorem (`inQueue` liczony lazy przy `profileDbList`).
+//
+// Auto-backup: alarm `dbBackupAlarm` co N dni → chrome.downloads zapisuje
+// pełny snapshot do Pobrane/linkedin-msg-backup/. To JEDYNA rzecz która
+// przeżyje Remove+Add extension'a (Chrome wipe'uje storage przy Remove,
+// niezależnie od stable `key` — patrz CLAUDE.md). `unlimitedStorage` w
+// manifest zdejmuje limit 5 MB per-key.
+
+const PROFILE_DB_DEFAULTS = { version: 1, profiles: {}, lastBackupAt: null };
+const DB_BACKUP_ALARM_NAME = "dbBackupAlarm";
+const DEFAULT_BACKUP_INTERVAL_DAYS = 3;
+// Soft limit dla data: URL przekazywanego do chrome.downloads. Powyżej —
+// budujemy "lite" backup bez scrapedProfile (about/experience/skills) żeby
+// download nie failował na zbyt długim data URI.
+const BACKUP_DATA_URL_SOFT_LIMIT = 20 * 1024 * 1024;
+
+// "Siła" źródła — przy upsercie nie cofamy source z bogatszego na uboższy
+// (raz oznaczony profile_scrape nie wraca do "search").
+const SOURCE_RANK = {
+  search: 1,
+  bulk: 2,
+  manual: 3,
+  connections_import: 4,
+  profile_scrape: 5,
+};
+
+async function getProfileDb() {
+  const data = await chrome.storage.local.get("profileDb");
+  const db = data.profileDb || {};
+  return {
+    version: db.version || PROFILE_DB_DEFAULTS.version,
+    profiles: db.profiles && typeof db.profiles === "object" ? db.profiles : {},
+    lastBackupAt: db.lastBackupAt || null,
+  };
+}
+
+async function writeProfileDb(next) {
+  try {
+    await chrome.storage.local.set({ profileDb: next });
+    return next;
+  } catch (err) {
+    const errMsg = err && err.message ? err.message : String(err);
+    console.error("[LinkedIn MSG] writeProfileDb fail:", errMsg);
+    reportScrapeFailure({
+      event_type: "profiledb_write_fail",
+      error_message: errMsg,
+      diagnostics: { profiles_count: Object.keys((next && next.profiles) || {}).length },
+    });
+    throw err;
+  }
+}
+
+/**
+ * Normalizuje wejściowy obiekt (z extractSearchResults / scrapeProfile /
+ * importu) do ProfileRecord. Zwraca null gdy brak slug-a.
+ */
+function profileRecordFromInput(p, source, nowMs) {
+  if (!p) return null;
+  // slug może przyjść jako p.slug (search/connections) albo wyciągnięty
+  // z profile_url (scrapeProfile zwraca {profile_url, name, headline, ...}).
+  let slug = p.slug || null;
+  if (!slug && p.profile_url) slug = extractSlugFromUrl(p.profile_url);
+  if (!slug && p.profileUrl) slug = extractSlugFromUrl(p.profileUrl);
+  if (slug) {
+    try { slug = decodeURIComponent(slug).toLowerCase(); } catch (_) { slug = String(slug).toLowerCase(); }
+  }
+  if (!slug) return null;
+
+  const isScrape = source === "profile_scrape";
+  const degreeRaw = p.degree || (p.buttonState === "Message" ? "1st" : null);
+  return {
+    slug,
+    name: p.name || "",
+    headline: p.headline || "",
+    location: p.location || null,
+    degree: degreeRaw || null,
+    profileUrl: `https://www.linkedin.com/in/${slug}/`,
+    mutualConnections: p.mutualConnections || p.mutual_connections || null,
+    source,
+    pageNumber: typeof p.pageNumber === "number" ? p.pageNumber : null,
+    firstSeenAt: nowMs,
+    lastSeenAt: nowMs,
+    // Pełny blob ze scrapeProfile (about/experience/skills) — tylko gdy
+    // faktycznie scrapujemy; inaczej null. scrapeProfile zwraca cały obiekt
+    // profilu — zapisujemy go w całości.
+    scrapedProfile: isScrape ? (p.scrapedProfile || (p.profile_url ? p : null)) : (p.scrapedProfile || null),
+    isConnection: source === "connections_import" ? true : (degreeRaw === "1st" || !!p.isConnection || p.buttonState === "Message"),
+    inQueue: false, // liczony lazy w profileDbList
+    notes: typeof p.notes === "string" ? p.notes : "",
+    tags: Array.isArray(p.tags) ? p.tags : [],
+  };
+}
+
+/**
+ * Merge nowego rekordu na istniejący. Reguła: nie nadpisuj wartości truthy
+ * wartością falsy (raz zescrape'owany scrapedProfile / wypełniony headline
+ * przeżywa kolejny upsert z samego search), aktualizuj lastSeenAt, podbij
+ * source tylko "w górę".
+ */
+function mergeProfileRecord(prev, next) {
+  if (!prev) return next;
+  const out = { ...prev };
+  out.lastSeenAt = next.lastSeenAt || prev.lastSeenAt;
+  out.firstSeenAt = Math.min(prev.firstSeenAt || next.firstSeenAt, next.firstSeenAt || prev.firstSeenAt);
+  // Pola tekstowe — nadpisz tylko gdy nowa wartość niepusta.
+  for (const k of ["name", "headline", "location", "degree", "mutualConnections", "profileUrl"]) {
+    if (next[k]) out[k] = next[k];
+  }
+  if (typeof next.pageNumber === "number") out.pageNumber = next.pageNumber;
+  if (next.scrapedProfile) out.scrapedProfile = next.scrapedProfile;
+  out.isConnection = prev.isConnection || next.isConnection;
+  // Source — wybierz wyżej rankowane.
+  if ((SOURCE_RANK[next.source] || 0) >= (SOURCE_RANK[prev.source] || 0)) out.source = next.source;
+  // notes/tags — ręczne, importowane wartości nie kasują istniejących.
+  if (next.notes && !prev.notes) out.notes = next.notes;
+  if (Array.isArray(next.tags) && next.tags.length && (!prev.tags || !prev.tags.length)) out.tags = next.tags;
+  return out;
+}
+
+/**
+ * Upsert listy profili do bazy. `source` ∈ {search, profile_scrape,
+ * connections_import, manual, bulk}. Zwraca {added, updated, total}.
+ */
+async function upsertProfilesToDb(profiles, source) {
+  if (!Array.isArray(profiles) || profiles.length === 0) {
+    const db = await getProfileDb();
+    return { added: 0, updated: 0, total: Object.keys(db.profiles).length };
+  }
+  const db = await getProfileDb();
+  const now = Date.now();
+  let added = 0, updated = 0;
+  for (const p of profiles) {
+    const rec = profileRecordFromInput(p, source, now);
+    if (!rec) continue;
+    if (db.profiles[rec.slug]) {
+      db.profiles[rec.slug] = mergeProfileRecord(db.profiles[rec.slug], rec);
+      updated += 1;
+    } else {
+      db.profiles[rec.slug] = rec;
+      added += 1;
+    }
+  }
+  await writeProfileDb(db);
+  return { added, updated, total: Object.keys(db.profiles).length };
+}
+
+/**
+ * Zwraca posortowaną tablicę rekordów (+ liczniki) dla dashboardu.
+ * inQueue liczony tutaj (cross-ref z bulkConnect.queue) — taniej niż
+ * synchronizować przy każdym setBulkState.
+ * filter: { text?, source?, isConnection? ("yes"|"no"|"") }
+ */
+async function profileDbList(filter = {}) {
+  const db = await getProfileDb();
+  const bulk = await getBulkState();
+  const queueSlugs = new Set((bulk.queue || []).map((q) => q.slug));
+  const text = (filter.text || "").trim().toLowerCase();
+  const wantSource = filter.source || "";
+  const wantConn = filter.isConnection || "";
+
+  let list = Object.values(db.profiles).map((r) => ({
+    ...r,
+    inQueue: queueSlugs.has(r.slug),
+    hasFullScrape: !!r.scrapedProfile,
+  }));
+  let inQueueCount = 0, connectionsCount = 0;
+  for (const r of list) {
+    if (r.inQueue) inQueueCount += 1;
+    if (r.isConnection) connectionsCount += 1;
+  }
+  if (text) {
+    list = list.filter((r) =>
+      (r.name || "").toLowerCase().includes(text) ||
+      (r.headline || "").toLowerCase().includes(text) ||
+      (r.slug || "").toLowerCase().includes(text)
+    );
+  }
+  if (wantSource) list = list.filter((r) => r.source === wantSource);
+  if (wantConn === "yes") list = list.filter((r) => r.isConnection);
+  if (wantConn === "no") list = list.filter((r) => !r.isConnection);
+
+  list.sort((a, b) => (b.lastSeenAt || 0) - (a.lastSeenAt || 0));
+  return {
+    success: true,
+    list,
+    counts: { total: Object.keys(db.profiles).length, connections: connectionsCount, inQueue: inQueueCount, filtered: list.length },
+  };
+}
+
+// ── Eksport / backup ──────────────────────────────────────────────────
+
+function csvEscape(v) {
+  if (v == null) return "";
+  const s = String(v);
+  if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+const CSV_COLUMNS = ["slug", "name", "headline", "location", "degree", "profileUrl", "source", "isConnection", "inQueue", "firstSeenAt", "lastSeenAt", "hasFullScrape", "notes"];
+
+async function buildProfileDbCsv() {
+  const { list } = await profileDbList({});
+  const rows = [CSV_COLUMNS.join(",")];
+  for (const r of list) {
+    rows.push(CSV_COLUMNS.map((c) => {
+      if (c === "hasFullScrape") return r.hasFullScrape ? "1" : "0";
+      if (c === "isConnection") return r.isConnection ? "1" : "0";
+      if (c === "inQueue") return r.inQueue ? "1" : "0";
+      if (c === "firstSeenAt" || c === "lastSeenAt") return r[c] ? new Date(r[c]).toISOString() : "";
+      return csvEscape(r[c]);
+    }).join(","));
+  }
+  return rows.join("\r\n");
+}
+
+/**
+ * Bardzo prosty parser CSV (obsługuje cudzysłowy + escaped ""). Zwraca
+ * tablicę obiektów keyed po nagłówku. Używany przy imporcie CSV do bazy.
+ */
+function parseCsv(text) {
+  const rows = [];
+  let row = [], field = "", inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else field += ch;
+    } else {
+      if (ch === '"') inQuotes = true;
+      else if (ch === ",") { row.push(field); field = ""; }
+      else if (ch === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
+      else if (ch === "\r") { /* skip — \r\n handled by \n */ }
+      else field += ch;
+    }
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  if (rows.length === 0) return [];
+  const header = rows[0].map((h) => h.trim());
+  return rows.slice(1).filter((r) => r.some((c) => c && c.trim())).map((r) => {
+    const o = {};
+    header.forEach((h, idx) => { o[h] = r[idx] != null ? r[idx] : ""; });
+    return o;
+  });
+}
+
+async function buildFullBackupJson() {
+  const bulk = await getBulkState();
+  const db = await getProfileDb();
+  return JSON.stringify({
+    exportedAt: new Date().toISOString(),
+    extVersion: chrome.runtime.getManifest().version,
+    bulkConnect: bulk,
+    profileDb: db,
+  });
+}
+
+function buildLiteBackupJson(fullObj) {
+  const lite = JSON.parse(JSON.stringify(fullObj));
+  if (lite.profileDb && lite.profileDb.profiles) {
+    for (const slug of Object.keys(lite.profileDb.profiles)) {
+      lite.profileDb.profiles[slug].scrapedProfile = null;
+    }
+  }
+  if (lite.bulkConnect && Array.isArray(lite.bulkConnect.queue)) {
+    lite.bulkConnect.queue = lite.bulkConnect.queue.map((it) => ({ ...it, scrapedProfile: null }));
+  }
+  lite._lite = true;
+  return JSON.stringify(lite);
+}
+
+// SW nie ma URL.createObjectURL — używamy data: URL z base64. btoa wymaga
+// latin1, więc encode UTF-8 → percent → unescape (klasyczny trik).
+function toBase64Utf8(str) {
+  return btoa(unescape(encodeURIComponent(str)));
+}
+
+async function doAutoBackup(force) {
+  const db = await getProfileDb();
+  const intervalDays = await getBackupIntervalDays();
+  if (!force) {
+    if (intervalDays <= 0) return { success: false, skipped: "disabled" };
+    const due = Date.now() - (db.lastBackupAt || 0) > intervalDays * 86400000;
+    if (!due) return { success: false, skipped: "not_due" };
+  }
+
+  const fullObj = {
+    exportedAt: new Date().toISOString(),
+    extVersion: chrome.runtime.getManifest().version,
+    bulkConnect: await getBulkState(),
+    profileDb: db,
+  };
+  let json = JSON.stringify(fullObj);
+  let lite = false;
+  if (json.length > BACKUP_DATA_URL_SOFT_LIMIT) {
+    console.warn("[LinkedIn MSG] Backup za duży (" + Math.round(json.length / 1048576) + " MB) — buduję lite (bez scrapedProfile)");
+    json = buildLiteBackupJson(fullObj);
+    lite = true;
+  }
+  const today = todayDateString();
+  const filename = `linkedin-msg-backup/backup-${today}${lite ? "-lite" : ""}.json`;
+  try {
+    const url = "data:application/json;base64," + toBase64Utf8(json);
+    const downloadId = await chrome.downloads.download({ url, filename, saveAs: false, conflictAction: "overwrite" });
+    await writeProfileDb({ ...db, lastBackupAt: Date.now() });
+    return { success: true, filename, bytes: json.length, lite, downloadId };
+  } catch (err) {
+    const errMsg = err && err.message ? err.message : String(err);
+    console.error("[LinkedIn MSG] Auto-backup download fail:", errMsg);
+    reportScrapeFailure({ event_type: "db_backup_fail", error_message: errMsg, diagnostics: { bytes: json.length, lite } });
+    return { success: false, error: errMsg };
+  }
+}
+
+async function getBackupIntervalDays() {
+  const s = await getSettings();
+  const v = s.backupIntervalDays;
+  if (v === 0 || v === "0") return 0;
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_BACKUP_INTERVAL_DAYS;
+}
+
+// ── Import / restore ──────────────────────────────────────────────────
+
+/**
+ * Import z parsowanego pliku. Akceptuje:
+ *  - JSON pełnego backupu {profileDb, bulkConnect, ...}
+ *  - JSON samej bazy {profiles: {...}}
+ *  - JSON tablicy rekordów [{slug, name, ...}, ...]
+ *  - CSV (string) — wiersze z kolumnami CSV_COLUMNS
+ * opts.restoreQueue — gdy true i payload zawiera bulkConnect, nadpisz kolejkę.
+ */
+async function profileDbImport({ json, csv, restoreQueue }) {
+  let recordsInput = [];
+  let bulkPayload = null;
+
+  if (typeof csv === "string" && csv.trim()) {
+    const rows = parseCsv(csv);
+    recordsInput = rows.map((row) => ({
+      slug: row.slug,
+      name: row.name,
+      headline: row.headline,
+      location: row.location || null,
+      degree: row.degree || null,
+      profileUrl: row.profileUrl || null,
+      isConnection: row.isConnection === "1" || row.isConnection === "true",
+      notes: row.notes || "",
+    }));
+  } else if (typeof json === "string" && json.trim()) {
+    let parsed;
+    try { parsed = JSON.parse(json); } catch (e) { return { success: false, error: "invalid_json" }; }
+    if (Array.isArray(parsed)) {
+      recordsInput = parsed;
+    } else if (parsed && parsed.profileDb && parsed.profileDb.profiles) {
+      recordsInput = Object.values(parsed.profileDb.profiles);
+      bulkPayload = parsed.bulkConnect || null;
+    } else if (parsed && parsed.profiles && typeof parsed.profiles === "object") {
+      recordsInput = Object.values(parsed.profiles);
+    } else if (parsed && Array.isArray(parsed.queue)) {
+      // ktoś podrzucił sam bulkConnect
+      bulkPayload = parsed;
+    } else {
+      return { success: false, error: "unrecognized_format" };
+    }
+  } else {
+    return { success: false, error: "empty_input" };
+  }
+
+  // Upsert rekordów — zachowaj oryginalny source jeśli był, inaczej "manual".
+  const db = await getProfileDb();
+  const now = Date.now();
+  let added = 0, updated = 0;
+  for (const p of recordsInput) {
+    if (!p) continue;
+    const src = (p.source && SOURCE_RANK[p.source]) ? p.source : "manual";
+    const rec = profileRecordFromInput(p, src, now);
+    if (!rec) continue;
+    // Zachowaj oryginalne timestampy z backupu jeśli są.
+    if (p.firstSeenAt) rec.firstSeenAt = p.firstSeenAt;
+    if (p.lastSeenAt) rec.lastSeenAt = p.lastSeenAt;
+    if (db.profiles[rec.slug]) { db.profiles[rec.slug] = mergeProfileRecord(db.profiles[rec.slug], rec); updated += 1; }
+    else { db.profiles[rec.slug] = rec; added += 1; }
+  }
+  await writeProfileDb(db);
+
+  let queueRestored = 0;
+  if (restoreQueue && bulkPayload && Array.isArray(bulkPayload.queue)) {
+    // Merge: dodaj brakujące slug-i do istniejącej kolejki (nie kasuj
+    // bieżącej pracy). Pełne nadpisanie byłoby destrukcyjne.
+    const cur = await getBulkState();
+    const have = new Set(cur.queue.map((q) => q.slug));
+    const incoming = bulkPayload.queue.filter((q) => q && q.slug && !have.has(q.slug));
+    queueRestored = incoming.length;
+    if (incoming.length) await setBulkState({ queue: [...cur.queue, ...incoming] });
+  }
+
+  return { success: true, added, updated, total: Object.keys(db.profiles).length, queueRestored };
+}
+
+// ── Import kontaktów 1st-degree z LinkedIn ────────────────────────────
+//
+// Otwiera (lub reusuje) kartę /mynetwork/invite-connect/connections/,
+// content.js robi infinite-scroll + extractConnectionsList, wynik upsertujemy
+// jako source="connections_import" z isConnection=true. Karta otwierana
+// active:true bo infinite-scroll wymaga layoutu/IntersectionObserver'a.
+
+const CONNECTIONS_TAB_URL = "https://www.linkedin.com/mynetwork/invite-connect/connections/";
+const IMPORT_CONNECTIONS_TIMEOUT_MS = 6 * 60 * 1000; // generous — scroll może trwać
+
+async function importConnectionsFlow(maxPages) {
+  let tab = null;
+  let createdTab = false;
+  try {
+    const existing = await chrome.tabs.query({ url: ["*://*.linkedin.com/mynetwork/invite-connect/connections/*"] });
+    if (existing && existing.length) {
+      tab = existing[0];
+      // Re-load żeby content script był świeży i lista od początku.
+      await chrome.tabs.update(tab.id, { url: CONNECTIONS_TAB_URL, active: true });
+    } else {
+      tab = await chrome.tabs.create({ url: CONNECTIONS_TAB_URL, active: true });
+      createdTab = true;
+    }
+    // Czekamy aż content script odpowie (retry sendMessage przez ~15s).
+    let resp = null, lastErr = null;
+    const start = Date.now();
+    while (Date.now() - start < 15000) {
+      try {
+        resp = await Promise.race([
+          chrome.tabs.sendMessage(tab.id, { action: "importAllConnections", maxPages: maxPages || 50 }),
+          new Promise((_, rej) => setTimeout(() => rej(new Error("import_timeout")), IMPORT_CONNECTIONS_TIMEOUT_MS)),
+        ]);
+        break;
+      } catch (err) {
+        lastErr = err;
+        if (err && err.message === "import_timeout") throw err;
+        await new Promise((r) => setTimeout(r, 600));
+      }
+    }
+    if (!resp) throw lastErr || new Error("connections_tab_no_response");
+    if (!resp.success) return { success: false, error: resp.error || "extract_failed" };
+
+    const profiles = (resp.profiles || []).map((p) => ({ ...p, degree: "1st", isConnection: true }));
+    const up = await upsertProfilesToDb(profiles, "connections_import");
+    return { success: true, ...up, pagesProcessed: resp.pagesProcessed || 0, hitCap: !!resp.hitCap, scraped: profiles.length };
+  } catch (err) {
+    return { success: false, error: err && err.message ? err.message : String(err) };
+  } finally {
+    if (createdTab && tab && tab.id) {
+      try { await chrome.tabs.remove(tab.id); } catch (_) { /* już zamknięta */ }
+    }
+  }
 }
 
 // ── Message Router ───────────────────────────────────────────────────
@@ -1809,6 +2281,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case "bulkGetStats":
           return await bulkGetStats();
 
+        // Profile DB (#45 v1.14.0)
+        case "profileDbUpsert":
+          return { success: true, ...(await upsertProfilesToDb(message.profiles || [], message.source || "manual")) };
+        case "profileDbList":
+          return await profileDbList(message.filter || {});
+        case "profileDbExportCsv":
+          return { success: true, csv: await buildProfileDbCsv() };
+        case "profileDbExportJson":
+          return { success: true, json: await buildFullBackupJson() };
+        case "profileDbImport":
+          return await profileDbImport({ json: message.json, csv: message.csv, restoreQueue: !!message.restoreQueue });
+        case "importConnections":
+          return await importConnectionsFlow(message.maxPages);
+        case "backupNow":
+          return await doAutoBackup(true);
+        case "getBackupStatus": {
+          const _db = await getProfileDb();
+          return { success: true, lastBackupAt: _db.lastBackupAt || null, intervalDays: await getBackupIntervalDays() };
+        }
+
         default:
           throw new Error(`Nieznana akcja: ${message.action}`);
       }
@@ -1831,19 +2323,25 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     // bezwarunkowo overwrite'owała bulkConnect na DEFAULTS przy reason="install"
     // → user tracił queue/follow-upy mimo że Chrome próbował je zachować.
     // Marcin lost data 2026-05-10 — to zapobiega następnym razem.
-    const existing = await chrome.storage.local.get(["settings", "bulkConnect"]);
+    const existing = await chrome.storage.local.get(["settings", "bulkConnect", "profileDb"]);
     if (!existing.settings) {
       await saveSettings(DEFAULT_SETTINGS);
     }
     if (!existing.bulkConnect) {
       await chrome.storage.local.set({ bulkConnect: BULK_DEFAULTS });
     }
+    if (!existing.profileDb) {
+      await chrome.storage.local.set({ profileDb: PROFILE_DB_DEFAULTS });
+    }
     const preserved = existing.settings ? "settings" : "";
     const preserved2 = existing.bulkConnect
       ? `bulkConnect (queue: ${(existing.bulkConnect.queue || []).length})`
       : "";
+    const preserved3 = existing.profileDb
+      ? `profileDb (profiles: ${Object.keys((existing.profileDb.profiles) || {}).length})`
+      : "";
     console.log(
-      `[LinkedIn MSG] Extension installed/reinstalled — preserved: ${[preserved, preserved2].filter(Boolean).join(", ") || "(nothing, fresh install)"}`
+      `[LinkedIn MSG] Extension installed/reinstalled — preserved: ${[preserved, preserved2, preserved3].filter(Boolean).join(", ") || "(nothing, fresh install)"}`
     );
   }
   // v1.8.0: migracja encoded slug-ów (z wcześniejszych 1.7.x) na decoded
@@ -1851,6 +2349,8 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   await migrateSlugEncoding();
   // #25: alarm reset niezależnie od reason — install/update/chrome_update.
   await chrome.alarms.create(FOLLOWUP_ALARM_NAME, { periodInMinutes: 360 });
+  // #45 v1.14.0: alarm auto-backupu — sprawdza co 12h czy minął interwał.
+  await chrome.alarms.create(DB_BACKUP_ALARM_NAME, { periodInMinutes: 720 });
   await updateFollowupBadge();
 });
 
@@ -1859,6 +2359,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 chrome.runtime.onStartup.addListener(async () => {
   await migrateSlugEncoding();
   await chrome.alarms.create(FOLLOWUP_ALARM_NAME, { periodInMinutes: 360 });
+  await chrome.alarms.create(DB_BACKUP_ALARM_NAME, { periodInMinutes: 720 });
   await updateFollowupBadge();
 });
 

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<!--
+  Syntetyczny fixture strony /mynetwork/invite-connect/connections/ (#45 v1.14.0).
+  Struktura uproszczona ale odwzorowuje to co parsuje extractConnectionsList:
+  każda karta = <li> z <a href="/in/<slug>/"> + imię w tekście linku +
+  occupation w <p>/<span>. Plus jeden "śmieciowy" link bez /in/ (sidebar)
+  i jeden link /in/ wewnątrz reklamy promo (nie powinien być wykluczony —
+  ekstraktor jest świadomie permisywny: ma slug + imię → bierze).
+-->
+<html lang="pl">
+<head><meta charset="UTF-8"><title>Kontakty</title></head>
+<body>
+  <main>
+    <h1>Kontakty</h1>
+    <ul class="mn-connections-list">
+      <li class="mn-connection-card">
+        <a href="/in/jan-kowalski-12345/" class="mn-connection-card__link">Jan Kowalski</a>
+        <p class="mn-connection-card__occupation">Sales Director w OVB Allfinanz</p>
+        <span class="time-badge">Połączono 3 dni temu</span>
+        <button>Wiadomość</button>
+      </li>
+      <li class="mn-connection-card">
+        <a href="/in/anna-nowak-pl/" class="mn-connection-card__link">Anna Nowak</a>
+        <p class="mn-connection-card__occupation">Doradca finansowy</p>
+        <span class="time-badge">Połączono w zeszłym miesiącu</span>
+        <button>Wiadomość</button>
+      </li>
+      <li class="mn-connection-card">
+        <a href="/in/rados%C5%82aw-paczy%C5%84ski-72307a/" class="mn-connection-card__link">Radosław Paczyński</a>
+        <p class="mn-connection-card__occupation">Recruiter · IT</p>
+        <span class="time-badge">Połączono 1 rok temu</span>
+        <button>Wiadomość</button>
+      </li>
+      <li class="mn-connection-card">
+        <!-- karta bez occupation — headline pusty, ale slug+imię jest -->
+        <a href="/in/marek-bez-headline/" class="mn-connection-card__link">Marek Testowy</a>
+        <button>Wiadomość</button>
+      </li>
+    </ul>
+    <aside class="sidebar">
+      <!-- śmieciowy link bez /in/ — nie powinien trafić do wyników -->
+      <a href="/mynetwork/invitation-manager/">Zarządzaj zaproszeniami</a>
+      <a href="/feed/">Strona główna</a>
+    </aside>
+  </main>
+</body>
+</html>

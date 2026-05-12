@@ -3,7 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
   <title>LinkedIn MSG</title>
+  <link rel="preconnect" href="https://rsms.me">
+  <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
@@ -244,8 +247,9 @@
           <input type="text" id="set-api-url" placeholder="https://linkedin-api.szmidtke.pl">
         </div>
         <div class="control-row">
-          <label for="set-api-key">Klucz API</label>
-          <input type="password" id="set-api-key" placeholder="Twój klucz API">
+          <label for="set-api-key">Hasło dostępu</label>
+          <input type="password" id="set-api-key" placeholder="Hasło dostępu do backendu (np. DreamComeTrue!)">
+          <small class="control-hint">To nie jest klucz API Anthropic — ten siedzi na serwerze. To tylko hasło, żeby backend wiedział że to Ty.</small>
         </div>
         <div class="control-row">
           <label for="set-sender">Kontekst nadawcy</label>
@@ -254,6 +258,10 @@
         <div class="control-row">
           <label for="set-max-chars">Limit znaków</label>
           <input type="number" id="set-max-chars" min="50" max="2000" value="1000">
+        </div>
+        <div class="control-row">
+          <label for="set-backup-days">Auto-backup bazy co (dni)</label>
+          <input type="number" id="set-backup-days" min="0" max="90" value="3" title="0 = wyłącz auto-backup. Backup ląduje w Pobrane/linkedin-msg-backup/.">
         </div>
       </div>
       <div class="actions">

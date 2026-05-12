@@ -580,10 +580,254 @@
     refreshAll();
   }
 
+  // ── Profile DB (#45 v1.14.0) ───────────────────────────────────────
+
+  const profileDbSection = $("#profiledb-section");
+  const profileDbTbody = $("#profiledb-tbody");
+  const profileDbCount = $("#profiledb-count");
+  const profileDbEmpty = $("#profiledb-empty");
+  const profileDbSearch = $("#profiledb-search");
+  const profileDbSourceFilter = $("#profiledb-source-filter");
+  const profileDbConnFilter = $("#profiledb-conn-filter");
+  const backupBannerText = $("#backup-banner-text");
+  const backupBanner = $("#backup-banner");
+  const profileDbStatus = $("#profiledb-status");
+
+  const SOURCE_LABELS = {
+    search: "Wyszukiwanie",
+    profile_scrape: "Scrape profilu",
+    connections_import: "Import kontaktów",
+    manual: "Manual",
+    bulk: "Bulk",
+  };
+
+  let _profileDbSearchDebounce = null;
+
+  function profileDbFilter() {
+    return {
+      text: (profileDbSearch && profileDbSearch.value) || "",
+      source: (profileDbSourceFilter && profileDbSourceFilter.value) || "",
+      isConnection: (profileDbConnFilter && profileDbConnFilter.value) || "",
+    };
+  }
+
+  async function loadProfileDb() {
+    if (!profileDbTbody) return;
+    try {
+      const resp = await chrome.runtime.sendMessage({ action: "profileDbList", filter: profileDbFilter() });
+      if (!resp || !resp.success) {
+        if (profileDbSection) profileDbSection.classList.add("hidden");
+        return;
+      }
+      if (profileDbSection) profileDbSection.classList.remove("hidden");
+      renderProfileDb(resp.list || [], resp.counts || {});
+    } catch (err) {
+      console.warn("[dashboard] loadProfileDb fail:", err);
+    }
+  }
+
+  function renderProfileDb(list, counts) {
+    profileDbTbody.innerHTML = "";
+    if (profileDbCount) {
+      profileDbCount.textContent = String(counts.total || 0);
+      profileDbCount.title = `${counts.total || 0} profili — ${counts.connections || 0} kontaktów, ${counts.inQueue || 0} w kolejce`;
+    }
+    if (!list.length) {
+      if (profileDbEmpty) profileDbEmpty.classList.remove("hidden");
+      return;
+    }
+    if (profileDbEmpty) profileDbEmpty.classList.add("hidden");
+    for (const r of list) profileDbTbody.appendChild(buildProfileDbRow(r));
+  }
+
+  function buildProfileDbRow(r) {
+    const tr = document.createElement("tr");
+    tr.dataset.slug = r.slug;
+
+    const nameTd = document.createElement("td");
+    const a = document.createElement("a");
+    a.href = r.profileUrl || `https://www.linkedin.com/in/${encodeURIComponent(r.slug)}/`;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.textContent = r.name || r.slug;
+    nameTd.appendChild(a);
+    tr.appendChild(nameTd);
+
+    const hlTd = document.createElement("td");
+    hlTd.textContent = r.headline || "";
+    hlTd.title = r.headline || "";
+    tr.appendChild(hlTd);
+
+    const degTd = document.createElement("td");
+    degTd.textContent = r.degree || "—";
+    tr.appendChild(degTd);
+
+    const srcTd = document.createElement("td");
+    srcTd.textContent = SOURCE_LABELS[r.source] || r.source || "—";
+    tr.appendChild(srcTd);
+
+    tr.appendChild(boolCell(r.isConnection));
+    tr.appendChild(boolCell(r.inQueue));
+    tr.appendChild(boolCell(r.hasFullScrape));
+
+    const seenTd = document.createElement("td");
+    seenTd.textContent = formatDate(r.lastSeenAt);
+    tr.appendChild(seenTd);
+    return tr;
+  }
+
+  function boolCell(v) {
+    const td = document.createElement("td");
+    td.className = v ? "cell-yes" : "cell-no";
+    td.textContent = v ? "✓" : "—";
+    return td;
+  }
+
+  async function loadBackupStatus() {
+    if (!backupBannerText) return;
+    try {
+      const resp = await chrome.runtime.sendMessage({ action: "getBackupStatus" });
+      if (!resp || !resp.success) { backupBannerText.textContent = "Status backupu niedostępny."; return; }
+      const last = resp.lastBackupAt;
+      const interval = resp.intervalDays;
+      let danger = false;
+      if (!last) {
+        backupBannerText.textContent = "⚠ Backup nigdy nie był jeszcze zrobiony — kliknij „Pobierz backup teraz” poniżej.";
+        danger = true;
+      } else {
+        const days = Math.floor((Date.now() - last) / 86400000);
+        const ago = days <= 0 ? "dzisiaj" : (days === 1 ? "wczoraj" : `${days} dni temu`);
+        backupBannerText.textContent = `Ostatni backup: ${ago} (${formatDate(last)}). Auto-backup co ${interval > 0 ? interval + " dni" : "— wyłączony w ustawieniach"}.`;
+        danger = days > 7 || interval <= 0;
+      }
+      if (backupBanner) backupBanner.classList.toggle("backup-banner--danger", danger);
+    } catch (err) {
+      backupBannerText.textContent = "Status backupu niedostępny.";
+    }
+  }
+
+  function setProfileDbStatus(msg, isError) {
+    if (!profileDbStatus) return;
+    profileDbStatus.textContent = msg || "";
+    profileDbStatus.classList.toggle("profiledb-status--error", !!isError);
+  }
+
+  function triggerDownload(filename, mime, content) {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { try { document.body.removeChild(a); URL.revokeObjectURL(url); } catch (_) {} }, 1500);
+  }
+
+  function todayStr() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function wireProfileDbControls() {
+    const btnExportCsv = $("#btn-export-csv");
+    const btnExportJson = $("#btn-export-json");
+    const btnBackupNow = $("#btn-backup-now");
+    const btnImportConnections = $("#btn-import-connections");
+    const importFile = $("#import-file");
+    const importRestoreQueue = $("#import-restore-queue");
+    const btnRefreshProfileDb = $("#btn-refresh-profiledb");
+
+    if (btnExportCsv) btnExportCsv.addEventListener("click", async () => {
+      setProfileDbStatus("Buduję CSV…");
+      try {
+        const resp = await chrome.runtime.sendMessage({ action: "profileDbExportCsv" });
+        if (resp && resp.success) {
+          triggerDownload(`linkedin-profiles-${todayStr()}.csv`, "text/csv;charset=utf-8", resp.csv || "");
+          setProfileDbStatus("CSV pobrany.");
+        } else setProfileDbStatus("Błąd eksportu CSV.", true);
+      } catch (e) { setProfileDbStatus("Błąd: " + ((e && e.message) || e), true); }
+    });
+
+    if (btnExportJson) btnExportJson.addEventListener("click", async () => {
+      setProfileDbStatus("Buduję backup JSON…");
+      try {
+        const resp = await chrome.runtime.sendMessage({ action: "profileDbExportJson" });
+        if (resp && resp.success) {
+          triggerDownload(`linkedin-msg-backup-${todayStr()}.json`, "application/json", resp.json || "{}");
+          setProfileDbStatus("Pełny backup JSON pobrany.");
+        } else setProfileDbStatus("Błąd eksportu JSON.", true);
+      } catch (e) { setProfileDbStatus("Błąd: " + ((e && e.message) || e), true); }
+    });
+
+    if (btnBackupNow) btnBackupNow.addEventListener("click", async () => {
+      btnBackupNow.disabled = true;
+      setProfileDbStatus("Zapisuję backup…");
+      try {
+        const resp = await chrome.runtime.sendMessage({ action: "backupNow" });
+        if (resp && resp.success) {
+          setProfileDbStatus(`Backup zapisany: Pobrane/${resp.filename}${resp.lite ? " (lite — bez pełnych scrape'ów, plik był za duży)" : ""}.`);
+          loadBackupStatus();
+        } else setProfileDbStatus("Backup nieudany: " + (resp && (resp.error || resp.skipped) || "unknown"), true);
+      } catch (e) { setProfileDbStatus("Błąd: " + ((e && e.message) || e), true); }
+      finally { btnBackupNow.disabled = false; }
+    });
+
+    if (btnImportConnections) btnImportConnections.addEventListener("click", async () => {
+      if (!confirm("Otworzy się karta z Twoimi kontaktami LinkedIn — rozszerzenie przewinie ją do końca i zapisze wszystkie kontakty do bazy. Może to potrwać kilka minut przy dużej liczbie kontaktów. Nie zamykaj tej karty w trakcie. Kontynuować?")) return;
+      btnImportConnections.disabled = true;
+      const orig = btnImportConnections.textContent;
+      btnImportConnections.textContent = "Importuję kontakty… (kilka minut)";
+      setProfileDbStatus("Importuję kontakty z LinkedIn — nie zamykaj otwartej karty…");
+      try {
+        const resp = await chrome.runtime.sendMessage({ action: "importConnections", maxPages: 80 });
+        if (resp && resp.success) {
+          setProfileDbStatus(`Zaimportowano ${resp.scraped || 0} kontaktów (${resp.added || 0} nowych, ${resp.updated || 0} zaktualizowanych${resp.hitCap ? ", osiągnięto limit stron — uruchom ponownie po doscrollowaniu" : ""}).`);
+          loadProfileDb();
+        } else {
+          setProfileDbStatus("Import kontaktów nieudany: " + (resp && resp.error || "unknown") + ". Spróbuj otworzyć stronę kontaktów ręcznie i powtórzyć.", true);
+        }
+      } catch (e) { setProfileDbStatus("Błąd: " + ((e && e.message) || e), true); }
+      finally { btnImportConnections.disabled = false; btnImportConnections.textContent = orig; }
+    });
+
+    if (importFile) importFile.addEventListener("change", async () => {
+      const file = importFile.files && importFile.files[0];
+      if (!file) return;
+      const restoreQueue = !!(importRestoreQueue && importRestoreQueue.checked);
+      setProfileDbStatus(`Wczytuję ${file.name}…`);
+      try {
+        const text = await file.text();
+        const isCsv = /\.csv$/i.test(file.name);
+        const msg = isCsv
+          ? { action: "profileDbImport", csv: text }
+          : { action: "profileDbImport", json: text, restoreQueue };
+        const resp = await chrome.runtime.sendMessage(msg);
+        if (resp && resp.success) {
+          setProfileDbStatus(`Import OK: ${resp.added || 0} nowych, ${resp.updated || 0} zaktualizowanych${resp.queueRestored ? `, ${resp.queueRestored} pozycji dorzucone do kolejki` : ""}.`);
+          refreshAll();
+        } else {
+          setProfileDbStatus("Import nieudany: " + (resp && resp.error || "unknown") + ".", true);
+        }
+      } catch (e) { setProfileDbStatus("Błąd odczytu pliku: " + ((e && e.message) || e), true); }
+      finally { importFile.value = ""; }
+    });
+
+    if (btnRefreshProfileDb) btnRefreshProfileDb.addEventListener("click", (e) => { e.stopPropagation(); loadProfileDb(); loadBackupStatus(); });
+
+    const onFilterChange = () => {
+      if (_profileDbSearchDebounce) clearTimeout(_profileDbSearchDebounce);
+      _profileDbSearchDebounce = setTimeout(loadProfileDb, 250);
+    };
+    if (profileDbSearch) profileDbSearch.addEventListener("input", onFilterChange);
+    if (profileDbSourceFilter) profileDbSourceFilter.addEventListener("change", loadProfileDb);
+    if (profileDbConnFilter) profileDbConnFilter.addEventListener("change", loadProfileDb);
+  }
+
   function refreshAll() {
     loadAll();
     loadStats();
     loadContactsList();
+    loadProfileDb();
+    loadBackupStatus();
   }
 
   // ── Helpers ────────────────────────────────────────────────────────
@@ -624,14 +868,23 @@
   // Auto-refresh gdy storage zmienia się (np. user kliknął "Wysłałem"
   // w popup'ie i wraca do dashboardu).
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === "local" && changes.bulkConnect) {
+    if (area !== "local") return;
+    if (changes.bulkConnect) {
       loadAll();
       loadStats();
       loadContactsList();
+      loadProfileDb();
+    }
+    if (changes.profileDb) {
+      loadProfileDb();
+      loadBackupStatus();
     }
   });
 
+  wireProfileDbControls();
   loadAll();
   loadStats();
   loadContactsList();
+  loadProfileDb();
+  loadBackupStatus();
 })();
