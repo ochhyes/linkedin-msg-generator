@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LinkedIn Message Generator",
-  "version": "1.16.0",
+  "version": "1.16.1",
   "description": "Generuj spersonalizowane wiadomości LinkedIn z pomocą AI",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA3lakRSbQD+Ngx3rQ3TiPqEAEBiIDFHKR+IBimEOr1k5tn3e7WAxzVzgEwTQJGrDBBb5FW4JA55tV2Gc8y7Z1sipbNs1aNuyBn29Mp2nxIRz1PelBjg2LBmV7m9/DYs2wpCpMSNZck9Pe0Bm1bGalabEYhRGZw+GXCCninAAK7cPzNGDZBbW3p/KGdEMwn/dVvhCDjDBWPtstQjgQiaVqNHaJJFcg7z8lLRfgbunh272Rkh/unXg3co0O40woMGePsLVt8X0DjKzRzkPrzqPB5jZZaLy5/nRCX9DzdFfZmV5rREmrAJKv0Fk7pHNwKGcB1jqAr0+aWLfcCgjFFTnR0QIDAQAB",
   "permissions": [
