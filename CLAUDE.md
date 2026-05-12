@@ -208,10 +208,10 @@ PM 5–15 min · Dev 30–120 min · Tester 10–30 min · Commit 2–5 min.
 
 ```
 Sprint:        #8 ZDYSTRYBUOWANY 2026-05-12 (v1.14.0→1.14.6; smoke PASS) || #9 W TOKU — UX redesign OVB Professional Minimal: ✅ #24 Header+Tabs (v1.15.0) → ✅ #25 Buttons+ActionBar (v1.16.0) → ✅ #26 Cards+Badges (v1.17.0) → #27 EmptyStates+Inputs → #28 Dashboard polish + 🔧 szlify (rozszerzanie popupa po "Ustawienia bulk", usunąć hint "📍 Powinien być na"). Spec: UX_REDESIGN.md. + hotfixe v1.15.1/v1.15.2/v1.16.1.
-Phase:         Tester/PM (#26 Cards+Badges ZAKOMMITOWANY `1844d59` v1.17.0 — czeka manual smoke. #24 Test PASS. PM rotuje na #27 EmptyStates+Inputs, P2 ~0.5 sesji.)
-Active task:   #26 ZAKOMMITOWANY `1844d59` (v1.17.0) — kanoniczny `.card*` + `.badge*` (popup.css + dashboard.css), przepisane istniejące selektory kartopodobne/badge-podobne na tokeny, usunięte hardcody. 2 subagenty. Czeka manual smoke. Następny: #27 (EmptyStates + Inputs polish).
-Last commit:   4086547 — fix: "Kopiuj i śledź" nie otwiera karty messaging/compose (v1.15.2)  [+ 4a67d99 #24 v1.15.0 · e23b7a1 v1.15.1 hasło-walidacja · cfd8006/4cfb314/b4b8f46 docs · ba9499e zip · c0929fb PDF · b4fe596/127ec04/ce4c0f4/3542666/0484c65 Sprint #8]
-Updated:       2026-05-12 (#25 v1.16.0 zacommitowany; hotfix v1.16.1 — "Wyczyść" + popup rośnie do 780px; PM rotuje na #26)
+Phase:         PM (Sprint #9 wstrzymany: #24/#25/#26 ZROBIONE+zacommitowane (v1.15.0/1.16.0/1.17.0), **#27 (EmptyStates+Inputs) i #28 (Dashboard polish + 🔧 2 szlify) → NASTĘPNA SESJA** wg decyzji Marcina. Smoke checklist v1.17.0 w `docs/SMOKE-TEST.md` — czeka na manual smoke Marcina przed dystrybucją.)
+Active task:   żaden (do następnej sesji: #27 EmptyStates+Inputs polish — `UX_REDESIGN.md` 3.7+3.8, ~0.5 sesji; potem #28 Dashboard cleanup + Stats funnel polish + szlify. Po nich: regen zip + PDF, smoke wg `docs/SMOKE-TEST.md`, dystrybucja, push.)
+Last commit:   1844d59 — feat: ujednolicony system kart + badge'y OVB Minimal (#26, v1.17.0)  [+ 19cc6eb docs · e8433e3 v1.16.1 · 9e6e3aa #25 v1.16.0 · ddf0ea1 docs · 4086547 v1.15.2 · 4a67d99 #24 v1.15.0 · e23b7a1 v1.15.1 · … Sprint #8]
+Updated:       2026-05-12 (#26 Cards+Badges v1.17.0 zacommitowany; #27/#28 → następna sesja; `docs/SMOKE-TEST.md` utworzony)
 ```
 
 **Sprint #8 — podsumowanie (2026-05-12, w toku — czeka na manual smoke + dystrybucję):** Feature z `/ultraplan` rozrósł się w jednym dniu w **7 wersji + zip + PDF instrukcji** napędzane real-time feedbackiem Marcina:
