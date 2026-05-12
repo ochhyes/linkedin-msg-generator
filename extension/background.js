@@ -1467,102 +1467,23 @@ async function bulkConnectTick() {
     return;
   }
 
-  // #39: resolveBulkTab → persistowany tabId z fallbackiem do query.
-  const tab = await resolveBulkTab();
-  if (!tab) {
-    await setBulkState({
-      active: false,
-      errorMsg: "Lost LinkedIn search tab. Reopen /search/results/people/ and resume.",
-    });
-    await chrome.alarms.clear(BULK_ALARM_NAME);
-    await setBulkState({ nextTickAt: null });
-    return;
-  }
-
-  // #39: gdy user wyszedł z search results (kliknął profil lub przeszedł na
-  // inną stronę w tej samej karcie), auto-navigate z powrotem zamiast exit'u.
-  // Circuit-breaker: po 3 nieudanych próbach poddajemy się żeby nie spamować
-  // tab.update'ami w przypadku gdy LinkedIn redirect'uje gdzie indziej.
-  const currentUrl = await getCurrentBulkTabUrl(tab.id);
-  if (!currentUrl || !currentUrl.includes("/search/results/people/")) {
-    const navFails = (state.navigateFailCount || 0) + 1;
-    if (navFails >= 3) {
-      const targetUrlForTelemetry = buildSearchUrl(
-        state.lastSearchKeywords,
-        pending.pageNumber || 1
-      );
-      fireBulkNavigateFail(currentUrl, targetUrlForTelemetry);
-      await setBulkState({
-        active: false,
-        errorMsg:
-          "Auto-navigate failed 3x. Open search results manually i kliknij Start.",
-        navigateFailCount: 0,
-      });
-      await chrome.alarms.clear(BULK_ALARM_NAME);
-      await setBulkState({ nextTickAt: null });
-      return;
-    }
-    await setBulkState({ navigateFailCount: navFails });
-    const targetUrl = buildSearchUrl(
-      state.lastSearchKeywords,
-      pending.pageNumber || 1
-    );
-    try {
-      await chrome.tabs.update(tab.id, { url: targetUrl });
-      await waitForTabComplete(tab.id, 12000);
-      await new Promise((r) => setTimeout(r, PAGINATION_RENDER_DELAY_MS));
-    } catch (err) {
-      console.warn("[LinkedIn MSG] auto-navigate failed:", err && err.message);
-    }
-    // Schedule next tick — tab dopiero load'ował, nie próbujemy klikania
-    // w tej iteracji. Krótszy delay bo to recovery, nie real connect.
-    const recoveryDelay = 5000 + Math.random() * 5000;
-    await setBulkState({ nextTickAt: Date.now() + recoveryDelay });
-    setTimeout(bulkConnectTick, recoveryDelay);
-    return;
-  }
-
-  // Karta jest na search results — reset circuit breaker.
-  if (state.navigateFailCount > 0) {
-    await setBulkState({ navigateFailCount: 0 });
-  }
-
-  // Page-aware navigation (#22 v1.6.0). Pre-click ensure tab jest na
-  // tej samej stronie search results na której był profil scrape'owany.
-  // Bez tego findLiBySlug w content.js zwróci li_not_found dla profili
-  // z innych stron (po auto-fill queue zawiera profile z multiple pages).
-  const targetPage = pending.pageNumber || 1;
-  const currentPage = getPageFromUrl(currentUrl);
-  if (currentPage !== targetPage) {
-    try {
-      await chrome.tabs.update(tab.id, {
-        url: setPageInUrl(currentUrl, targetPage),
-      });
-      await waitForTabComplete(tab.id, 12000);
-      await new Promise((r) => setTimeout(r, PAGINATION_RENDER_DELAY_MS));
-    } catch (err) {
-      // Page nav failed — kontynuuj próbę kliknięcia (może i tak zadziała),
-      // ale zaloguj w error message przy fail.
-      console.warn("[LinkedIn MSG] page nav failed:", err && err.message);
-    }
-  }
-
-  // Send click message do content script. Timeout 30s żeby zawsze
-  // przejść do następnego ticku (LinkedIn może mieć slow DOM).
+  // #49 v1.14.5 — connect z profilu zamiast ze strony wyszukiwania.
+  // probeProfileTab otwiera linkedin.com/in/<slug>/ w karcie w tle, content
+  // script klika "Połącz" → "Wyślij bez notatki", weryfikuje pending badge,
+  // potem karta jest zamykana. ZERO zależności od search tab / keywords /
+  // numerów stron (root cause li_not_found gdy osoba nie na otwartej stronie).
   let response;
   try {
     response = await Promise.race([
-      chrome.tabs.sendMessage(tab.id, {
-        action: "bulkConnectClick",
-        slug: pending.slug,
-      }),
+      probeProfileTab(pending.slug, "connectFromProfile"),
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("bulk_tick_timeout")), BULK_TICK_TIMEOUT_MS)
+        setTimeout(() => reject(new Error("bulk_tick_timeout")), 50000)
       ),
     ]);
   } catch (err) {
-    response = { success: false, error: err && err.message || "send_failed" };
+    response = { success: false, error: (err && err.message) || "send_failed" };
   }
+  if (!response) response = { success: false, error: "no_response" };
 
   // Update queue item.
   const now = Date.now();
@@ -1575,6 +1496,11 @@ async function bulkConnectTick() {
   } else {
     newStatus = "failed";
     errorVal = response.error || "unknown_error";
+    reportScrapeFailure({
+      event_type: "bulk_connect_profile_fail",
+      error_message: errorVal,
+      diagnostics: { slug: pending.slug },
+    });
   }
   await updateQueueItem(pending.slug, { status: newStatus, timestamp: now, error: errorVal });
 
@@ -1597,53 +1523,26 @@ async function bulkConnectTick() {
 }
 
 async function startBulkConnect() {
+  // #49 v1.14.5: connect z profilu — worker NIE potrzebuje otwartej karty
+  // wyszukiwania. Wystarczy że są pending items w kolejce. Każdy tick otwiera
+  // linkedin.com/in/<slug>/ w karcie w tle i tam klika "Połącz". To
+  // jednocześnie naprawia stary "Resume wymaga otwartej karty search".
   const state = await getBulkState();
   const hasPending = (state.queue || []).some((q) => q.status === "pending");
-
-  // #39: jeśli search tab jest otwarty — capture tabId + keywords. Inaczej
-  // (Marcin 2026-05-12: "zamknąłem kartę, klikam Resume, dalej Pauza") —
-  // NIE bail'ujemy. Worker startuje z tabId:null; pierwszy tick wywoła
-  // resolveBulkTab() które odtworzy kartę z zapisanego lastSearchKeywords
-  // (#43). Bez keywords (legacy / nigdy nie wystartowany z search) tick
-  // ustawi czytelny "Lost LinkedIn search tab. Reopen..." zamiast cichego
-  // bail'u który wyglądał jak "nic nie działa".
-  const tab = await findLinkedInSearchTab();
-  let patch = {
+  if (!hasPending) {
+    return { success: false, error: "queue_empty" };
+  }
+  await setBulkState({
     active: true,
     errorMsg: null,
     nextTickAt: Date.now() + 100,
     lastTickAt: null,
     navigateFailCount: 0,
-  };
-  let recovering = false;
-
-  if (tab && tab.id) {
-    patch.tabId = tab.id;
-    try {
-      const u = new URL(tab.url || "");
-      const kw = u.searchParams.get("keywords");
-      if (kw) patch.lastSearchKeywords = kw;
-    } catch (_) { /* malformed URL — zostaw poprzednie keywords */ }
-  } else {
-    // Brak otwartej karty search results.
-    if (!hasPending) {
-      return { success: false, error: "no_pending_no_tab" };
-    }
-    if (!state.lastSearchKeywords) {
-      // Nie mamy z czego odtworzyć karty — startujemy mimo to (worker da
-      // czytelny błąd w 1. tick'u), ale informujemy popup żeby pokazał hint.
-      recovering = true;
-    } else {
-      recovering = true;
-    }
-    patch.tabId = null;
-  }
-
-  await setBulkState(patch);
+  });
   // Keep-alive alarm (24s period < 30s SW idle limit).
   await chrome.alarms.create(BULK_ALARM_NAME, { periodInMinutes: 0.4 });
   bulkConnectTick();
-  return { success: true, recovering, hadTab: !!(tab && tab.id), hasKeywords: !!state.lastSearchKeywords };
+  return { success: true };
 }
 
 async function stopBulkConnect() {

@@ -1510,6 +1510,151 @@
     return { success: true };
   }
 
+  // ── Connect z profilu (#49 v1.14.5) ─────────────────────────────────
+  //
+  // Niezależne od strony wyszukiwania / keywords / numerów stron — worker
+  // otwiera linkedin.com/in/<slug>/ w karcie w tle i tu klika "Połącz" →
+  // "Wyślij bez notatki". Eliminuje cały `li_not_found` (osoba nie na tej
+  // stronie wyszukiwania którą worker akurat otworzył).
+  //
+  // Obsługuje dwa warianty: klasyczny Ember (przyciski z aria-label) i SDUI
+  // (linki `/preload/custom-invite/?vanityName=...` które LinkedIn intercepts
+  // do shadow modal'a — patrz preload_modal_dump.md). Connect może być w
+  // top-card LUB schowany w menu "Więcej" — sprawdzamy oba.
+  function findConnectEl(root) {
+    // SDUI: <a href="/preload/custom-invite/..."> lub search-custom-invite.
+    let el = root.querySelector(
+      'a[href*="/preload/custom-invite/"], a[href*="/preload/search-custom-invite/"]'
+    );
+    if (el) return el;
+    // aria-label "Zaproś użytkownika X..." / "Invite X..." (link lub button).
+    el = root.querySelector(
+      'a[aria-label^="Zaproś"], button[aria-label^="Zaproś"], ' +
+      'a[aria-label^="Połącz"], button[aria-label^="Połącz"], ' +
+      'a[aria-label^="Invite "], button[aria-label^="Invite "], ' +
+      'a[aria-label^="Connect"], button[aria-label^="Connect"]'
+    );
+    if (el) return el;
+    // Visible text "Połącz" / "Connect" w <a>/<button> (SDUI dump ma <span>Połącz</span>).
+    const cands = Array.from(root.querySelectorAll("a, button"));
+    el = cands.find((c) => {
+      const t = (c.innerText || c.textContent || "").trim();
+      return /^(Połącz|Connect)$/i.test(t) &&
+        !/W toku|Pending|Anuluj|Withdraw|Cofnij/i.test(t);
+    });
+    return el || null;
+  }
+
+  function isAlreadyPendingProfile() {
+    return !!document.querySelector(
+      'a[aria-label^="W toku"], button[aria-label^="W toku"], ' +
+      'a[aria-label^="Pending"], button[aria-label^="Pending"], ' +
+      'a[aria-label*="Anuluj zaproszenie"], button[aria-label*="Anuluj zaproszenie"], ' +
+      'a[aria-label*="Cofnij zaproszenie"], button[aria-label*="Cofnij zaproszenie"], ' +
+      'a[href*="/preload/withdraw-invite/"]'
+    );
+  }
+
+  function findInviteModal() {
+    // Shadow DOM modal (z /preload/...-invite/ linków).
+    const host = document.querySelector(
+      '[data-testid="interop-shadowdom"], #interop-outlet'
+    );
+    if (host && host.shadowRoot) {
+      const inner =
+        host.shadowRoot.querySelector(".send-invite") ||
+        host.shadowRoot.querySelector('[role="dialog"]') ||
+        host.shadowRoot.querySelector(".artdeco-modal");
+      if (inner) return inner;
+    }
+    // Klasyczny artdeco modal w głównym DOM (musi mieć actionbar — żeby nie
+    // złapać innych LinkedIn'owych dialogów typu reklamy).
+    const dialogs = Array.from(document.querySelectorAll('[role="dialog"], .artdeco-modal'));
+    return dialogs.find((d) => d.querySelector(".artdeco-modal__actionbar, .send-invite")) || null;
+  }
+
+  function findSendWithoutNoteBtn(modal) {
+    return (
+      modal.querySelector('button[aria-label="Wyślij bez notatki"]') ||
+      modal.querySelector('button[aria-label="Send without a note"]') ||
+      modal.querySelector(".artdeco-modal__actionbar button.artdeco-button--primary") ||
+      modal.querySelector(".send-invite button.artdeco-button--primary") ||
+      Array.from(modal.querySelectorAll("button")).find((b) => {
+        const t = (b.innerText || b.textContent || "").trim().toLowerCase();
+        return /wyślij bez notatki|send without a note/.test(t);
+      }) ||
+      // Last resort: primary button gdziekolwiek w modalu.
+      modal.querySelector("button.artdeco-button--primary") ||
+      null
+    );
+  }
+
+  async function connectFromProfile(slug) {
+    // Poczekaj aż top-card się zrenderuje (SDUI/Ember hydration race).
+    await waitFor(() => findConnectEl(document) || isAlreadyPendingProfile(), 8000);
+
+    if (isAlreadyPendingProfile()) return { skip: "already_pending" };
+
+    let connectEl = findConnectEl(document);
+    if (!connectEl) {
+      // Connect może być w overflow menu "Więcej" / "More".
+      const moreBtn = document.querySelector(
+        'button[aria-label="Więcej"], button[aria-label^="Więcej"], ' +
+        'button[aria-label="More actions"], button[aria-label^="More"]'
+      );
+      if (moreBtn) {
+        try { moreBtn.click(); } catch (_) {}
+        await new Promise((r) => setTimeout(r, 400 + Math.random() * 300));
+        // Dropdown może być w shadow DOM lub w głównym DOM.
+        const dd =
+          document.querySelector('.artdeco-dropdown__content, [role="menu"]') ||
+          document;
+        connectEl = findConnectEl(dd) || findConnectEl(document);
+        // Jeśli w dropdownie pokazało się "Anuluj zaproszenie" → już pending.
+        if (!connectEl && isAlreadyPendingProfile()) {
+          // zamknij dropdown
+          try { moreBtn.click(); } catch (_) {}
+          return { skip: "already_pending" };
+        }
+      }
+    }
+    if (!connectEl) {
+      // Brak Connecta — follow-only, 1st degree (już połączeni), albo
+      // premium-locked. Nie crash — skip.
+      const txt = (document.body.textContent || "").toLowerCase();
+      if (/\bobserwuj\b|\bfollow\b/.test(txt) && !/połącz|connect/i.test(txt)) {
+        return { skip: "follow_only" };
+      }
+      return { skip: "not_connectable" };
+    }
+
+    try { connectEl.click(); } catch (err) {
+      return { success: false, error: "connect_click_failed: " + ((err && err.message) || err) };
+    }
+    // Symulacja czytania modal'a.
+    await new Promise((r) => setTimeout(r, 400 + Math.random() * 500));
+
+    const modal = await waitFor(() => findInviteModal(), 4000);
+    if (!modal) {
+      // Modal-less flow — niektóre profile LinkedIn wysyła od razu.
+      const ok = await waitFor(() => isAlreadyPendingProfile(), 3000);
+      if (ok) return { success: true, modalLess: true };
+      return { success: false, error: "modal_did_not_appear" };
+    }
+
+    const sendBtn = findSendWithoutNoteBtn(modal);
+    if (!sendBtn) return { success: false, error: "send_button_missing" };
+    try { sendBtn.click(); } catch (err) {
+      return { success: false, error: "send_click_failed: " + ((err && err.message) || err) };
+    }
+    // Symulacja czytania potwierdzenia.
+    await new Promise((r) => setTimeout(r, 1000 + Math.random() * 1000));
+
+    const sent = await waitFor(() => isAlreadyPendingProfile(), 4000);
+    if (!sent) return { success: false, error: "pending_not_visible" };
+    return { success: true };
+  }
+
   // ── Auto-pagination: scrape multiple search result pages (#19/v1.4.1) ──
   //
   // LinkedIn pokazuje 10 profili na stronę. User chce wypełnić queue do
@@ -1858,6 +2003,32 @@
           });
         });
       return true; // Keep channel open for async response.
+    } else if (message.action === "connectFromProfile") {
+      // ASYNC — klika "Połącz" → "Wyślij bez notatki" na bieżącej stronie
+      // profilu (linkedin.com/in/<slug>/). Patrz connectFromProfile().
+      connectFromProfile(message.slug)
+        .then((result) => {
+          if (!isContextValid()) return;
+          if (result && !result.success && !result.skip) {
+            try {
+              chrome.runtime.sendMessage({
+                action: "reportScrapeFailure",
+                payload: {
+                  url: window.location.href,
+                  diagnostics: { slug: message.slug, error_code: result.error },
+                  error_message: result.error || "connect_from_profile_failure",
+                  event_type: "connect_from_profile_failure",
+                },
+              }).catch(() => {});
+            } catch (_) {}
+          }
+          sendResponse(result);
+        })
+        .catch((err) => {
+          if (!isContextValid()) return;
+          sendResponse({ success: false, error: `connect_from_profile_exception: ${(err && err.message) || err}` });
+        });
+      return true; // keep channel open
     } else if (message.action === "bulkAutoExtract") {
       // ASYNC — chodzi przez kilka stron LinkedIn search results, klika
       // "Następne", scrapuje, dedup'uje. Patrz bulkAutoExtract().

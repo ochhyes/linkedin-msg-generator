@@ -1084,19 +1084,15 @@
       return;
     }
     if (resp && resp.success === false) {
-      if (resp.error === "no_pending_no_tab") {
-        showError("Kolejka jest pusta i nie ma otwartej karty wyszukiwania LinkedIn. Otwórz LinkedIn → wyszukaj ludzi → dodaj do kolejki, potem Start.");
+      if (resp.error === "queue_empty") {
+        showError("Kolejka jest pusta — nie ma kogo łączyć. Otwórz wyszukiwarkę LinkedIn, kliknij Wypełnij do limitu, potem Start.");
       } else {
         showError("Nie udało się wystartować: " + (resp.error || "nieznany błąd"));
       }
-    } else if (resp && resp.recovering) {
-      // Worker wystartował bez otwartej karty — pierwszy tick odtworzy ją z
-      // zapisanego wyszukiwania. Jeśli nie ma zapisanych keywords — ostrzeż.
-      if (!resp.hasKeywords) {
-        showError("Wznawiam, ale nie pamiętam jakiego wyszukiwania użyć. Jeśli za chwilę zobaczysz 'Lost LinkedIn search tab' — otwórz stronę wyników wyszukiwania (/search/results/people/?keywords=...) i kliknij Resume jeszcze raz.");
-      } else {
-        showToast("Wznawiam — odtwarzam kartę wyszukiwania w tle…", "success");
-      }
+    } else {
+      // v1.14.5: worker łączy z profili (otwiera linkedin.com/in/<slug>/ w
+      // karcie w tle) — nie potrzeba otwartej karty wyszukiwania.
+      showToast("Bulk Connect uruchomiony — łączy w tle (otwiera profile w tle, nie przejmuje karty).", "success");
     }
     await loadBulkState();
   }
