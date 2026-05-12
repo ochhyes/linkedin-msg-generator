@@ -7,7 +7,7 @@ Jak używać: Reload rozszerzenia w `chrome://extensions/` (NIE Remove!), potem 
 ---
 
 ## 0. Instalacja / wersja
-- [ ] `chrome://extensions/` → przy LinkedIn MSG kliknij **Wczytaj ponownie (↻)** → obok nazwy widnieje **1.19.0**.
+- [ ] `chrome://extensions/` → przy LinkedIn MSG kliknij **Wczytaj ponownie (↻)** → obok nazwy widnieje **1.19.1**.
 - [ ] Po Reload otwórz dowolną kartę LinkedIn — w konsoli może mignąć `Extension orphaned — reloading page` (normalne, jednorazowy reload strony). Po 2-3 s popup działa.
 - [ ] **Storage safety:** w SW DevTools (`chrome://extensions` → „service worker" → Console) `chrome.storage.local.get(null)` — `bulkConnect` i `profileDb` na miejscu (Reload nie wipe'uje danych).
 

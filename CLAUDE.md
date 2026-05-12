@@ -208,10 +208,10 @@ PM 5–15 min · Dev 30–120 min · Tester 10–30 min · Commit 2–5 min.
 
 ```
 Sprint:        #8 ZDYSTRYBUOWANY (v1.14.0→1.14.6) || #9 UX redesign OVB Professional Minimal — **KOMPLETNY** 2026-05-12: ✅ #24 Header+Tabs (v1.15.0) → ✅ #25 Buttons+3-faz action bar (v1.16.0) → ✅ #26 Cards+Badges (v1.17.0) → ✅ #27 Inputs(focus-ring)+EmptyStates (v1.18.0) → ✅ #28 Dashboard polish + 🔧 2 szlify (v1.19.0). + hotfixe v1.15.1/v1.15.2/v1.16.1. NIEPUSHOWANE — push po smoke + dystrybucji.
-Phase:         PM (Sprint #9 zamknięty kodowo. Pending Marcin: (1) manual smoke wg `docs/SMOKE-TEST.md` (v1.19.0), (2) regen `extension 1.19.0.zip` + ew. odśwież PDF instrukcji (cover v1.14.6→1.19.0), (3) dystrybucja zespołowi OVB, (4) `git push`. Nast. sprint do wyboru: #22 reszta / #10 selectors.json / #6 self-test widget.)
+Phase:         PM (Sprint #9 zamknięty kodowo. Pending Marcin: (1) manual smoke wg `docs/SMOKE-TEST.md` (v1.19.0), (2) regen `extension 1.19.1.zip` + ew. odśwież PDF instrukcji (cover v1.14.6→1.19.0), (3) dystrybucja zespołowi OVB, (4) `git push`. Nast. sprint do wyboru: #22 reszta / #10 selectors.json / #6 self-test widget.)
 Active task:   żaden (Sprint #9 KOMPLETNY — #24-#28 + 2 szlify, v1.15.0→1.19.0, zacommitowane lokalnie. Czeka manual smoke + dystrybucja + push.)
-Last commit:   dde273f — feat: dashboard polish + 2 szlify — koniec UX redesign (#28, v1.19.0)  [+ ddfd084 #27 v1.18.0 · 1844d59 #26 v1.17.0 · 9e6e3aa #25 v1.16.0 · 4a67d99 #24 v1.15.0 · e8433e3 v1.16.1 · 4086547 v1.15.2 · e23b7a1 v1.15.1 · … docs · Sprint #8]
-Updated:       2026-05-12 (Sprint #9 KOMPLETNY — #28 v1.19.0 + 2 szlify; `docs/SMOKE-TEST.md` zaktualizowany do v1.19.0; czeka smoke + regen zip + dystrybucja + push)
+Last commit:   a75e9ed — fix: scroll w zakładce + rename "Bulk" → "Budowanie sieci" (v1.19.1)  [+ 50223de docs · dde273f #28 v1.19.0]  [+ ddfd084 #27 v1.18.0 · 1844d59 #26 v1.17.0 · 9e6e3aa #25 v1.16.0 · 4a67d99 #24 v1.15.0 · e8433e3 v1.16.1 · 4086547 v1.15.2 · e23b7a1 v1.15.1 · … docs · Sprint #8]
+Updated:       2026-05-12 (Sprint #9 KOMPLETNY + hotfix v1.19.1: fix scroll w zakładce po "Ustawienia" + "Bulk"→"Budowanie sieci"; czeka smoke + regen zip + dystrybucja + push)
 ```
 
 **Sprint #8 — podsumowanie (2026-05-12, w toku — czeka na manual smoke + dystrybucję):** Feature z `/ultraplan` rozrósł się w jednym dniu w **7 wersji + zip + PDF instrukcji** napędzane real-time feedbackiem Marcina:
@@ -276,7 +276,7 @@ Original scope (z 2026-05-09): "Stabilizacja + dystrybucja 1.8.0" — 5 tasków 
 
 ## TODO (priorytet od góry)
 
-**Sprint #9 — UX redesign OVB Professional Minimal — ✅ KOMPLETNY** (#24-#28 + 2 szlify, v1.15.0→1.19.0, w DONE). Pending operacyjne: smoke wg `docs/SMOKE-TEST.md` (v1.19.0) → regen `extension 1.19.0.zip` + ew. odśwież PDF instrukcji (cover v1.14.6→1.19.0) → dystrybucja → `git push`.
+**Sprint #9 — UX redesign OVB Professional Minimal — ✅ KOMPLETNY** (#24-#28 + 2 szlify, v1.15.0→1.19.0, w DONE). Pending operacyjne: smoke wg `docs/SMOKE-TEST.md` (v1.19.0) → regen `extension 1.19.1.zip` + ew. odśwież PDF instrukcji (cover v1.14.6→1.19.0) → dystrybucja → `git push`.
 
 **Następny sprint — do wyboru** (priorytet wg Marcina):
 1. **#22 reszta** — master-select zrobiony (v1.14.6); zostaje: DOM dump paginacji od Marcina → fix selektorów `bulkAutoExtract` w content.js → checkboxy "2nd-only" / "unselect Pending" w liście Bulk → "Stop after N pages" setting. Wartość: efektywność przy limitach wyszukiwania LI. Częściowo zablokowane (potrzeba dumpu).
