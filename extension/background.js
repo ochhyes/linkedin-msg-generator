@@ -203,7 +203,8 @@ const BULK_DEFAULTS = {
   config: {
     delayMin: 45,
     delayMax: 120,
-    dailyCap: 25,
+    dailyCap: 25,           // ile worker WYSYŁA zaproszeń dziennie
+    addCount: 50,           // ile profili dorzuca "Wypełnij" do kolejki za jednym razem (v1.14.4)
     workingHoursStart: 9,
     workingHoursEnd: 18,
   },
@@ -1289,7 +1290,10 @@ async function waitForTabComplete(tabId, timeoutMs) {
 }
 
 const PAGINATION_RENDER_DELAY_MS = 1500; // SDUI lazy render po SPA nav
-const PAGINATION_MAX_PAGES = 10;
+// v1.14.4: bump 10 → 20 — "Wypełnij" z dużym addCount (np. 200 na zapas)
+// potrzebuje więcej stron. Sama nawigacja po stronach (bez Connect-klików)
+// jest low-risk dla anti-detection; LI patrzy na burst'y Connectów.
+const PAGINATION_MAX_PAGES = 20;
 
 /**
  * Auto-pagination przez kolejne strony LinkedIn search results.
@@ -1310,6 +1314,16 @@ async function bulkAutoFillByUrl(maxProfiles) {
   if (!baseUrl.includes("/search/results/people/")) {
     return { success: false, error: "not_on_search_page" };
   }
+
+  // #43-followup v1.14.4: persistuj keywords + tabId teraz, żeby Resume po
+  // zamknięciu karty potrafił odtworzyć search URL nawet jeśli worker nigdy
+  // nie był jeszcze wystartowany.
+  try {
+    const kw = new URL(baseUrl).searchParams.get("keywords");
+    const patch = { tabId: tab.id };
+    if (kw) patch.lastSearchKeywords = kw;
+    await setBulkState(patch);
+  } catch (_) { /* malformed URL — skip */ }
 
   const cap = Math.max(1, maxProfiles || 25);
   const state = await getBulkState();
@@ -1583,36 +1597,53 @@ async function bulkConnectTick() {
 }
 
 async function startBulkConnect() {
-  // #39: capture tabId + keywords PRZED ustawieniem active=true. Bez search
-  // tab nie startujemy — user musi mieć /search/results/people/ otwarte
-  // żeby tick wiedział na której karcie pracować + jak ją odzyskać po SPA nav.
-  const tab = await findLinkedInSearchTab();
-  if (!tab || !tab.id) {
-    return { success: false, error: "open_search_results_first" };
-  }
-  let lastSearchKeywords = null;
-  try {
-    const u = new URL(tab.url || "");
-    lastSearchKeywords = u.searchParams.get("keywords");
-  } catch (_) {
-    // Malformed URL — fallback na null, auto-navigate i tak zbuduje
-    // bazowy URL bez keywords (LinkedIn pokaże all-people search).
-  }
+  const state = await getBulkState();
+  const hasPending = (state.queue || []).some((q) => q.status === "pending");
 
-  // Pierwszy tick za 100ms — popup widzi countdown od razu.
-  await setBulkState({
+  // #39: jeśli search tab jest otwarty — capture tabId + keywords. Inaczej
+  // (Marcin 2026-05-12: "zamknąłem kartę, klikam Resume, dalej Pauza") —
+  // NIE bail'ujemy. Worker startuje z tabId:null; pierwszy tick wywoła
+  // resolveBulkTab() które odtworzy kartę z zapisanego lastSearchKeywords
+  // (#43). Bez keywords (legacy / nigdy nie wystartowany z search) tick
+  // ustawi czytelny "Lost LinkedIn search tab. Reopen..." zamiast cichego
+  // bail'u który wyglądał jak "nic nie działa".
+  const tab = await findLinkedInSearchTab();
+  let patch = {
     active: true,
     errorMsg: null,
     nextTickAt: Date.now() + 100,
     lastTickAt: null,
-    tabId: tab.id,
-    lastSearchKeywords,
     navigateFailCount: 0,
-  });
+  };
+  let recovering = false;
+
+  if (tab && tab.id) {
+    patch.tabId = tab.id;
+    try {
+      const u = new URL(tab.url || "");
+      const kw = u.searchParams.get("keywords");
+      if (kw) patch.lastSearchKeywords = kw;
+    } catch (_) { /* malformed URL — zostaw poprzednie keywords */ }
+  } else {
+    // Brak otwartej karty search results.
+    if (!hasPending) {
+      return { success: false, error: "no_pending_no_tab" };
+    }
+    if (!state.lastSearchKeywords) {
+      // Nie mamy z czego odtworzyć karty — startujemy mimo to (worker da
+      // czytelny błąd w 1. tick'u), ale informujemy popup żeby pokazał hint.
+      recovering = true;
+    } else {
+      recovering = true;
+    }
+    patch.tabId = null;
+  }
+
+  await setBulkState(patch);
   // Keep-alive alarm (24s period < 30s SW idle limit).
   await chrome.alarms.create(BULK_ALARM_NAME, { periodInMinutes: 0.4 });
   bulkConnectTick();
-  return { success: true };
+  return { success: true, recovering, hadTab: !!(tab && tab.id), hasKeywords: !!state.lastSearchKeywords };
 }
 
 async function stopBulkConnect() {
@@ -2193,6 +2224,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return await stopBulkConnect();
 
         case "bulkConnectAddToQueue":
+          // #43-followup v1.14.4: persistuj keywords przy dodawaniu do kolejki
+          // (nie tylko przy Start) — żeby Resume po zamknięciu karty mógł
+          // odtworzyć search results URL nawet jeśli worker nigdy nie był
+          // wystartowany z otwartą kartą.
+          if (message.searchKeywords) {
+            await setBulkState({ lastSearchKeywords: message.searchKeywords });
+          }
           return await addToQueue(message.profiles || []);
 
         case "bulkAutoFillByUrl":

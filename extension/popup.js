@@ -60,6 +60,7 @@
   const setBulkDelayMin = $("#set-bulk-delaymin");
   const setBulkDelayMax = $("#set-bulk-delaymax");
   const setBulkCap = $("#set-bulk-cap");
+  const setBulkAddCount = $("#set-bulk-addcount");
   const setBulkHStart = $("#set-bulk-hstart");
   const setBulkHEnd = $("#set-bulk-hend");
   const btnBulkSaveSettings = $("#btn-bulk-save-settings");
@@ -945,6 +946,7 @@
     if (setBulkDelayMin) setBulkDelayMin.value = state.config.delayMin;
     if (setBulkDelayMax) setBulkDelayMax.value = state.config.delayMax;
     if (setBulkCap) setBulkCap.value = state.config.dailyCap;
+    if (setBulkAddCount) setBulkAddCount.value = state.config.addCount != null ? state.config.addCount : 50;
     if (setBulkHStart) setBulkHStart.value = state.config.workingHoursStart;
     if (setBulkHEnd) setBulkHEnd.value = state.config.workingHoursEnd;
 
@@ -1049,10 +1051,19 @@
 
     if (profiles.length === 0) return;
 
+    // #43-followup v1.14.4: dorzuć keywords aktywnej karty żeby Resume po
+    // zamknięciu karty potrafił odtworzyć search URL.
+    let searchKeywords = null;
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab?.url) searchKeywords = new URL(tab.url).searchParams.get("keywords");
+    } catch (_) { /* noop */ }
+
     try {
       const resp = await chrome.runtime.sendMessage({
         action: "bulkConnectAddToQueue",
         profiles,
+        searchKeywords: searchKeywords || undefined,
       });
       if (resp?.success) {
         await loadBulkState();
@@ -1065,7 +1076,28 @@
   }
 
   async function handleBulkStart() {
-    await chrome.runtime.sendMessage({ action: "bulkConnectStart" });
+    let resp = null;
+    try {
+      resp = await chrome.runtime.sendMessage({ action: "bulkConnectStart" });
+    } catch (err) {
+      showError("Nie udało się wystartować bulk Connect: " + ((err && err.message) || err));
+      return;
+    }
+    if (resp && resp.success === false) {
+      if (resp.error === "no_pending_no_tab") {
+        showError("Kolejka jest pusta i nie ma otwartej karty wyszukiwania LinkedIn. Otwórz LinkedIn → wyszukaj ludzi → dodaj do kolejki, potem Start.");
+      } else {
+        showError("Nie udało się wystartować: " + (resp.error || "nieznany błąd"));
+      }
+    } else if (resp && resp.recovering) {
+      // Worker wystartował bez otwartej karty — pierwszy tick odtworzy ją z
+      // zapisanego wyszukiwania. Jeśli nie ma zapisanych keywords — ostrzeż.
+      if (!resp.hasKeywords) {
+        showError("Wznawiam, ale nie pamiętam jakiego wyszukiwania użyć. Jeśli za chwilę zobaczysz 'Lost LinkedIn search tab' — otwórz stronę wyników wyszukiwania (/search/results/people/?keywords=...) i kliknij Resume jeszcze raz.");
+      } else {
+        showToast("Wznawiam — odtwarzam kartę wyszukiwania w tle…", "success");
+      }
+    }
     await loadBulkState();
   }
 
@@ -1101,6 +1133,7 @@
       delayMin: Math.max(10, parseInt(setBulkDelayMin.value) || 45),
       delayMax: Math.max(10, parseInt(setBulkDelayMax.value) || 120),
       dailyCap: Math.max(1, parseInt(setBulkCap.value) || 25),
+      addCount: Math.max(1, Math.min(500, parseInt(setBulkAddCount && setBulkAddCount.value) || 50)),
       workingHoursStart: Math.max(0, Math.min(23, parseInt(setBulkHStart.value) || 9)),
       workingHoursEnd: Math.max(0, Math.min(23, parseInt(setBulkHEnd.value) || 18)),
     };
@@ -1989,22 +2022,19 @@
 
     try {
       const state = await chrome.runtime.sendMessage({ action: "getBulkState" });
-      const inQueue = state.queue.filter((q) => q.status === "pending").length;
-      const remaining = state.config.dailyCap - inQueue;
-      if (remaining <= 0) {
-        if (bulkError) {
-          bulkError.textContent = "Kolejka pełna do limitu dziennego.";
-          bulkError.classList.remove("hidden");
-        }
-        return;
-      }
+      // v1.14.4: cel = `config.addCount` (ile profili dorzucić do kolejki za
+      // jednym "Wypełnij" — np. 200 na zapas). To NIE dailyCap (ten limituje
+      // ile worker WYSYŁA dziennie). Kolejka może rosnąć daleko ponad dailyCap.
+      const target = Math.max(1, Math.min(500, (state.config && state.config.addCount) || 50));
 
       // #22 v1.6.0: pagination orchestrowany przez background.js (URL-based,
       // zachowuje wszystkie query params LinkedIn'a). Background navigates
       // aktywną kartą przez ?page=N, scrapuje, dorzuca z pageNumber field.
+      // Dedup względem istniejącej kolejki robi background — `target` to
+      // liczba NOWYCH profili do dodania.
       const resp = await chrome.runtime.sendMessage({
         action: "bulkAutoFillByUrl",
-        maxProfiles: remaining,
+        maxProfiles: target,
       });
 
       if (resp?.success && resp?.cancelled) {
