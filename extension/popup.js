@@ -641,19 +641,12 @@
           return;
         }
 
-        // Open w TLE (active: false) żeby popup ZOSTAŁ open — user widzi
-        // toast i chip, sam przełączy się do nowej karty gdy będzie gotów.
-        // Wcześniej (1.7.2/1.7.3) active: true zamykało popup natychmiast,
-        // toast nigdy nie był widoczny mimo delay'u (Marcin reportował).
-        const composeUrl = new URL("https://www.linkedin.com/messaging/compose/");
-        composeUrl.searchParams.set("recipient", slug);
-        chrome.tabs.create({ url: composeUrl.toString(), active: false });
-
-        // Toast format: "✓ Zapisano/Zaktualizowano. Wiadomość w schowku..."
-        // — informuje że tracking + clipboard + nowa karta zrobione.
+        // v1.15.2: NIE otwieramy karty messaging/compose. Jesteś na profilu
+        // tej osoby — kliknij na nim przycisk "Wiadomość" i wklej. Mniej kart,
+        // bardziej niezawodne (compose?recipient=<slug> bywał kapryśny).
         const action = resp.action === "updated" ? "Zaktualizowano" : "Zapisano";
         showToast(
-          `✓ ${action}. Wiadomość w schowku, czat LinkedIn otwarty w tle (znajdź go w pasku kart → Ctrl+V → Send). Follow-up #1 za 3 dni, #2 za 7.`,
+          `✓ ${action}. Wiadomość w schowku — kliknij „Wiadomość" na profilu tej osoby i wklej (Ctrl+V → wyślij). Follow-up #1 za 3 dni, #2 za 7.`,
           "success"
         );
         btnCopyTrack.textContent = "✓ Zapisano";
