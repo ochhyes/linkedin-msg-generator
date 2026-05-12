@@ -1,13 +1,13 @@
 # Smoke test — LinkedIn MSG (Outreach)
 
-Lista kontrolna do ręcznego sprawdzenia przed dystrybucją. Wersja odniesienia: **v1.17.0** (Sprint #9 w toku — po #27/#28 dojdzie kilka pozycji o empty-states / inputach; te oznaczone `[#27/#28]` na końcu pliku).
+Lista kontrolna do ręcznego sprawdzenia przed dystrybucją. Wersja odniesienia: **v1.19.0** (Sprint #9 — UX redesign OVB Professional Minimal — KOMPLETNY: #24-#28 + szlify).
 
 Jak używać: Reload rozszerzenia w `chrome://extensions/` (NIE Remove!), potem przejść po sekcjach. `[ ]` = do sprawdzenia, dopisz `OK` / `FAIL: <opis>` obok.
 
 ---
 
 ## 0. Instalacja / wersja
-- [ ] `chrome://extensions/` → przy LinkedIn MSG kliknij **Wczytaj ponownie (↻)** → obok nazwy widnieje **1.17.0** (lub wyższa, jeśli już po #27/#28).
+- [ ] `chrome://extensions/` → przy LinkedIn MSG kliknij **Wczytaj ponownie (↻)** → obok nazwy widnieje **1.19.0**.
 - [ ] Po Reload otwórz dowolną kartę LinkedIn — w konsoli może mignąć `Extension orphaned — reloading page` (normalne, jednorazowy reload strony). Po 2-3 s popup działa.
 - [ ] **Storage safety:** w SW DevTools (`chrome://extensions` → „service worker" → Console) `chrome.storage.local.get(null)` — `bulkConnect` i `profileDb` na miejscu (Reload nie wipe'uje danych).
 
@@ -79,11 +79,11 @@ Jak używać: Reload rozszerzenia w `chrome://extensions/` (NIE Remove!), potem 
 - [ ] Zakładka Follow-upy: „Generuj follow-up" → draft → „Skopiuj i otwórz" (tu OK że otwiera czat — nie jesteś na profilu) → „Wysłałem" / „Pomiń".
 - [ ] 📊 → tabela „Wszystkie kontakty": przyciski „↪Msg/↪FU1/↪FU2" oznaczają odpowiedź (anulują zaplanowane follow-upy dla tej osoby), „✕…" cofa.
 
----
-
-## Do dopisania po #27/#28 (następna sesja)
-- `[#27]` Empty states (np. zakładka Profil bez profilu, lista Bulk bez wyników, brak follow-upów, baza pusta) — ładne komunikaty / ikony zamiast suchego tekstu.
-- `[#27]` Inputy (pola w ustawieniach, textarea wiadomości, pola bulk-settings) — spójna wysokość 36px, border, focus-ring navy.
-- `[#28]` Dashboard cleanup + Stats funnel polish — odstępy, hierarchia, lejek statystyk.
-- `[szlif]` Po otwarciu „Ustawienia bulk connect" popup rozszerza się **wystarczająco** (nie tylko trochę).
-- `[szlif]` Hint „📍 Powinien być na: <link>" w zakładce Bulk — **nie pojawia się** (relikt sprzed v1.14.5, do usunięcia).
+## 11. UX polish — inputy, empty states, dashboard (#27/#28 / v1.18.0-1.19.0)
+- [ ] **Inputy — focus ring:** kliknij w dowolne pole tekstowe (⚙ Ustawienia: URL/Hasło dostępu/Kontekst nadawcy/Auto-backup; „Ustawienia bulk connect"; textarea wiadomości; follow-up draft; w dashboardzie filtry w „Bazie profili", textarea draftów; w options.css pola personalizacji) → przy focusie **granatowa obwódka + delikatny ring** dookoła (nie tylko zmiana koloru ramki). Hover → ramka ciemnieje.
+- [ ] **Empty states:** brak pobranego profilu (zakładka Profil) → **ikona + tytuł „Brak pobranego profilu" + tekst** (nie suchy paragraf). Puste listy w dashboardzie (brak follow-upów / historii / kontaktów / pusta baza) → wyśrodkowane, stonowane, z oddechem.
+- [ ] **Dashboard header:** tytuł **„Outreach — Dashboard"** (granatowy), krótki podtytuł; przycisk **„↻ Odśwież"** jako ghost (borderless), małe ↻ przy „Statystyki"/„Baza profili" też ghost.
+- [ ] **Statystyki:** liczby w lejku **wyrównane w kolumnie** (tabular-nums), wiersz TOTAL granatowy.
+- [ ] **Tabela kontaktów:** nagłówek przykleja się u góry przy scrollu (sticky), hover na wiersz → granatowy tint.
+- [ ] **Szlif a:** rozwiń „Ustawienia bulk connect" → popup rozszerza się o tę sekcję (limit 850px; na małym ekranie scroll dopiero gdy nie mieści się).
+- [ ] **Szlif b:** zakładka Bulk — **hint „📍 Powinien być na: <link>" NIE pojawia się** (został usunięty — relikt sprzed v1.14.5).
