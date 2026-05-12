@@ -114,7 +114,7 @@ body {
   border-bottom: 1px solid var(--border);
 }
 .hdr__title h1 { font-size: 22px; margin: 0 0 6px; font-weight: 600; }
-.hdr__sub { margin: 0; color: var(--text-dim); font-size: 13px; }
+.hdr__sub { margin: 0; color: var(--text-secondary); font-size: 13px; }
 
 /* ── Buttons — 3-typowy system OVB Minimal (UX redesign #25 v1.16.0) ──
    spójny z popup.css. secondary = domyślny look (outlined), primary = solid
@@ -159,12 +159,34 @@ body {
 .btn--lg { height: 40px; padding: 0 20px; font-size: 14px; }
 .btn--sm { height: 28px; padding: 0 12px; font-size: 12px; border-radius: var(--radius-sm); }
 
+/* ── Card system — OVB Minimal (UX redesign #26) ──────────────── */
+.card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-4);
+  transition: var(--transition);
+}
+.card:hover { border-color: var(--border-strong); }
+.card--interactive { cursor: pointer; }
+.card--interactive:hover {
+  border-color: var(--brand-primary);
+  background: var(--brand-primary-soft);
+}
+.card--accent {
+  border-left: 3px solid var(--brand-primary);
+  padding-left: calc(var(--space-4) - 3px);
+}
+.card--warning { border-left: 3px solid var(--warning); }
+.card--success { border-left: 3px solid var(--success); }
+.card--muted { background: var(--bg-subtle); }
+
 /* Sections */
 .block {
   margin-bottom: 32px;
   padding: 20px;
-  background: var(--bg-elevated);
-  border-radius: 8px;
+  background: var(--bg-subtle);
+  border-radius: var(--radius);
   border: 1px solid var(--border);
 }
 .block h2 {
@@ -178,31 +200,69 @@ body {
 .block .hint {
   margin: 0 0 16px;
   font-size: 12px;
-  color: var(--text-dim);
+  color: var(--text-secondary);
 }
 
-.block--due { border-left: 3px solid var(--warning); }
-.block--scheduled { border-left: 3px solid var(--accent); }
-.block--history { border-left: 3px solid var(--text-dim); }
+.block--due      { border-left: 3px solid var(--warning); }
+.block--scheduled { border-left: 3px solid var(--brand-primary); }
+.block--history  { border-left: 3px solid var(--text-muted); }
 
+/* ── Badge system — OVB Minimal (UX redesign #26) ─────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  height: 20px;
+  font: 500 11px var(--font);
+  border-radius: var(--radius-pill);
+  background: var(--bg-muted);
+  color: var(--text-secondary);
+}
+.badge--brand   { background: var(--brand-primary-soft); color: var(--brand-primary); }
+.badge--success { background: var(--success-soft);       color: var(--success); }
+.badge--warning { background: var(--warning-soft);       color: var(--warning); }
+.badge--error   { background: var(--error-soft);         color: var(--error); }
+
+.badge--dot::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.badge--pulse::before {
+  animation: lmg-badge-pulse 2s ease-in-out infinite;
+}
+@keyframes lmg-badge-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+/* Count badges (section headers) — pill style */
 .count-badge {
-  display: inline-block;
-  font-size: 11px;
-  padding: 2px 9px;
-  border-radius: 999px;
-  font-weight: 600;
-  background: var(--text-dim);
-  color: var(--bg);
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  height: 20px;
+  font: 500 11px var(--font);
+  border-radius: var(--radius-pill);
+  background: var(--bg-muted);
+  color: var(--text-secondary);
+  min-width: 24px;
+  justify-content: center;
 }
-.count-badge--due { background: var(--warning); color: #1a1410; }
-.count-badge--scheduled { background: var(--accent); color: white; }
-.count-badge--history { background: var(--text-dim); color: var(--bg); }
+.count-badge--due       { background: var(--warning-soft);       color: var(--warning); }
+.count-badge--scheduled { background: var(--brand-primary-soft); color: var(--brand-primary); }
+.count-badge--history   { background: var(--bg-muted);           color: var(--text-secondary); }
 
 .empty-state {
   margin: 0;
   padding: 16px;
   text-align: center;
-  color: var(--text-dim);
+  color: var(--text-secondary);
   font-size: 13px;
   font-style: italic;
 }
@@ -228,10 +288,10 @@ body {
 }
 .row__name { font-weight: 600; font-size: 14px; }
 .row__name a { color: var(--text); text-decoration: none; border-bottom: 1px dashed transparent; }
-.row__name a:hover { border-bottom-color: var(--accent); color: var(--accent); }
+.row__name a:hover { border-bottom-color: var(--brand-primary); color: var(--brand-primary); }
 .row__headline {
   font-size: 12px;
-  color: var(--text-dim);
+  color: var(--text-secondary);
   margin: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -240,31 +300,34 @@ body {
   min-width: 0;
 }
 .row__tag {
+  display: inline-flex;
+  align-items: center;
   font-size: 11px;
-  padding: 3px 8px;
-  border-radius: 999px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
   white-space: nowrap;
 }
-.row__tag--fu1 { background: rgba(210, 153, 34, 0.2); color: var(--warning); }
-.row__tag--fu2 { background: rgba(248, 81, 73, 0.2); color: var(--error); }
-.row__tag--scheduled { background: rgba(79, 143, 247, 0.2); color: var(--accent); }
-.row__tag--sent { background: rgba(63, 185, 80, 0.2); color: var(--success); }
-.row__tag--skipped { background: rgba(139, 148, 158, 0.2); color: var(--text-dim); }
+.row__tag--fu1       { background: var(--warning-soft);       color: var(--warning); }
+.row__tag--fu2       { background: var(--error-soft);         color: var(--error); }
+.row__tag--scheduled { background: var(--brand-primary-soft); color: var(--brand-primary); }
+.row__tag--sent      { background: var(--success-soft);       color: var(--success); }
+.row__tag--skipped   { background: var(--bg-muted);           color: var(--text-muted); }
 
-.row__meta { font-size: 11px; color: var(--text-dim); margin: 0; }
+.row__meta { font-size: 11px; color: var(--text-secondary); margin: 0; }
 .row__draft {
   width: 100%;
   min-height: 70px;
   font-family: inherit;
   font-size: 12px;
   padding: 8px;
-  background: var(--bg-elevated);
+  background: var(--bg-subtle);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   color: var(--text);
   resize: vertical;
 }
-.row__draft[readonly] { color: var(--text-dim); cursor: default; }
+.row__draft[readonly] { color: var(--text-secondary); cursor: default; }
 .row__actions { display: flex; gap: 6px; flex-wrap: wrap; }
 
 .ftr {
@@ -272,14 +335,14 @@ body {
   padding-top: 16px;
   border-top: 1px solid var(--border);
   text-align: center;
-  color: var(--text-dim);
+  color: var(--text-muted);
   font-size: 12px;
 }
 
 .hidden { display: none !important; }
 
 /* ── Stats funnel (#38 v1.11.0) ──────────────────────────────── */
-.block--stats { border-left: 3px solid var(--success); }
+.block--stats { border-left: 3px solid var(--brand-primary); }
 
 .stats-funnel {
   display: flex;
@@ -312,7 +375,7 @@ body {
 .stats-row__value {
   font-weight: 600;
   font-size: 15px;
-  color: var(--accent);
+  color: var(--brand-primary);
 }
 
 .stats-arrow {
@@ -321,23 +384,23 @@ body {
   justify-content: center;
   padding: 2px 12px;
   font-size: 11px;
-  color: var(--text-dim);
+  color: var(--text-muted);
   font-style: italic;
 }
 
 .stats-row--total {
-  background: rgba(63, 185, 80, 0.12);
-  border: 2px solid var(--success);
+  background: var(--brand-primary-soft);
+  border: 2px solid var(--brand-primary);
   margin-top: 6px;
 }
 
 .stats-row--total .stats-row__value {
   font-size: 17px;
-  color: var(--success);
+  color: var(--brand-primary);
 }
 
 .stats-empty {
-  color: var(--text-dim);
+  color: var(--text-secondary);
   font-style: italic;
   text-align: center;
   padding: 12px;
@@ -345,7 +408,7 @@ body {
 }
 
 /* ── Contacts table (#38 v1.11.0) ────────────────────────────── */
-.block--contacts { border-left: 3px solid var(--accent); }
+.block--contacts { border-left: 3px solid var(--brand-primary); }
 
 .table-wrapper {
   overflow-x: auto;
@@ -369,9 +432,9 @@ body {
 }
 
 .contacts-table th {
-  background: var(--bg);
+  background: var(--bg-subtle);
   font-weight: 600;
-  color: var(--text-dim);
+  color: var(--text-muted);
   cursor: help;
   position: sticky;
   top: 0;
@@ -387,7 +450,7 @@ body {
 }
 
 .contacts-table tbody tr:hover {
-  background: rgba(79, 143, 247, 0.06);
+  background: var(--brand-primary-soft);
 }
 
 .contacts-table tbody tr:last-child td {
@@ -401,8 +464,8 @@ body {
 }
 
 .contacts-table td a:hover {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
+  color: var(--brand-primary);
+  border-bottom-color: var(--brand-primary);
 }
 
 .contacts-table .cell-yes {
@@ -412,14 +475,14 @@ body {
 }
 
 .contacts-table .cell-no {
-  color: var(--text-dim);
+  color: var(--text-muted);
   text-align: center;
 }
 
-.contacts-table .cell-status-pending { color: var(--warning); }
-.contacts-table .cell-status-sent { color: var(--accent); }
-.contacts-table .cell-status-accepted { color: var(--success); }
-.contacts-table .cell-status-replied { color: #c084fc; font-weight: 600; }
+.contacts-table .cell-status-pending  { color: var(--warning); }
+.contacts-table .cell-status-sent     { color: var(--brand-primary); }
+.contacts-table .cell-status-accepted { color: var(--success); font-weight: 600; }
+.contacts-table .cell-status-replied  { color: #7c3aed; font-weight: 600; }
 
 .contacts-table .actions-cell {
   display: flex;
@@ -433,21 +496,21 @@ body {
   font-size: 11px;
   cursor: pointer;
   border: 1px solid var(--border);
-  background: var(--bg-elevated);
-  color: var(--text);
-  border-radius: 3px;
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
   font-family: inherit;
   line-height: 1.3;
 }
 
 .btn-mark-reply:hover {
-  background: rgba(63, 185, 80, 0.15);
+  background: var(--success-soft);
   border-color: var(--success);
   color: var(--success);
 }
 
 .btn-unmark-reply:hover {
-  background: rgba(210, 153, 34, 0.15);
+  background: var(--warning-soft);
   border-color: var(--warning);
   color: var(--warning);
 }
@@ -463,14 +526,14 @@ body {
   flex-wrap: wrap;
   padding: 10px 12px;
   margin-bottom: 12px;
-  border: 1px solid var(--border, rgba(0,0,0,0.12));
-  border-radius: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   background: var(--brand-primary-soft);
   font-size: 13px;
   color: var(--text);
 }
 .backup-banner--danger {
-  background: rgba(248, 81, 73, 0.12);
+  background: var(--error-soft);
   border-color: var(--error);
 }
 
@@ -484,14 +547,14 @@ body {
 .profiledb-actions .file-btn { cursor: pointer; }
 .profiledb-restore-queue {
   font-size: 12px;
-  color: var(--text-dim);
+  color: var(--text-secondary);
   display: inline-flex;
   align-items: center;
   gap: 4px;
 }
 .profiledb-status {
   font-size: 12px;
-  color: var(--text-dim);
+  color: var(--text-secondary);
   flex-basis: 100%;
 }
 .profiledb-status--error { color: var(--error); }
@@ -505,9 +568,9 @@ body {
 .profiledb-filters input[type="text"],
 .profiledb-filters select {
   padding: 6px 10px;
-  border: 1px solid var(--border, rgba(0,0,0,0.15));
-  border-radius: 6px;
-  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
   color: var(--text);
   font-size: 13px;
 }
