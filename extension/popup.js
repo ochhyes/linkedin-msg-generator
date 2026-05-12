@@ -793,11 +793,14 @@
    */
   function renderProfilesList(profiles, knownConnectionSlugs) {
     profilesList.innerHTML = "";
+    const selectBar = document.getElementById("bulk-select-bar");
 
     if (!Array.isArray(profiles) || profiles.length === 0) {
       bulkInfo.textContent = "Brak profili na tej stronie";
+      if (selectBar) selectBar.hidden = true;
       return;
     }
+    if (selectBar) selectBar.hidden = false;
 
     const connSet = knownConnectionSlugs instanceof Set ? knownConnectionSlugs : new Set();
     let connectable = 0;
@@ -823,6 +826,8 @@
       checkbox.type = "checkbox";
       checkbox.className = "bulk-connect__row-checkbox";
       if (slug) checkbox.dataset.slug = slug;
+      checkbox.dataset.disabled = disabled ? "1" : "";
+      checkbox.disabled = disabled; // nie da się zaznaczyć (ani ręcznie ani select-all)
       checkbox.checked = !disabled;
       li.appendChild(checkbox);
 
@@ -1194,9 +1199,17 @@
     }
   }
 
+  // v1.14.6: user może zamknąć hint X-em. Flag resetuje się przy reopenie popup'u.
+  let _bulkTargetDismissed = false;
+
   async function updateBulkTargetUrlHint() {
     const hint = document.getElementById("bulk-target-url");
     if (!hint) return;
+    if (_bulkTargetDismissed) {
+      hint.classList.add("hidden");
+      hint.setAttribute("hidden", "");
+      return;
+    }
     const link = document.getElementById("bulk-target-link");
 
     let resp;
@@ -1249,6 +1262,18 @@
       } catch (_) {
         window.open(url, "_blank");
       }
+    });
+  }
+
+  // v1.14.6: X — zamknij hint (do następnego otwarcia popup'u).
+  const bulkTargetClose = document.getElementById("bulk-target-close");
+  if (bulkTargetClose) {
+    bulkTargetClose.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      _bulkTargetDismissed = true;
+      const hint = document.getElementById("bulk-target-url");
+      if (hint) { hint.classList.add("hidden"); hint.setAttribute("hidden", ""); }
     });
   }
 
@@ -1531,6 +1556,18 @@
   if (btnBulkClear) btnBulkClear.addEventListener("click", handleBulkClear);
   if (btnBulkSaveSettings) btnBulkSaveSettings.addEventListener("click", handleBulkSaveSettings);
   if (btnBulkFill) btnBulkFill.addEventListener("click", handleAutoFillQueue);
+
+  // v1.14.6: master-select dla listy profili na search results (#22 fix).
+  const btnSelectAll = document.getElementById("btn-select-all");
+  const btnSelectNone = document.getElementById("btn-select-none");
+  if (btnSelectAll) btnSelectAll.addEventListener("click", () => {
+    profilesList.querySelectorAll("input.bulk-connect__row-checkbox:not([disabled])")
+      .forEach((cb) => { cb.checked = true; });
+  });
+  if (btnSelectNone) btnSelectNone.addEventListener("click", () => {
+    profilesList.querySelectorAll("input.bulk-connect__row-checkbox")
+      .forEach((cb) => { cb.checked = false; });
+  });
 
   // Message pipeline (#21) listeners.
   if (btnCheckAccepts) btnCheckAccepts.addEventListener("click", handleCheckAccepts);

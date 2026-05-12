@@ -128,10 +128,14 @@
             <button id="btn-refresh-list" class="btn btn--small btn--outline">Odśwież</button>
           </div>
           <p id="bulk-info" class="bulk-connect__info"></p>
+          <div class="bulk-connect__select-bar" id="bulk-select-bar" hidden>
+            <button type="button" id="btn-select-all" class="btn-link">Zaznacz wszystkie możliwe</button>
+            <button type="button" id="btn-select-none" class="btn-link">Odznacz wszystkie</button>
+          </div>
           <ul id="profiles-list" class="bulk-connect__list"></ul>
           <div class="bulk-connect__add-row" id="bulk-add-row" hidden>
             <button id="btn-add-queue" class="btn btn--small btn--primary">Dodaj zaznaczone</button>
-            <button id="btn-bulk-fill" class="btn btn--small btn--outline" title="Pobiera profile z kolejnych stron LinkedIn'a, aż zapełni kolejkę do dailyCap.">Wypełnij do limitu</button>
+            <button id="btn-bulk-fill" class="btn btn--small btn--outline" title="Pobiera profile z kolejnych stron LinkedIn'a, aż doda 'addCount' nowych do kolejki (ustawisz w Ustawieniach bulk).">Wypełnij do limitu</button>
           </div>
         </section>
 
@@ -168,11 +172,14 @@
         </details>
 
         <!-- Worker resilience hint (#39): pokazuje się gdy worker bulk
-             aktywny, ale current tab URL nie jest na search results. -->
+             aktywny, ale current tab URL nie jest na search results.
+             Od v1.14.5 worker łączy z profili (nie z search tab) — hint
+             głównie wisi po użyciu "Wypełnij"; X pozwala go zamknąć. -->
         <div id="bulk-target-url" class="bulk-target-url hidden" hidden>
           <span class="bulk-target-url__icon">📍</span>
           <span class="bulk-target-url__label">Powinien być na:</span>
           <a href="#" id="bulk-target-link" class="bulk-target-url__link" target="_blank" rel="noopener"></a>
+          <button type="button" id="bulk-target-close" class="bulk-target-url__close" title="Ukryj" aria-label="Ukryj">×</button>
         </div>
 
       </div>
