@@ -668,6 +668,64 @@ body {
   to { transform: rotate(360deg); }
 }
 
+/* ── Profile fetch loading state (v1.14.3) ──────────────────────── */
+.profile-loading {
+  margin: 0 0 var(--space-3);
+  padding: 12px 14px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.profile-loading__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.profile-loading__spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  flex-shrink: 0;
+}
+.profile-loading__text {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.profile-loading__dots i {
+  display: inline-block;
+  animation: lmg-blink 1.4s infinite both;
+}
+.profile-loading__dots i:nth-child(2) { animation-delay: 0.2s; }
+.profile-loading__dots i:nth-child(3) { animation-delay: 0.4s; }
+@keyframes lmg-blink {
+  0%, 80%, 100% { opacity: 0; }
+  40% { opacity: 1; }
+}
+.profile-loading__skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.profile-loading__skeleton span {
+  height: 10px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--bg-muted) 25%, var(--border) 37%, var(--bg-muted) 63%);
+  background-size: 400% 100%;
+  animation: lmg-shimmer 1.4s ease-in-out infinite;
+}
+.profile-loading__skeleton span:first-child { width: 55%; }
+.profile-loading__skeleton span:last-child { width: 88%; }
+@keyframes lmg-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
 /* ── Scrollbar ──────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg); }

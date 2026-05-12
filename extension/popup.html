@@ -61,6 +61,15 @@
           <div id="track-chip" class="track-chip hidden"></div>
         </div>
 
+        <!-- Loading state podczas scrape'u profilu -->
+        <div id="profile-loading" class="profile-loading hidden" aria-live="polite">
+          <div class="profile-loading__head">
+            <span class="profile-loading__spinner"></span>
+            <span class="profile-loading__text">Pobieram dane profilu z LinkedIn<span class="profile-loading__dots"><i>.</i><i>.</i><i>.</i></span></span>
+          </div>
+          <div class="profile-loading__skeleton"><span></span><span></span></div>
+        </div>
+
         <!-- Empty state gdy brak profilu -->
         <div id="profile-empty" class="empty-state">
           <p>Otwórz profil LinkedIn (linkedin.com/in/...) i kliknij <strong>Pobierz profil</strong> niżej.</p>

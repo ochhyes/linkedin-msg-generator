@@ -208,10 +208,10 @@ PM 5–15 min · Dev 30–120 min · Tester 10–30 min · Commit 2–5 min.
 
 ```
 Sprint:        #8 OTWARTY 2026-05-12 (trwała baza profili + auto-backup — feature z ultraplan, v1.14.x) | Sprint #7 UX redesign #46 wisi (tokeny v1.13.0, czeka manual smoke)
-Phase:         Commit (kod v1.14.0/1.14.1/1.14.2 gotowy, testy 534/0 PASS, czeka commit + manual smoke Marcin)
-Active task:   #48 P1 trwała baza profili + eksport CSV/JSON + import kontaktów + auto-backup (v1.14.0) → auto dark/light mode (v1.14.1) → UI "Hasło dostępu" (v1.14.2)
+Phase:         Commit (kod v1.14.0–1.14.3 gotowy, testy 534/0 PASS, czeka commit + manual smoke Marcin)
+Active task:   #48 P1 trwała baza profili + eksport CSV/JSON + import kontaktów + auto-backup (v1.14.0) → auto dark/light mode (v1.14.1) → UI "Hasło dostępu" (v1.14.2) → animacja "pobieram profil" (v1.14.3)
 Last commit:   f087853 — chore: assety OVB brand dla Sprintu #7 — favicony + WebP + SVG (v1.14.x NIESKOMMITOWANE w working tree)
-Updated:       2026-05-12 (implementacja v1.14.0-1.14.2 done, docs zaktualizowane, czeka commit)
+Updated:       2026-05-12 (implementacja v1.14.0-1.14.3 done, docs zaktualizowane, czeka commit)
 ```
 
 **Diagnostyka 2026-05-11 (follow-up wipe report od Marcina):** Marcin reportował że "wciąż się kasują dane z follow-upów" na v1.12.0. SW DevTools smoke test (`chrome.storage.local.get(null)`) pokazał pustą queue PRZED Reload'em → nie active wipe na Reload, tylko already-empty od Remove+Add z wczoraj. Korekta hipotezy v1.11.1: stable `key` NIE chroni storage przy Remove (tylko ID). v1.11.1 onInstalled defensive fix zostaje jako hardening ale nie adresuje root cause. INSTRUKCJA.md + CLAUDE.md zaktualizowane z żelazną regułą "Reload TAK, Remove NIGDY bez backupu" + procedura backup/restore przez DevTools. Memory `project_v1_11_1_distribution.md` przepisana. Bug w v1.12.0 — BRAK. Action item: zakomunikować zespołowi OVB przy dystrybucji 1.12.0 że Remove = total wipe (nawet z key field).
@@ -266,7 +266,7 @@ Original scope (z 2026-05-09): "Stabilizacja + dystrybucja 1.8.0" — 5 tasków 
 
 ## IN PROGRESS
 
-- **#48** (v1.14.0–1.14.2) — feature z `/ultraplan` 2026-05-12: trwała baza profili (jak Octopus) bo LinkedIn wprowadził limity wyszukiwania, Marcin ma wyczerpany limit. Trzy zmiany na stosie (baza+backup → dark mode → "Hasło dostępu"), **NIESKOMMITOWANE** (working tree), wszystko `node --check` czyste, testy **489 → 534/0 PASS**. (Uwaga: `#45` w BACKLOG to osobny task — UX redesign sprint — nie mylić.)
+- **#48** (v1.14.0–1.14.3) — feature z `/ultraplan` 2026-05-12: trwała baza profili (jak Octopus) bo LinkedIn wprowadził limity wyszukiwania, Marcin ma wyczerpany limit. Trzy zmiany na stosie (baza+backup → dark mode → "Hasło dostępu" → loading anim), **NIESKOMMITOWANE** (working tree), wszystko `node --check` czyste, testy **489 → 534/0 PASS**. (Uwaga: `#45` w BACKLOG to osobny task — UX redesign sprint — nie mylić.)
 
   **v1.14.0 — trwała baza profili + eksport/import + auto-backup:**
   - `manifest.json` — bump 1.14.0, `+unlimitedStorage` `+downloads`, content_scripts matches `+/mynetwork/invite-connect/connections/*`.
@@ -280,10 +280,12 @@ Original scope (z 2026-05-09): "Stabilizacja + dystrybucja 1.8.0" — 5 tasków 
 
   **v1.14.2 — UI "Hasło dostępu":** `popup.html` label "Klucz API" → "Hasło dostępu" + placeholder + `small.control-hint` ("to nie jest klucz Anthropic, ten siedzi na serwerze"); `popup.css` `.control-hint`; `backend/.env.example` komentarz przy `API_KEYS` przepisany + przykład `DreamComeTrue!`. Backend kod bez zmian. Bump 1.14.2.
 
-  **Operacyjne po commit (Marcin, VPS):** `API_KEYS=DreamComeTrue!` w prod `.env` → `docker compose up -d --build` → wpisać hasło w ustawieniach rozszerzenia → rozdać zespołowi OVB. Regen `extension.zip` pod 1.14.2.
+  **v1.14.3 — animacja "pobieram profil":** `popup.html` nowy `#profile-loading` (spinner + tekst "Pobieram dane profilu z LinkedIn…" z animowanymi kropkami + szkielet z shimmerem) w miejscu karty profilu; `popup.js` `showScrapeLoading(on)` + hook w `btnScrape` handler (pokaż przed scrape'em, schowaj po `showProfile`/`resetProfileUI`) + `updateProfileEmptyState` uwzględnia loading; `popup.css` `.profile-loading*` + `@keyframes lmg-blink`/`lmg-shimmer`. Bump 1.14.3.
+
+  **Operacyjne po commit (Marcin, VPS):** `API_KEYS=DreamComeTrue!` w prod `.env` → `docker compose up -d --build` → wpisać hasło w ustawieniach rozszerzenia → rozdać zespołowi OVB. Regen `extension.zip` pod 1.14.3.
 
   **Manual smoke (Marcin):**
-  1. Reload extension, sprawdź wersja **1.14.2**.
+  1. Reload extension, sprawdź wersja **1.14.3**.
   2. Wyszukiwarka LinkedIn → popup tab Bulk → SW DevTools `chrome.storage.local.get("profileDb")` pokazuje profile z tej strony; przejdź na stronę 2 → brak duplikatów, `lastSeenAt` zaktualizowany. Profile już w kontaktach mają `✓ w bazie`.
   3. Preview profilu → `profileDb.profiles[slug].scrapedProfile` wypełnione; ponowny upsert z search nie kasuje `scrapedProfile`.
   4. Dashboard (📊) → sekcja "Baza profili": Eksport CSV pobiera plik, Eksport JSON pobiera pełny backup.
@@ -294,7 +296,7 @@ Original scope (z 2026-05-09): "Stabilizacja + dystrybucja 1.8.0" — 5 tasków 
   9. Regresja: scrape Joanny/Grzegorza + Generuj wiadomość nadal działa (tylko CSS/HTML + dodane hooki, core JS nietknięty).
   10. Reload extension → `profileDb` i `bulkConnect` nietknięte (defensywny `onInstalled`).
 
-  **AC:** [ ] wersja 1.14.2 · [ ] `profileDb` rośnie z search/scrape, brak dup · [ ] `scrapedProfile` sticky · [ ] Eksport CSV/JSON pobiera pliki · [ ] Import kontaktów działa, `isConnection` mark w Bulk · [ ] Import pliku scala (+ opcjonalnie kolejka) · [ ] auto-backup → plik w Pobranych, `lastBackupAt` set, banner OK · [ ] dark mode auto wg OS, miękkie tła czytelne · [ ] Reload nie wipe'uje storage · [ ] brak regresji scrape/generate · [ ] testy 534/0 PASS
+  **AC:** [ ] wersja 1.14.3 · [ ] `profileDb` rośnie z search/scrape, brak dup · [ ] `scrapedProfile` sticky · [ ] Eksport CSV/JSON pobiera pliki · [ ] Import kontaktów działa, `isConnection` mark w Bulk · [ ] Import pliku scala (+ opcjonalnie kolejka) · [ ] auto-backup → plik w Pobranych, `lastBackupAt` set, banner OK · [ ] dark mode auto wg OS, miękkie tła czytelne · [ ] Reload nie wipe'uje storage · [ ] brak regresji scrape/generate · [ ] testy 534/0 PASS
 
 - **#46** P1 feat: design tokens OVB Minimal — pierwszy podtask Sprintu #7 (placeholder #23 w UX_REDESIGN.md sekcja 4). Wymiana `:root` w `extension/popup.css`, `extension/dashboard.css`, `extension/options.css` na paletę OVB navy (`--brand-primary: #002A5C`, light bg `#FFFFFF`, neutrals z UX_REDESIGN sekcja 2.1) + spacing scale 4-base (`--space-1..10`) + radii (`--radius-sm/-/-lg/-pill`) + shadows + Inter font stack + transitions + layout dims. **Backwards-compat layer:** legacy aliases (`--bg-card`, `--bg-elevated`, `--bg-input`, `--accent`, `--accent-hover`, `--accent-bg`, `--text-dim`, `--success-bg`, `--error-bg`) mapowane na nowe tokeny — bez tego komponenty pękną na `unset` (refaktor komponentów dopiero w #24-#28). Dorzucenie `<link rel="stylesheet" href="https://rsms.me/inter/inter.css">` do `<head>` w popup.html, dashboard.html, options.html. Bump 1.12.0 → 1.13.0 (minor — visible design change, nawet bez komponentów). Dark mode override przez `@media (prefers-color-scheme: dark)` z `data-theme="auto"` opt-in.
 

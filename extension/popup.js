@@ -314,12 +314,28 @@
 
   const profileEmpty = $("#profile-empty");
 
+  const profileLoading = $("#profile-loading");
+
   function updateProfileEmptyState() {
     if (!profileEmpty) return;
-    // Hidden gdy profile-preview NIE jest hidden (czyli profil jest).
+    // Hidden gdy profile-preview lub loading-state NIE jest hidden.
     const previewVisible =
       profilePreview && !profilePreview.classList.contains("hidden");
-    profileEmpty.classList.toggle("hidden", previewVisible);
+    const loadingVisible =
+      profileLoading && !profileLoading.classList.contains("hidden");
+    profileEmpty.classList.toggle("hidden", previewVisible || loadingVisible);
+  }
+
+  // Pokazuje/chowa animowany stan "pobieram profil" w miejscu karty profilu.
+  function showScrapeLoading(on) {
+    if (!profileLoading) return;
+    profileLoading.classList.toggle("hidden", !on);
+    if (on) {
+      profilePreview.classList.add("hidden");
+      if (profileEmpty) profileEmpty.classList.add("hidden");
+    } else {
+      updateProfileEmptyState();
+    }
   }
 
   // ── Track chip (#1.9.0) — replace refreshTrackingHint ────────────
@@ -510,10 +526,12 @@
   btnScrape.addEventListener("click", async () => {
     hideError();
     setLoading(btnScrape, true);
+    showScrapeLoading(true);
 
     try {
       currentProfile = await scrapeCurrentTab();
       showProfile(currentProfile);
+      showScrapeLoading(false);
       showToast("Profil pobrany", "success");
       btnGenerate.disabled = false;
       // Reset previous message — new profile = new context
@@ -525,6 +543,7 @@
       // Chip jeśli profil już śledzony (manual_sent w queue).
       renderTrackChip(currentProfile);
     } catch (err) {
+      showScrapeLoading(false);
       showError(err.message);
       // Hide stale profile/result, clear in-memory state. Without this the
       // popup keeps showing the previous profile after a fail — looks like
