@@ -73,9 +73,13 @@
           <div class="profile-loading__skeleton"><span></span><span></span></div>
         </div>
 
-        <!-- Empty state gdy brak profilu -->
-        <div id="profile-empty" class="empty-state">
-          <p>Otwórz profil LinkedIn (linkedin.com/in/...) i kliknij <strong>Pobierz profil</strong> niżej.</p>
+        <!-- Empty state gdy brak profilu (#27) -->
+        <div id="profile-empty" class="empty">
+          <svg class="empty__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/>
+          </svg>
+          <p class="empty__title">Brak pobranego profilu</p>
+          <p class="empty__text">Otwórz profil LinkedIn (linkedin.com/in/…) i kliknij „Pobierz profil" niżej.</p>
         </div>
 
         <!-- Konfiguracja generatora (collapsible) -->

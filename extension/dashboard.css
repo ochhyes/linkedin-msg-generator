@@ -258,14 +258,38 @@ body {
 .count-badge--scheduled { background: var(--brand-primary-soft); color: var(--brand-primary); }
 .count-badge--history   { background: var(--bg-muted);           color: var(--text-secondary); }
 
+/* ── Empty states (UX redesign #27 — UX_REDESIGN.md 3.8) ────────── */
+.empty {
+  text-align: center;
+  padding: var(--space-8) var(--space-4);
+  color: var(--text-muted);
+}
+.empty__icon { width: 32px; height: 32px; color: var(--text-disabled); margin: 0 auto var(--space-3); display: block; }
+.empty__title { font: 500 13px var(--font); color: var(--text-secondary); margin: 0 0 4px; }
+.empty__text { font: 400 12px var(--font); margin: 0; line-height: 1.5; }
 .empty-state {
   margin: 0;
-  padding: 16px;
+  padding: var(--space-6) var(--space-4);
   text-align: center;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   font-size: 13px;
-  font-style: italic;
 }
+
+/* ── Inputs (UX redesign #27 — UX_REDESIGN.md 3.7) ──────────────── */
+.input, .select, .textarea {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: 400 13px var(--font);
+  outline: none;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+.input, .select { height: 36px; padding: 0 12px; }
+.textarea { min-height: 80px; padding: 8px 12px; resize: vertical; }
+.input:hover, .select:hover { border-color: var(--border-strong); }
+.input:focus, .select:focus, .textarea:focus { border-color: var(--brand-primary); box-shadow: 0 0 0 3px var(--brand-primary-soft); }
+.label { display: block; font: 500 12px var(--font); color: var(--text-secondary); margin-bottom: 4px; }
 
 /* List items */
 .list { display: flex; flex-direction: column; gap: 10px; }
@@ -321,13 +345,16 @@ body {
   font-family: inherit;
   font-size: 12px;
   padding: 8px;
-  background: var(--bg-subtle);
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   color: var(--text);
   resize: vertical;
+  outline: none;
+  transition: border-color var(--transition), box-shadow var(--transition);
 }
-.row__draft[readonly] { color: var(--text-secondary); cursor: default; }
+.row__draft:focus { border-color: var(--brand-primary); box-shadow: 0 0 0 3px var(--brand-primary-soft); }
+.row__draft[readonly] { color: var(--text-secondary); cursor: default; background: var(--bg-subtle); }
 .row__actions { display: flex; gap: 6px; flex-wrap: wrap; }
 
 .ftr {
@@ -573,5 +600,11 @@ body {
   background: var(--bg);
   color: var(--text);
   font-size: 13px;
+  outline: none;
+  transition: border-color var(--transition), box-shadow var(--transition);
 }
+.profiledb-filters input[type="text"]:hover,
+.profiledb-filters select:hover { border-color: var(--border-strong); }
+.profiledb-filters input[type="text"]:focus,
+.profiledb-filters select:focus { border-color: var(--brand-primary); box-shadow: 0 0 0 3px var(--brand-primary-soft); }
 .profiledb-filters input[type="text"] { flex: 1; min-width: 180px; }

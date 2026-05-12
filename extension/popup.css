@@ -435,16 +435,39 @@ body {
 
 .track-chip.hidden { display: none; }
 
-/* ── Empty state (v1.9.0) ────────────────────────────────────────── */
+/* ── Empty states (UX redesign #27 — UX_REDESIGN.md 3.8) ─────────── */
+/* Kanoniczny `.empty` (ikona + tytuł + tekst). `.empty-state` (legacy `<p>`)
+   dostaje ten sam look — wyśrodkowany, stonowany, z oddechem. */
+.empty {
+  text-align: center;
+  padding: var(--space-8) var(--space-4);
+  color: var(--text-muted);
+}
+.empty__icon {
+  width: 32px;
+  height: 32px;
+  color: var(--text-disabled);
+  margin: 0 auto var(--space-3);
+  display: block;
+}
+.empty__title {
+  font: 500 13px var(--font);
+  color: var(--text-secondary);
+  margin: 0 0 4px;
+}
+.empty__text {
+  font: 400 12px var(--font);
+  margin: 0;
+  line-height: 1.5;
+}
 .empty-state {
   text-align: center;
-  padding: var(--space-5) var(--space-4);
-  color: var(--text-dim);
+  padding: var(--space-8) var(--space-4);
+  color: var(--text-muted);
   font-size: 12px;
   line-height: 1.6;
 }
-
-.empty-state strong { color: var(--text); font-weight: 600; }
+.empty-state strong { color: var(--text-secondary); font-weight: 600; }
 
 /* ── Config section (v1.9.0) — collapsible ───────────────────────── */
 .config {
@@ -529,24 +552,43 @@ body {
   letter-spacing: 0.05em;
 }
 
+/* ── Inputs (UX redesign #27 — UX_REDESIGN.md 3.7) ──────────────────
+   Focus = border navy + ring (box-shadow), standard "Stripe/Linear" look.
+   `.control-row *` to faktyczny markup w popupie; kanoniczne `.input/.select/
+   .textarea` poniżej dla nowego markupu. */
 .control-row select,
 .control-row input,
-.control-row textarea {
-  background: var(--bg-input);
+.control-row textarea,
+.input, .select, .textarea {
+  background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   color: var(--text);
   font-family: var(--font);
   font-size: 13px;
   padding: 7px 10px;
   outline: none;
-  transition: border-color var(--transition);
+  transition: border-color var(--transition), box-shadow var(--transition);
 }
-
+.control-row select:hover,
+.control-row input:hover,
+.input:hover, .select:hover {
+  border-color: var(--border-strong);
+}
 .control-row select:focus,
 .control-row input:focus,
-.control-row textarea:focus {
-  border-color: var(--accent);
+.control-row textarea:focus,
+.input:focus, .select:focus, .textarea:focus {
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 3px var(--brand-primary-soft);
+}
+.input, .select { height: 36px; padding: 0 12px; }
+.textarea { min-height: 80px; padding: 8px 12px; resize: vertical; }
+.label {
+  display: block;
+  font: 500 12px var(--font);
+  color: var(--text-secondary);
+  margin-bottom: 4px;
 }
 
 .control-hint {
@@ -1020,7 +1062,9 @@ body {
 .bulk-settings summary:hover { color: var(--text); }
 .bulk-settings__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0; }
 .bulk-settings__grid label { display: flex; flex-direction: column; gap: 2px; font-size: 10px; color: var(--text-secondary); }
-.bulk-settings__grid input { padding: 4px 6px; font-size: 12px; background: var(--bg-muted); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); }
+.bulk-settings__grid input { padding: 5px 8px; font-size: 12px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); outline: none; transition: border-color var(--transition), box-shadow var(--transition); }
+.bulk-settings__grid input:hover { border-color: var(--border-strong); }
+.bulk-settings__grid input:focus { border-color: var(--brand-primary); box-shadow: 0 0 0 3px var(--brand-primary-soft); }
 
 /* Checkbox per profil w bulk connect list */
 .bulk-connect__row-checkbox { width: 14px; height: 14px; flex-shrink: 0; cursor: pointer; }
@@ -1047,7 +1091,8 @@ body {
 .message-item__status--draft { background: var(--brand-primary-soft); color: var(--brand-primary); }
 .message-item__status--sent { background: var(--success-soft); color: var(--success); }
 .message-item__status--skipped { background: var(--warning-soft); color: var(--warning); }
-.message-item__draft { width: 100%; min-height: 60px; max-height: 120px; resize: vertical; padding: 6px 8px; font-size: 11px; line-height: 1.4; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); font-family: inherit; }
+.message-item__draft { width: 100%; min-height: 60px; max-height: 120px; resize: vertical; padding: 6px 8px; font-size: 11px; line-height: 1.4; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); font-family: inherit; outline: none; transition: border-color var(--transition), box-shadow var(--transition); }
+.message-item__draft:focus { border-color: var(--brand-primary); box-shadow: 0 0 0 3px var(--brand-primary-soft); }
 .message-item__actions { display: flex; gap: 4px; flex-wrap: wrap; }
 .message-item__actions .btn { flex: 1; min-width: 70px; font-size: 10px; padding: 4px 6px; }
 
@@ -1117,7 +1162,7 @@ body {
   outline: none;
   box-sizing: border-box;
 }
-.followup-row__draft:focus { border-color: var(--accent); }
+.followup-row__draft:focus { border-color: var(--brand-primary); box-shadow: 0 0 0 3px var(--brand-primary-soft); outline: none; }
 
 .followup-row__actions { display: flex; gap: 4px; flex-wrap: wrap; }
 .followup-row__actions .btn { flex: 1; min-width: 70px; font-size: 10px; padding: 4px 6px; }

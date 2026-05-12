@@ -168,21 +168,24 @@ label {
   color: var(--text-dim);
   margin-bottom: 6px;
 }
+/* ── Inputs (UX redesign #27 — focus ring) ──────────────────────── */
 input[type="text"], textarea {
   width: 100%;
-  background: var(--bg-input);
+  background: var(--bg);
   border: 1px solid var(--border);
   color: var(--text);
   font-family: var(--font);
   font-size: 13px;
-  padding: 10px 12px;
-  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  border-radius: var(--radius);
   outline: none;
-  transition: border-color 150ms;
+  transition: border-color var(--transition), box-shadow var(--transition);
   resize: vertical;
 }
+input[type="text"]:hover, textarea:hover { border-color: var(--border-strong); }
 input[type="text"]:focus, textarea:focus {
-  border-color: var(--accent);
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 3px var(--brand-primary-soft);
 }
 textarea { min-height: 80px; }
 
