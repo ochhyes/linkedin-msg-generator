@@ -208,10 +208,10 @@ PM 5–15 min · Dev 30–120 min · Tester 10–30 min · Commit 2–5 min.
 
 ```
 Sprint:        #8 ZDYSTRYBUOWANY 2026-05-12 (v1.14.0→1.14.6 zespołowi OVB; smoke PASS) || #9 W TOKU — UX redesign OVB Professional Minimal: ✅ #24 Header+Tabs (v1.15.0) → #25 Buttons+ActionBar (rozpisany, do implementacji) → #26 Cards+Badges → #27 EmptyStates+Inputs → #28 Dashboard polish. Spec: UX_REDESIGN.md. + hotfixe v1.15.1 (walidacja hasła) + v1.15.2 ("Kopiuj i śledź" bez karty messaging).
-Phase:         Developer (#25 Buttons + 3-fazowy action bar — PM rozpisał z 2 subagentami w IN PROGRESS; #24 Test PASS — smoke wizualny pozytywny "dużo lepiej").
-Active task:   #25 (Sprint #9, P1) — Buttons (3-typ system primary/secondary/ghost + sm/lg/danger) + 3-fazowy action bar. Plan/AC/agent-split w IN PROGRESS. Bump 1.15.x → minor.
+Phase:         Tester/PM (#25 Buttons + 3-fazowy action bar ZAKOMMITOWANY `9e6e3aa` v1.16.0 — czeka manual smoke Marcina. #24 Test PASS. PM rotuje na #26 Cards+Badges, P2 — 2 subagenty popup/dashboard.)
+Active task:   #25 ZAKOMMITOWANY `9e6e3aa` (v1.16.0) — 3-typ system przycisków (primary/secondary/ghost + sm/lg/danger) w popup.css+dashboard.css, legacy aliasy, 3-fazowy action bar (F1 primary-lg fullwidth / F2 ghost+primary / F3 ghost+ghost+primary). Czeka manual smoke. Następny: #26 (Cards + Badges unifikacja).
 Last commit:   4086547 — fix: "Kopiuj i śledź" nie otwiera karty messaging/compose (v1.15.2)  [+ 4a67d99 #24 v1.15.0 · e23b7a1 v1.15.1 hasło-walidacja · cfd8006/4cfb314/b4b8f46 docs · ba9499e zip · c0929fb PDF · b4fe596/127ec04/ce4c0f4/3542666/0484c65 Sprint #8]
-Updated:       2026-05-12 (#24 Header+Tabs Test PASS; v1.15.1+v1.15.2 hotfixe; #25 rozpisany z agentami — Developer)
+Updated:       2026-05-12 (#25 Buttons + 3-fazowy action bar zacommitowany 9e6e3aa v1.16.0 — czeka manual smoke; PM rotuje na #26)
 ```
 
 **Sprint #8 — podsumowanie (2026-05-12, w toku — czeka na manual smoke + dystrybucję):** Feature z `/ultraplan` rozrósł się w jednym dniu w **7 wersji + zip + PDF instrukcji** napędzane real-time feedbackiem Marcina:
@@ -278,7 +278,7 @@ Original scope (z 2026-05-09): "Stabilizacja + dystrybucja 1.8.0" — 5 tasków 
 
 **Sprint #9 — UX redesign OVB Professional Minimal** (rozplanowany w IN PROGRESS). Kolejność tasków:
 1. **#24** Header + Tabs refactor — *rozpisany w IN PROGRESS z planem/AC*. Dev GATE'owany na dystrybucję Sprintu #8.
-2. **#25** Buttons + Action bar refactor (3-typ system + 3-fazowy action bar) — `UX_REDESIGN.md` 3.3+3.4. **ROZPISANY w IN PROGRESS** (plan/AC/agent-split 2 subagenty), do implementacji. Bump → 1.16.0.
+2. **#25** Buttons + Action bar refactor — ✅ ZAKOMMITOWANY `9e6e3aa` v1.16.0, czeka manual smoke.
 3. **#26** Cards + Badges unifikacja (popup + dashboard, P2) — `UX_REDESIGN.md` 3.5+3.6.
 4. **#27** Empty states + Inputs polish (P2, ~0.5 sesji) — `UX_REDESIGN.md` 3.7+3.8.
 5. **#28** Dashboard cleanup + Stats funnel polish (P3) — `UX_REDESIGN.md` 3.x.
@@ -314,7 +314,7 @@ Po Sprincie #9 — backlog: #22 reszta (master-select zrobiony; zostaje DOM dump
 
   → Po #24: PM rotuje na #25 (Buttons+ActionBar). CURRENT STATE → `Phase: Developer` (gdy Sprint #8 zdystrybuowany).
 
-- **#25** (Sprint #9, P1) — **Buttons + Action bar refactor** (`UX_REDESIGN.md` 3.3 + 3.4). PM decomposition + agent-split:
+- **#25** (Sprint #9, P1) — **Buttons + Action bar refactor** (`UX_REDESIGN.md` 3.3 + 3.4). **✅ ZAKOMMITOWANY `9e6e3aa` v1.16.0 (2026-05-12)** — zaimplementowane inline sekwencyjnie (A: `.btn*` w popup.css+dashboard.css na 3 typy + legacy aliasy + focus-ring; B: action bar reorder DOM + `<span class="btn__label">` + `renderActionBar()` przepisany na 3 fazy z `setActionBtn()` + btnCopy/btnCopyTrack handlery na `.btn__label`; usunięty hardcoded `.btn:hover{#232831}` w dashboard i duplikat `.btn--danger(#f85149)` w popup; `.action-bar` ghost'y flex:0 0 auto / primary+lg flex:1). Testy 534/0 PASS, braces OK (popup.css 221/221, dashboard.css 95/95). **Manual smoke (Marcin):** Reload (wersja 1.16.0) → popup zakładka Profil: faza brak-profilu → jeden duży navy „Pobierz profil" fullwidth; po scrape → ghost „↻ Pobierz ponownie" + navy „Generuj wiadomość"; po Generuj → ghost „↻ Nowa wersja" + ghost „Kopiuj tylko" + navy „Kopiuj i śledź" (max 3 przyciski, 1 navy). Kopiuj tylko → label „Skopiowano!" na 1.5s. Kopiuj i śledź → label „Zapisuję…" → „✓ Zapisano" + toast. Bulk: Stop dodawania / Wyczyść kolejkę dalej czerwone (danger) i działają. Dashboard: przyciski (Eksport/Import/follow-up rows/mark-reply) wyglądają spójnie (przez aliasy), nic nie rozsypane. Dark mode (OS) → przyciski czytelne w obu trybach. **PM decomposition (zrealizowana, agent-split → ostatecznie inline A→B):**
 
   **Zakres:** (a) uproszczony 3-typowy system przycisków: `.btn--primary` (solid navy), `.btn--secondary` (outlined, `--border-strong`), `.btn--ghost` (borderless, `--text-secondary`) + modyfikatory `.btn--sm` (28px)/`.btn--lg` (40px)/`.btn--danger` (`--error-soft` bg → `--error` solid na hover), bazowe `.btn { height:36px; padding:0 16px; font:500 13px; border-radius:var(--radius); inline-flex; gap:8px; }`, focus-ring `outline:2px var(--brand-primary)`. **Legacy aliasy:** `.btn--outline` → mapuj na `--secondary`, `.btn--small` → `--sm`, `.btn--neutral`/inne istniejące → zostaw mapowane, żeby cała reszta markupu (dashboard, follow-up rows) nie pękła do czasu #28. (b) **3-fazowy action bar** w popup'ie (zakładka Profil, `renderActionBar()` już ma 3 fazy — dopasować do specu): Faza 1 (brak profilu) → jeden primary fullwidth `Pobierz profil` (40px = `--lg`). Faza 2 (profil, brak wiadomości) → ghost po lewej (`↻ Pobierz ponownie` — spec mówi "Zmień ustawienia", ale re-scrape użyteczniejszy; **decyzja przy implementacji**, default: re-scrape) + primary po prawej `Generuj wiadomość`. Faza 3 (wiadomość gotowa) → ghost `↻ Nowa wersja` + ghost `Kopiuj tylko` po lewej + primary `Kopiuj i śledź` po prawej (dominujący). **Reguła: max 1 primary na widok, max 3 przyciski naraz.**
 
