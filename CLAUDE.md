@@ -14,6 +14,7 @@ Chrome Extension (Manifest V3) + FastAPI backend do generowania spersonalizowany
 - **backend/** — FastAPI, Python 3.12, httpx, pydantic-settings
 - **extension/** — Chrome Extension Manifest V3, vanilla JS
 - **deploy/** — produkcyjny docker-compose + nginx vhost (NIE używać `backend/docker-compose.yml` na prod)
+- **outreach/** — wersja publikacyjna rozszerzenia (name "Outreach", osobny key), generowana przez `node build.js` z `extension/`. Artefakt builda — gitignored, NIGDY nie edytować ręcznie. `extension/` to jedyne źródło prawdy.
 
 ## Stack technologiczny
 
@@ -58,6 +59,14 @@ python3 tests/test_integration.py    # testy integracyjne
 
 Reload extension po zmianach: `chrome://extensions/` → ikona reload przy LinkedIn Message Generator.
 
+### Wersja publikacyjna „Outreach"
+
+```bash
+node build.js          # generuje outreach/ z extension/ (name "Outreach", osobny key)
+```
+
+`outreach/` = wersja do dystrybucji zespołowi (Load Unpacked / zip). Osobne ID = osobny storage. Pełna procedura + przenoszenie danych: `BUILD.md`.
+
 ## Konwencje kodu
 
 - Backend: Python, type hints, async/await, pydantic models
@@ -90,6 +99,7 @@ Commity zmieniające tylko `backend/`, `deploy/` lub dokumentację — NIE bumpu
 - `DEPLOY.md` — pełna procedura deploy/update
 - `INSTRUKCJA.md` — przewodnik dla zespołu OVB (user-facing)
 - `UX_REDESIGN.md` — spec redesignu OVB Minimal
+- `build.js` / `BUILD.md` — generator + dokumentacja wersji publikacyjnej `outreach/`
 - `backend/services/ai_service.py` — prompt builder + AI API calls
 - `extension/content.js` — DOM scraper, MutationObserver, Voyager fallback
 - `extension/popup.js` — UI controller (3-tab layout od v1.9.0)

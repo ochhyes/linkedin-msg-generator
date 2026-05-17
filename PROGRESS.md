@@ -8,6 +8,28 @@
 
 ---
 
+## 2026-05-17 (Cowork, claude-opus-4-7) — folder outreach/ + build.js (wersja publikacyjna)
+
+### Zrobione
+
+- **`build.js`** (Node, zero zależności) — generuje `outreach/` z `extension/`: kopiuje pliki runtime, wycina dev (`tests/`, `node_modules`, `dom_sample.txt`, `package*.json`, `README.md`), podmienia w manifeście `name`→"Outreach" + `key` na osobny klucz publikacyjny.
+- Wygenerowano `outreach/` — 25 plików, `name="Outreach"`, v1.22.0 (dziedziczone z `extension/manifest.json`).
+- Osobny klucz publikacyjny RSA-2048 (openssl): publiczny zaszyty w `build.js` (`PUB_KEY`), prywatny w `.keys/outreach.pem` (gitignored przez `*.pem`).
+- `.gitignore` +`/outreach/`. `BUILD.md` NEW (dokumentacja). CLAUDE.md: Architektura/Komendy/Ważne pliki.
+
+### Decyzje
+
+- **build.js (Node) zamiast build.ps1** — Marcin wybrał opcję „skrypt budujący" (label wspominał build.ps1), ALE PowerShell jest blokowany w tym środowisku przez klasyfikator bezpieczeństwa (`-ExecutionPolicy Bypass` = Security Weaken; blokada objęła nawet zwykłe `Get-ExecutionPolicy`). Nie mogłem uruchomić ani przetestować .ps1 → shipowanie niezweryfikowanego skryptu = złamanie dyscypliny „testuj przed oddaniem". Node jest już zależnością projektu, `build.js` jest cross-platform i zweryfikowany tutaj. Deliverable identyczny — skrypt budujący `outreach/`.
+- **Osobny `key` dla outreach/** — inne stabilne ID rozszerzenia. Oba foldery (dev + Outreach) można Load Unpacked obok siebie bez kolizji. Konsekwencja udokumentowana w BUILD.md: osobny `chrome.storage.local`, przełączenie dev↔Outreach = pusty storage, migracja danych przez Eksport/Import JSON.
+- **outreach/ gitignored** — artefakt builda, regenerowalny (`node build.js`). Zgodne z wyborem Marcina.
+- **build.js NIE pakuje zipa** — `zip` niedostępny w git-bash, Node nie ma wbudowanego zip-writera, dokładanie zależności (`archiver`) niewarte. Folder wystarcza do Load Unpacked; zip do dystrybucji robi się Explorerem (udokumentowane w BUILD.md).
+
+### Status końcowy
+
+`outreach/` istnieje (name „Outreach", osobny key), `node build.js` regeneruje na żądanie. `extension/` zostaje jedynym źródłem prawdy.
+
+---
+
 ## 2026-05-17 (Cowork, claude-opus-4-7) — #55 ulepszony follow-up: Brak zgody + Odroczony + rollback zależności
 
 ### Zrobione

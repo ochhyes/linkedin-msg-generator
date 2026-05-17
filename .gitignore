@@ -37,3 +37,6 @@ extension/dom_sample.txt
 # Extension signing keys (private — never commit)
 .keys/
 *.pem
+
+# Build artifact — wersja publikacyjna generowana przez `node build.js`
+/outreach/
