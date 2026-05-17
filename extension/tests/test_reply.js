@@ -426,6 +426,119 @@ console.log("\n▸ M. Strip helpers — null/empty inputs (defensive)");
   assertEqual(stripRepliedDrafts(null), null, "stripRepliedDrafts null → null");
 }
 
+// ── #55 helpers: Brak zgody + Odroczony + void zestawu ──────
+// Mirror background.js (bulkMarkNoConsent / bulkDeferFollowup /
+// voidScheduledFollowupSet). Pure — operują na item, zwracają nowy item.
+
+const FOLLOWUP_SET_GAP_DAYS = 4;
+
+function markNoConsentLogic(item) {
+  if (!item || !item.slug) return { success: false, error: "no_slug" };
+  if (item.followupStatus === "no_consent") return { success: true, alreadyMarked: true, item };
+  return { success: true, item: { ...item, followupStatus: "no_consent" } };
+}
+
+function deferFollowupLogic(item, days, now) {
+  if (!item || !item.slug) return { success: false, error: "no_slug" };
+  const n = Number(days);
+  if (!Number.isInteger(n) || n < 1) return { success: false, error: "invalid_days" };
+  return {
+    success: true,
+    item: {
+      ...item,
+      followup1RemindAt: now + n * 86400000,
+      followup2RemindAt: now + (n + FOLLOWUP_SET_GAP_DAYS) * 86400000,
+      followupSetId: "fset_" + now,
+      followupDeferredDays: n,
+      followupStatus: "scheduled",
+    },
+  };
+}
+
+function voidScheduledFollowupSetLogic(item, followupIdToCancel) {
+  if (!item || !item.slug) return { success: false, error: "no_slug" };
+  if (item.followupSetId) {
+    // Cały zestaw — jeden patch, atomowo.
+    return {
+      success: true, wasSet: true, cancelled: [1, 2],
+      item: {
+        ...item,
+        followup1RemindAt: null, followup2RemindAt: null,
+        followup1Draft: null, followup2Draft: null,
+        followupSetId: null, followupDeferredDays: null,
+        followupStatus: "skipped",
+      },
+    };
+  }
+  const num = followupIdToCancel === 2 ? 2 : 1;
+  const next = { ...item };
+  if (num === 2) { next.followup2RemindAt = null; next.followup2Draft = null; }
+  else { next.followup1RemindAt = null; next.followup1Draft = null; }
+  const otherRemind = num === 2 ? item.followup1RemindAt : item.followup2RemindAt;
+  if (!otherRemind) next.followupStatus = "skipped";
+  return { success: true, wasSet: false, cancelled: [num], item: next };
+}
+
+console.log("\n▸ N. #55 follow-up: Brak zgody + Odroczony + void zestawu (rollback)");
+{
+  const NOW = 1700000000000;
+  const D = 86400000;
+
+  // N.1 — "Brak zgody"
+  const r1 = markNoConsentLogic({ slug: "a", followupStatus: "scheduled" });
+  assertEqual(r1.item.followupStatus, "no_consent", "Brak zgody → followupStatus no_consent");
+  assert(markNoConsentLogic(r1.item).alreadyMarked === true, "Brak zgody idempotentny — drugi klik alreadyMarked");
+  assertEqual(markNoConsentLogic({}).success, false, "Brak zgody bez slug → error");
+
+  // N.2 — "Odroczony w czasie"
+  const d60 = deferFollowupLogic({ slug: "a", followupStatus: "scheduled" }, 60, NOW);
+  assertEqual(d60.item.followup1RemindAt, NOW + 60 * D, "Defer 60d → FU#1 = now+60d");
+  assertEqual(d60.item.followup2RemindAt, NOW + 64 * D, "Defer 60d → FU#2 = now+64d (gap 4)");
+  assert(typeof d60.item.followupSetId === "string" && d60.item.followupSetId.startsWith("fset_"), "Defer → followupSetId niepuste (fset_)");
+  assertEqual(d60.item.followupDeferredDays, 60, "Defer → followupDeferredDays = 60");
+  assertEqual(d60.item.followupStatus, "scheduled", "Defer → status scheduled");
+  assertEqual(deferFollowupLogic({ slug: "a" }, 1, NOW).success, true, "Defer days=1 OK (min)");
+  assertEqual(deferFollowupLogic({ slug: "a" }, 0, NOW).error, "invalid_days", "Defer days=0 → invalid_days");
+  assertEqual(deferFollowupLogic({ slug: "a" }, -5, NOW).error, "invalid_days", "Defer days=-5 → invalid_days");
+  assertEqual(deferFollowupLogic({ slug: "a" }, 1.5, NOW).error, "invalid_days", "Defer days=1.5 → invalid_days");
+  assertEqual(deferFollowupLogic({ slug: "a" }, null, NOW).error, "invalid_days", "Defer days=null → invalid_days");
+  assertEqual(deferFollowupLogic({ slug: "a" }, "abc", NOW).error, "invalid_days", "Defer days='abc' → invalid_days");
+
+  // N.3 — voidScheduledFollowupSet: zestaw zależny = rollback obu
+  const setItem = {
+    slug: "a", followupSetId: "fset_123", followupStatus: "scheduled",
+    followup1RemindAt: NOW + 60 * D, followup2RemindAt: NOW + 64 * D,
+    followup1Draft: "d1", followup2Draft: "d2",
+  };
+  const v1 = voidScheduledFollowupSetLogic(setItem, 1);
+  assert(v1.item.followup1RemindAt === null && v1.item.followup2RemindAt === null,
+    "Void zestawu (cancel #1): OBA RemindAt null jednoczesnie — atomowo");
+  assertEqual(v1.item.followupSetId, null, "Void zestawu → followupSetId null");
+  assertEqual(v1.item.followupStatus, "skipped", "Void zestawu → status skipped");
+  assert(v1.wasSet === true && v1.cancelled.length === 2, "Void zestawu → wasSet=true, cancelled [1,2]");
+  assert(v1.item.followup1Draft === null && v1.item.followup2Draft === null, "Void zestawu → oba drafty wyczyszczone");
+
+  // Symetria zaleznosci — cancel #2 tez kasuje #1
+  const v2 = voidScheduledFollowupSetLogic(setItem, 2);
+  assert(v2.item.followup1RemindAt === null && v2.item.followup2RemindAt === null,
+    "Void zestawu (cancel #2): tez kasuje FU#1 — zaleznosc symetryczna");
+  assert(v2.wasSet === true, "Void cancel #2 → wasSet=true");
+
+  // Item BEZ zestawu — anuluje tylko zadany follow-up
+  const loneItem = {
+    slug: "b", followupSetId: null, followupStatus: "scheduled",
+    followup1RemindAt: NOW + 3 * D, followup2RemindAt: NOW + 7 * D,
+  };
+  const v3 = voidScheduledFollowupSetLogic(loneItem, 1);
+  assertEqual(v3.item.followup1RemindAt, null, "Void bez zestawu (cancel #1): FU#1 null");
+  assertEqual(v3.item.followup2RemindAt, NOW + 7 * D, "Void bez zestawu: FU#2 NIETKNIETY (brak zaleznosci)");
+  assert(v3.wasSet === false, "Void bez zestawu → wasSet=false");
+
+  const v4 = voidScheduledFollowupSetLogic({ slug: "c", followupStatus: "scheduled", followup1RemindAt: 1, followup2RemindAt: null }, 1);
+  assertEqual(v4.item.followupStatus, "skipped", "Void bez zestawu — oba puste → status skipped");
+  assertEqual(voidScheduledFollowupSetLogic({}, 1).success, false, "Void bez slug → error");
+}
+
 // ── Summary ──────────────────────────────────────────────────────
 console.log("\n=== test_reply.js ===");
 console.log(`Passed: ${passed}`);

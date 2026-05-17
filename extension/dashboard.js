@@ -26,6 +26,19 @@
   // Per-textarea debounce dla auto-save draftów (klucz: slug#N).
   const _draftDebounce = new Map();
 
+  // #55: prompt liczby dni odroczenia follow-upu. Pole numeryczne, walidacja
+  // min 1, default 60. Zwraca int dni albo null (anulowano / błędna wartość).
+  function promptDeferDays() {
+    const raw = window.prompt("O ile dni odroczyć follow-up? (liczba całkowita, min 1)", "60");
+    if (raw == null) return null; // anulowano
+    const n = Number(String(raw).trim());
+    if (!Number.isInteger(n) || n < 1) {
+      alert("Podaj liczbę całkowitą ≥ 1 (np. 60).");
+      return null;
+    }
+    return n;
+  }
+
   // ── Data load ──────────────────────────────────────────────────────
 
   async function loadAll() {
@@ -188,6 +201,32 @@
     });
     actions.appendChild(btnSkip);
 
+    // #55: "Brak zgody" — kontakt nie wyraził zgody, status no_consent.
+    const btnNoConsent = btn("Brak zgody", "btn--outline");
+    btnNoConsent.addEventListener("click", async () => {
+      if (!confirm(`Oznaczyć „${item.name || item.slug}" jako Brak zgody? Follow-upy zostaną zatrzymane, żadna wiadomość nie pójdzie.`)) return;
+      try {
+        await chrome.runtime.sendMessage({ action: "followupMarkNoConsent", slug: item.slug });
+        loadAll();
+      } catch (err) { console.warn(err); }
+    });
+    actions.appendChild(btnNoConsent);
+
+    // #55: "Odroczony w czasie" — przeplanuj FU#1+FU#2 o X dni (zestaw zależny).
+    const btnDefer = btn("Odroczony w czasie", "btn--outline");
+    btnDefer.addEventListener("click", async () => {
+      const days = promptDeferDays();
+      if (days == null) return;
+      try {
+        const resp = await chrome.runtime.sendMessage({
+          action: "followupDefer", slug: item.slug, days,
+        });
+        if (!resp?.success) { alert("Błąd odroczenia: " + (resp?.error || "unknown")); return; }
+        loadAll();
+      } catch (err) { alert("Błąd: " + ((err && err.message) || err)); }
+    });
+    actions.appendChild(btnDefer);
+
     li.appendChild(actions);
     return li;
   }
@@ -223,9 +262,16 @@
     head.appendChild(nameEl);
 
     const tag = document.createElement("span");
-    tag.className = "row__tag row__tag--scheduled";
     const dayLabel = item.daysUntil === 1 ? "1 dzień" : `${item.daysUntil} dni`;
-    tag.textContent = `Follow-up #${num} za ${dayLabel} (${formatDate(item.remindAt)})`;
+    if (item.followupSetId) {
+      // #55: zestaw odroczony — wyróżniony tag.
+      tag.className = "row__tag row__tag--deferred";
+      const deferNote = item.followupDeferredDays ? ` — odroczono o ${item.followupDeferredDays} dni` : "";
+      tag.textContent = `Odroczony: Follow-up #${num} za ${dayLabel} (${formatDate(item.remindAt)})${deferNote}`;
+    } else {
+      tag.className = "row__tag row__tag--scheduled";
+      tag.textContent = `Follow-up #${num} za ${dayLabel} (${formatDate(item.remindAt)})`;
+    }
     head.appendChild(tag);
     li.appendChild(head);
 
@@ -240,6 +286,25 @@
     meta.className = "row__meta";
     meta.textContent = `Pierwsza wiadomość: ${formatDate(item.messageSentAt)}`;
     li.appendChild(meta);
+
+    // #55: zestaw zależny — przycisk anulujący CAŁY zestaw (FU#1 + FU#2).
+    if (item.followupSetId) {
+      const actions = document.createElement("div");
+      actions.className = "row__actions";
+      const btnVoid = btn("Anuluj cały zestaw follow-upów", "btn--danger");
+      btnVoid.addEventListener("click", async () => {
+        if (!confirm(`Anulować cały zestaw follow-upów dla ${item.name || item.slug}? Skasuje to ZARÓWNO Follow-up #1 jak i #2 — to akcje powiązane.`)) return;
+        try {
+          const resp = await chrome.runtime.sendMessage({
+            action: "followupVoidSet", slug: item.slug, followupIdToCancel: num,
+          });
+          if (!resp?.success) { alert("Błąd anulowania: " + (resp?.error || "unknown")); return; }
+          loadAll();
+        } catch (err) { alert("Błąd: " + ((err && err.message) || err)); }
+      });
+      actions.appendChild(btnVoid);
+      li.appendChild(actions);
+    }
 
     return li;
   }
@@ -277,6 +342,12 @@
     if (item.kind === "skipped") {
       tag.className = "row__tag row__tag--skipped";
       tag.textContent = "Pominięty";
+    } else if (item.kind === "no_consent") {
+      tag.className = "row__tag row__tag--no-consent";
+      tag.textContent = "Brak zgody";
+    } else if (item.kind === "replied") {
+      tag.className = "row__tag row__tag--sent";
+      tag.textContent = "Odpowiedział";
     } else {
       tag.className = "row__tag row__tag--sent";
       tag.textContent = `Follow-up #${item.followupNum || "?"} wysłany ${formatDate(item.sentAt)}`;

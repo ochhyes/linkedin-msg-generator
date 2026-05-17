@@ -337,6 +337,8 @@ body {
 .row__tag--scheduled { background: var(--brand-primary-soft); color: var(--brand-primary); }
 .row__tag--sent      { background: var(--success-soft);       color: var(--success); }
 .row__tag--skipped   { background: var(--bg-muted);           color: var(--text-muted); }
+.row__tag--no-consent { background: var(--error-soft);         color: var(--error); }
+.row__tag--deferred  { background: var(--brand-primary-soft); color: var(--brand-primary); border: 1px dashed var(--brand-primary); }
 
 .row__meta { font-size: 11px; color: var(--text-secondary); margin: 0; }
 .row__draft {

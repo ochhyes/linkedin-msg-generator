@@ -413,7 +413,7 @@ async function addToQueue(profiles) {
       followup2Draft: null,
       followup1SentAt: null,
       followup2SentAt: null,
-      followupStatus: "scheduled", // "scheduled" | "skipped" | "replied"
+      followupStatus: "scheduled", // "scheduled" | "skipped" | "replied" | "no_consent"
       // Sprint #6 (#38 v1.11.0): reply tracking — timestamp gdy user oznaczy
       // że dostał odpowiedź na danym etapie. Ustawia followupStatus="replied"
       // (excluded z due/scheduled, idzie do history). BC: items sprzed v1.11.0
@@ -421,6 +421,11 @@ async function addToQueue(profiles) {
       messageReplyAt: null,
       followup1ReplyAt: null,
       followup2ReplyAt: null,
+      // #55 v1.22.0: zestaw zależny follow-upów + status "Brak zgody".
+      // followupSetId niepuste gdy FU#1+FU#2 zaplanowane razem akcją
+      // "Odroczony" — voidScheduledFollowupSet kasuje wtedy oba atomowo.
+      followupSetId: null,
+      followupDeferredDays: null,
     }));
   const next = await setBulkState({ queue: [...state.queue, ...fresh] });
   // #45: każdy profil który przewija się przez kolejkę trafia też do trwałej
@@ -699,6 +704,8 @@ async function bulkListAllFollowups() {
       messageSentAt: item.messageSentAt,
       messageDraft: item.messageDraft || "",
       status: item.status,
+      followupSetId: item.followupSetId || null,
+      followupDeferredDays: item.followupDeferredDays || null,
     };
 
     // Replied items — całkowicie wykluczone z due/scheduled, idą do history.
@@ -712,6 +719,12 @@ async function bulkListAllFollowups() {
     // Skipped → tylko historia
     if (item.followupStatus === "skipped") {
       history.push({ ...base, kind: "skipped" });
+      continue;
+    }
+
+    // Brak zgody (#55) → tylko historia, żadnych dalszych wiadomości
+    if (item.followupStatus === "no_consent") {
+      history.push({ ...base, kind: "no_consent" });
       continue;
     }
 
@@ -960,6 +973,87 @@ async function bulkSkipFollowup(slug) {
   await updateQueueItem(slug, { followupStatus: "skipped" });
   await updateFollowupBadge();
   return { success: true };
+}
+
+// ── Follow-up "Brak zgody" + Odroczony + zależność/rollback (#55 v1.22.0) ──
+//
+// "Brak zgody" — kontakt nie wyraził zgody: status no_consent (mirror skip),
+// nic dalej nie wysyłamy. "Odroczony" — przeplanowanie FU#1 na T+X dni i FU#2
+// na T+X+GAP, oba w JEDNYM atomowym zapisie, oznaczone followupSetId (zestaw
+// zależny). voidScheduledFollowupSet — anulacja jednego follow-upu z zestawu
+// kasuje CAŁY zestaw jednym patchem (transakcyjnie — brak stanu pośredniego
+// gdzie A anulowane a B jeszcze nie).
+
+const FOLLOWUP_SET_GAP_DAYS = 4; // odstęp FU#2 po FU#1 (zachowuje obecne 3->7d)
+
+async function bulkMarkNoConsent(slug) {
+  if (!slug) return { success: false, error: "no_slug" };
+  const state = await getBulkState();
+  const item = state.queue.find((q) => q.slug === slug);
+  if (!item) return { success: false, error: "not_found" };
+  // Idempotent — drugi klik no-op.
+  if (item.followupStatus === "no_consent") return { success: true, alreadyMarked: true };
+  await updateQueueItem(slug, { followupStatus: "no_consent" });
+  await updateFollowupBadge();
+  return { success: true };
+}
+
+async function bulkDeferFollowup(slug, days) {
+  if (!slug) return { success: false, error: "no_slug" };
+  const n = Number(days);
+  // Walidacja — liczba całkowita >= 1 (UI default 60).
+  if (!Number.isInteger(n) || n < 1) return { success: false, error: "invalid_days" };
+  const state = await getBulkState();
+  const item = state.queue.find((q) => q.slug === slug);
+  if (!item) return { success: false, error: "not_found" };
+  const now = Date.now();
+  const followup1RemindAt = now + n * 86400000;
+  const followup2RemindAt = now + (n + FOLLOWUP_SET_GAP_DAYS) * 86400000;
+  // JEDEN atomowy patch — FU#1 i FU#2 planowane równocześnie jako zestaw.
+  await updateQueueItem(slug, {
+    followup1RemindAt,
+    followup2RemindAt,
+    followupSetId: "fset_" + now,
+    followupDeferredDays: n,
+    followupStatus: "scheduled",
+  });
+  await updateFollowupBadge();
+  return { success: true, followup1RemindAt, followup2RemindAt, days: n };
+}
+
+async function voidScheduledFollowupSet(slug, followupIdToCancel) {
+  // Transakcyjny rollback. Jeśli follow-up należy do zestawu zależnego
+  // (followupSetId), anuluj CAŁY zestaw jednym updateQueueItem = jeden
+  // atomowy zapis storage. Bez tego marker'a — anuluj tylko żądany.
+  if (!slug) return { success: false, error: "no_slug" };
+  const state = await getBulkState();
+  const item = state.queue.find((q) => q.slug === slug);
+  if (!item) return { success: false, error: "not_found" };
+
+  if (item.followupSetId) {
+    await updateQueueItem(slug, {
+      followup1RemindAt: null,
+      followup2RemindAt: null,
+      followup1Draft: null,
+      followup2Draft: null,
+      followupSetId: null,
+      followupDeferredDays: null,
+      followupStatus: "skipped",
+    });
+    await updateFollowupBadge();
+    return { success: true, cancelled: [1, 2], wasSet: true };
+  }
+
+  // Item nie jest częścią zestawu — anuluj tylko żądany follow-up.
+  const num = followupIdToCancel === 2 ? 2 : 1;
+  const patch = num === 2
+    ? { followup2RemindAt: null, followup2Draft: null }
+    : { followup1RemindAt: null, followup1Draft: null };
+  const otherRemind = num === 2 ? item.followup1RemindAt : item.followup2RemindAt;
+  if (!otherRemind) patch.followupStatus = "skipped";
+  await updateQueueItem(slug, patch);
+  await updateFollowupBadge();
+  return { success: true, cancelled: [num], wasSet: false };
 }
 
 // ── Reply tracking (#38 v1.11.0) ─────────────────────────────────
@@ -2430,6 +2524,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         case "followupSkip":
           return await bulkSkipFollowup(message.slug);
+
+        case "followupMarkNoConsent":
+          return await bulkMarkNoConsent(message.slug);
+
+        case "followupDefer":
+          return await bulkDeferFollowup(message.slug, message.days);
+
+        case "followupVoidSet":
+          return await voidScheduledFollowupSet(message.slug, message.followupIdToCancel);
 
         // Reply tracking (#38 v1.11.0)
         case "bulkMarkMessageReply":

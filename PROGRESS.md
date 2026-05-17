@@ -8,6 +8,45 @@
 
 ---
 
+## 2026-05-17 (Cowork, claude-opus-4-7) — #55 ulepszony follow-up: Brak zgody + Odroczony + rollback zależności
+
+### Zrobione
+
+- **CLAUDE.md skompresowany** 136 520 → 35 454 znaków (poniżej progu 40k zażądanego przez Marcina). Zachowana cała wiedza operacyjna (architektura, DOM facts, workflow, reguły, CURRENT STATE, dekompozycja #53); historia release'ów Sprintów #1-#9 ścięta do 1 linii per release (pełna treść = `git log`). Przy okazji: CURRENT STATE twierdził "NIEZACOMMITOWANE #52+#54" ale `git log` pokazuje że są już w `21f28df` — naprawione, przeniesione do DONE z "How to test".
+- **#55 — pełny loop PM→Dev→Tester→Commit w jednej sesji (v1.22.0).** Dashboard follow-up zyskał 3 akcje:
+  - **"Brak zgody"** (przycisk w "Do follow-up'u TERAZ") — `bulkMarkNoConsent`, `followupStatus="no_consent"`, item → Historia (czerwony tag), żadnej wiadomości. Mirror `bulkSkipFollowup`.
+  - **"Odroczony w czasie"** — `bulkDeferFollowup(slug, days)`: `promptDeferDays()` (numeric, min 1, default 60), planuje FU#1 na T+X dni i FU#2 na T+X+4 jednym atomowym patchem, oznacza `followupSetId` (marker zestawu zależnego) + `followupDeferredDays`.
+  - **Rollback zależności** — `voidScheduledFollowupSet(slug, followupIdToCancel)`: item z `followupSetId` → anulacja kasuje CAŁY zestaw (FU#1+FU#2+drafty+setId, status→skipped) jednym `updateQueueItem` = jeden atomowy zapis storage. Przycisk "Anuluj cały zestaw follow-upów" na wierszach Zaplanowane (dla member'ów zestawu).
+- **Model:** queue item +`followupSetId`/`followupDeferredDays` (null default, BC); `followupStatus` +`"no_consent"`. Router +3 case'y. `bulkListAllFollowups` niesie setId/deferredDays w base + gałąź no_consent→history.
+- **Pliki:** `background.js`, `dashboard.js`, `dashboard.css` (2 klasy tagów), `dashboard.html` (hint), `tests/test_reply.js` (sekcja N +26 asercji), `manifest.json` 1.21.0→1.22.0, `INSTRUKCJA.md` (rozdział 3.5.1).
+- **Testy:** test_reply.js 62 → **88/0**, `node --check` 6/6, test_syntax 12/0, 0 NUL bytes, wszystkie test_*.js exit 0.
+
+### Decyzje
+
+- **FU#2 = FU#1 + 4 dni** przy odroczeniu (`FOLLOWUP_SET_GAP_DAYS=4`) — bo "równocześnie na przyszłe daty" w spec'u znaczy "zaplanowane jednym ruchem", a 4 dni zachowuje obecny odstęp 3→7d między follow-upami. Nie pytałem Marcina — interpretacja standardowa, mało ryzykowna.
+- **Void zestawu → `followupStatus="skipped"`** (item ląduje w Historii jako "Pominięty") — anulacja zestawu semantycznie = skip. Nie dodawałem osobnego statusu, żeby nie mnożyć bytów; History już renderuje "skipped".
+- **"Brak zgody" nie czyści dat RemindAt** — mirror `bulkSkipFollowup` (też nie czyści). Filtr `followupStatus!=="scheduled"` w due/badge/listAll i tak wyklucza item. Spójność > czyszczenie.
+- **Przycisk "Anuluj cały zestaw" tylko na wierszach Zaplanowane** — spec mówi "anulować zaplanowany follow-up". Gdy FU#1 zestawu jest już DUE a FU#2 jeszcze scheduled, anulacja całości dalej możliwa z wiersza FU#2 (ma setId). Akceptowalna granica MVP.
+- **Atomowość przez jeden patch** — `voidScheduledFollowupSet` robi DOKŁADNIE jeden `updateQueueItem` czyszczący wszystkie 7 pól naraz. NIGDY dwa wywołania (jedno dla A, jedno dla B) — to dałoby stan pośredni gdzie A anulowane a B nie. Test N ma dedykowaną asercję na to ("OBA RemindAt null jednocześnie").
+
+### Lessons learned
+
+- **`python3` na maszynie Marcina to zepsuty stub Windows Store** — `WindowsApps/python3` ignoruje stdin, drukuje "nie znaleziono Python", exit bez zmian. Pierwszy heredoc przez `python3` nie zrobił NIC (a `node --check` przeszedł bo na niezmienionym pliku). Działa **`python`** (`Programs/Python/Python311`). CLAUDE.md sekcja Edit-incident poprawiona z `python3` na `python`.
+- **Literał `\n` w JS-stringu wewnątrz Python-heredoc bywa zjadany** — `console.log("\n▸...")` wylądował w pliku jako prawdziwy newline (string unterminated → SyntaxError). Fix: budować przez `chr(92)+'n'` zamiast wpisywać `\n` w heredoc. Złapane od razu przez `node --check`.
+- **Edit tool NIE uszkodził nic w tej sesji** — wszystkie duże/PL bloki szły przez Python heredoc (reguła z poprzedniej sesji zadziałała). Edit użyty tylko do małych zmian (CSS, HTML hint, manifest, markdown) — bezproblemowo.
+
+### BLOCKED / TODO
+
+- `git push` — lokalny `master` przed origin (commit #52+#54 `21f28df` + nadchodzący #55 niepushowane).
+- Smoke #55 (Marcin, ~7 min) wg "How to test manually" w CLAUDE.md DONE. Plus zaległe smoke #52/#54 i v1.19.0.
+- #53 (Scraper contact info) — następny task, PM decomposition gotowa w CLAUDE.md IN PROGRESS.
+
+### Status końcowy
+
+#55 zaimplementowany i przetestowany w jednej sesji (loop PM→Dev→Tester→Commit), pełny suite zielony, gotowy do commitu — czeka tylko smoke Marcina i `git push`.
+
+---
+
 ## 2026-05-17 (Cowork, claude-opus-4-7) — Sprint #10 ruszony, #52+#54 zaimplementowane
 
 ### Zrobione

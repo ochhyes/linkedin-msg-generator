@@ -217,6 +217,15 @@ Sekcja "Do follow-up'u" w popup'ie pokazuje TYLKO follow-upy które są DUE TERA
 
 > **Dashboard tylko z LOKALNYMI danymi.** Zawartość = `chrome.storage.local` na Twoim komputerze. Nic nie idzie do chmury, do innego użytkownika OVB, do Marcina. Jedyne co opuszcza Twój komputer to wywołania AI (`/api/generate-message`) gdy klikniesz Generuj.
 
+### 3.5.1 „Brak zgody" + „Odroczony w czasie" + anulacja zestawu (NOWE w 1.22.0)
+
+W sekcji **Do follow-up'u TERAZ** każdy wiersz ma teraz dwa dodatkowe przyciski:
+
+- **„Brak zgody"** — kontakt nie wyraził zgody na dalszy kontakt. Klik ustawia status **Brak zgody**, profil wędruje do **Historii** (czerwony tag „Brak zgody") i **żadna wiadomość się nie wygeneruje**. Use: ktoś wprost napisał „nie jestem zainteresowany / nie kontaktujcie się".
+- **„Odroczony w czasie"** — przesuń follow-up na później. Klik pyta **o ile dni odroczyć** (pole liczbowe, minimum 1 dzień, domyślnie **60**). Po zatwierdzeniu extension planuje **oba** follow-upy naraz: Follow-up #1 za X dni, Follow-up #2 za X+4 dni. Profil znika z „Do follow-up'u TERAZ" i pojawia się w **Zaplanowane** (2 wiersze, tag z przerywaną ramką „Odroczony"). Use: „teraz nie ma sensu, ale wróćmy do tematu za 2 miesiące".
+
+**Anulacja całego zestawu (zależność).** Odroczone follow-upy #1 i #2 to **jeden powiązany zestaw**. W sekcji **Zaplanowane** taki wiersz ma przycisk **„Anuluj cały zestaw follow-upów"**. Klik na nim — niezależnie czy klikniesz przy #1 czy przy #2 — **anuluje OBA follow-upy naraz**. Nie da się anulować tylko #1 zostawiając #2: to świadomy mechanizm, żeby nie zostać z „osieroconym" follow-upem #2 bez poprzedzającego #1. Po anulacji profil trafia do Historii.
+
 ### 3.6 Statystyki + tracking odpowiedzi (NOWE w 1.11.0)
 
 W dashboardzie (klik 📊 w popup'ie) na samej górze pojawia się sekcja **📊 Statystyki** — funnel pipeline'u:
