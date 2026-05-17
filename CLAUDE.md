@@ -147,12 +147,12 @@ Uruchom testy automatyczne (pytest backend + jsdom extension). Wykonaj kroki man
 # CURRENT STATE
 
 ```
-Sprint:        #10 — #52+#54 DONE+COMMITTED (21f28df). #55 (ulepszony follow-up: Brak zgody + Odroczony + rollback zależności, v1.22.0) DEV+TESTER DONE. #53 następny.
-Phase:         Commit — #55 zaimplementowany i przetestowany (pełny suite zielony, test_reply.js 62→88). Po commitcie → PM/#53.
-Active task:   #55 → Commit (czeka smoke Marcina). Potem #53 (Scraper contact info — PM decomposition w IN PROGRESS).
-Repo state:    NIEZACOMMITOWANE — #55 (v1.22.0): extension/{background.js, dashboard.js, dashboard.css, dashboard.html, manifest.json, tests/test_reply.js}, INSTRUKCJA.md, CLAUDE.md, PROGRESS.md.
-Last commit:   21f28df — feat: LinkedIn-export import + paginacja+delete bazy (v1.20.0+v1.21.0)
-Updated:       2026-05-17 (#55 ulepszony follow-up — Dev+Tester DONE; CLAUDE.md wcześniej skompresowany 136k→<40k)
+Sprint:        #10 — #52+#54 DONE+COMMITTED (21f28df). #55 (ulepszony follow-up, v1.22.0) DONE+COMMITTED (89d5f88). #53 następny.
+Phase:         PM → wybór #53 (Scraper contact info — PM decomposition gotowa w IN PROGRESS). #55 czeka smoke Marcina (How to test w DONE).
+Active task:   #53 — Dev TODO. #55 zacommitowany, czeka smoke.
+Repo state:    CZYSTE (poza tym docs-commitem). Ostatni commit 89d5f88.
+Last commit:   89d5f88 — feat: follow-up Brak zgody + odroczenie + rollback zależności (#55, v1.22.0)
+Updated:       2026-05-17 (#55 DONE+COMMITTED loop PM→Dev→Tester→Commit; CLAUDE.md skompresowany 136k→<40k)
 ```
 
 **Pending operacyjne (Marcin):** (1) `git push` — lokalny `master` przed origin. (2) Smoke #52 (~10 min) i #54 (~5 min) wg "How to test" w DONE. (3) Smoke v1.19.0 wg `docs/SMOKE-TEST.md`, regen `extension 1.21.0.zip`, dystrybucja zespołowi OVB. (4) VPS: `API_KEYS=DreamComeTrue!` w prod `.env` → `cd deploy && docker compose up -d --build`. (5) Cleanup: usunąć `extension/tests/fixtures/linkedin_connections_export.csv.xlsx` + lock file `~$...` (Excel trzyma blokadę, sandbox nie ma uprawnień).
@@ -224,7 +224,7 @@ Updated:       2026-05-17 (#55 ulepszony follow-up — Dev+Tester DONE; CLAUDE.m
 > Format: 1 linia per release (sha, opis, bump). Pełne treści w `git show <sha>`.
 
 **#55 — Ulepszony follow-up: status "Brak zgody" + odroczenie + rollback zależności (2026-05-17, v1.22.0):**
-- ✅ (NIEZACOMMITOWANE) — feat: dashboard follow-up zyskuje 3 akcje. (1) **"Brak zgody"** — `followupStatus="no_consent"` (kontakt nie wyraził zgody; mirror skip, item → Historia, żadnej wiadomości). (2) **"Odroczony w czasie"** — `bulkDeferFollowup(slug, days)`: prompt liczby dni (numeric, min 1, default 60), planuje FU#1 na T+X i FU#2 na T+X+4 (`FOLLOWUP_SET_GAP_DAYS`) JEDNYM atomowym patchem, oznacza `followupSetId` (zestaw zależny) + `followupDeferredDays`. (3) **Rollback zależności** — `voidScheduledFollowupSet(slug, followupIdToCancel)`: gdy item ma `followupSetId`, anuluje CAŁY zestaw (FU#1+FU#2, drafty, setId, status→skipped) jednym `updateQueueItem` = jeden atomowy zapis storage (brak stanu pośredniego gdzie A anulowane a B nie); bez setId — anuluje tylko żądany follow-up.
+- ✅ `89d5f88` v1.22.0 — feat: dashboard follow-up zyskuje 3 akcje. (1) **"Brak zgody"** — `followupStatus="no_consent"` (kontakt nie wyraził zgody; mirror skip, item → Historia, żadnej wiadomości). (2) **"Odroczony w czasie"** — `bulkDeferFollowup(slug, days)`: prompt liczby dni (numeric, min 1, default 60), planuje FU#1 na T+X i FU#2 na T+X+4 (`FOLLOWUP_SET_GAP_DAYS`) JEDNYM atomowym patchem, oznacza `followupSetId` (zestaw zależny) + `followupDeferredDays`. (3) **Rollback zależności** — `voidScheduledFollowupSet(slug, followupIdToCancel)`: gdy item ma `followupSetId`, anuluje CAŁY zestaw (FU#1+FU#2, drafty, setId, status→skipped) jednym `updateQueueItem` = jeden atomowy zapis storage (brak stanu pośredniego gdzie A anulowane a B nie); bez setId — anuluje tylko żądany follow-up.
   - **Model:** queue item +`followupSetId`/`followupDeferredDays` (null default, BC), `followupStatus` +`"no_consent"`. Router: `followupMarkNoConsent`/`followupDefer`/`followupVoidSet`. `bulkListAllFollowups` — base niesie setId/deferredDays, no_consent → history kind:"no_consent".
   - **Pliki:** `background.js` (3 funkcje + router + pola + bulkListAllFollowups), `dashboard.js` (buildDueRow +2 przyciski, buildScheduledRow tag odroczenia + przycisk "Anuluj cały zestaw", buildHistoryRow no_consent/replied, `promptDeferDays`), `dashboard.css` (`.row__tag--no-consent`/`--deferred`), `dashboard.html` (hint Zaplanowane), `tests/test_reply.js` (sekcja N +26 asercji: walidacja days, daty defer, void zestawu, symetria zależności #1↔#2, atomowość, no_consent), `manifest.json` 1.21.0→1.22.0, `INSTRUKCJA.md` (rozdział 3.5.1).
   - **Test results:** test_reply.js 62→**88/0**, `node --check` 6/6, test_syntax 12/0, 0 NUL bytes, wszystkie test_*.js exit 0.
