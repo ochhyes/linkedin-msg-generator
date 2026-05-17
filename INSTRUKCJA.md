@@ -293,7 +293,31 @@ Profile w bazie się nie duplikują (klucz = adres profilu) i bogatsze dane nigd
 
 **Restore z backupu / przeniesienie na nowy komputer:** dashboard → "Baza profili" → **"Import pliku"** → wybierz `backup-*.json` → (opcjonalnie zaznacz "przywróć też kolejkę zaproszeń") → Import. Baza zostanie scalona z tym co już masz (nic nie kasuje).
 
-### 3.8 Dark mode (NOWE w 1.14.1)
+### 3.8 Import oficjalnego CSV z LinkedIn (NOWE w 1.20.0)
+
+Funkcja **"⬇ Importuj kontakty z LinkedIn"** (z 1.14.0) scrolluje stronę `/mynetwork/.../connections/` i wyciąga to co LinkedIn pokazuje na liście — imiona, slug, headline. **Brakuje tam Company i Position** (na liście są skrócone), a przy dużej sieci scroll potrafi się zaciąć / urywać. Od 1.20.0 jest druga ścieżka: **oficjalny LinkedIn data export**. To CSV który LinkedIn sam Ci wyśle mailem, zawiera **wszystkie 1st kontakty** w jednym pliku z polami: First Name, Last Name, URL profilu, Email (jeśli kontakt udostępnił), Company, Position, Connected On (data dołączenia).
+
+**Kiedy używać:** zawsze gdy masz świeży export (LinkedIn pozwala zażądać raz na ~24h). Daje więcej danych niż scroll po stronie kontaktów, działa atomicznie (jeden plik upload zamiast wielominutowego scrolla), nie ma ryzyka detekcji (LinkedIn sam dostarcza dane, nie scrapujesz).
+
+**Jak zażądać export:**
+1. LinkedIn → **Ustawienia (Settings)** → **Prywatność danych (Data privacy)** → **Pobierz kopię danych (Get a copy of your data)**.
+2. Wybierz **"Wybierz dane do uwzględnienia w zarchiwizowanej kopii"** → odznacz wszystko poza **Connections**. Można też zostawić "wszystko" — interesuje nas tylko jeden plik z paczki.
+3. **"Zażądaj archiwum (Request archive)"** → LinkedIn wyśle Ci maila z linkiem do pobrania. Zwykle przychodzi w **10 minut**, czasem do 24h.
+4. Pobierz `Basic_LinkedInDataExport_DATA.zip`, rozpakuj, **wyciągnij plik `Connections.csv`** (resztę plików możesz wyrzucić).
+
+**Jak zaimportować:**
+1. Dashboard → "🗄️ Baza profili" → **"📥 Importuj CSV (LinkedIn-export)"**.
+2. Wybierz `Connections.csv` z paczki.
+3. **Preview** — rozszerzenie pokaże ile kontaktów znalazło, ile dodać jako nowe, ile scalić z istniejącymi (NIE traci scrape'ów ani wcześniej zebranych danych), ile pominąć (brak slug'a w URL).
+4. **Kliknij OK** żeby zatwierdzić — wjedzie do bazy z oznaczeniem źródła **"LinkedIn-export"** (możesz tym filtrować w dashboardzie).
+
+**Ile emaili dostaniesz w CSV?** W praktyce **~3% kontaktów** (LinkedIn pozwala kontaktom decydować czy chcą dzielić email z siecią; większość ma to wyłączone). Reszta będzie wymagać scrape'u contact-info — to osobny ficzer (#53, w planach po dystrybucji 1.20.0). Email który w polu CSV ma `urn:li:member:...` (LinkedIn wewnętrzny identyfikator zamiast emaila) zostanie automatycznie odrzucony — żeby nie wjechał do bazy jako fałszywy email.
+
+**Skala:** 17000 kontaktów to ~5 MB CSV i ~10-30 sekund importu na nowoczesnym komputerze. Popup/dashboard nie crashują przy dużym imporcie — `unlimitedStorage` w manifeście od 1.14.0 ściąga limit 5 MB Chrome'a.
+
+**Co z duplikatami:** jeśli wcześniej zrobiłeś `⬇ Importuj kontakty z LinkedIn` (1.14.0 scroll po /connections/), te slug'i są już w bazie. CSV-import je rozpozna i **doda Company/Position** (czego scroll nie miał) — istniejący scrape (jeśli był) i notatki **zostają**.
+
+### 3.9 Dark mode (NOWE w 1.14.1)
 
 Rozszerzenie automatycznie dopasowuje się do trybu jasny/ciemny ustawionego w przeglądarce/systemie — nic nie musisz klikać. Jeśli masz w Windowsie/Edge włączony tryb ciemny, popup, dashboard i ustawienia będą ciemne; jasny → jasne.
 

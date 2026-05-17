@@ -592,6 +592,83 @@ body {
   flex-wrap: wrap;
   margin-bottom: 10px;
 }
+
+/* Bulk-bar nad tabelą — multi-select + delete (#54 v1.21.0) */
+.profiledb-bulkbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-muted);
+}
+.profiledb-bulkbar__check {
+  font-size: 13px;
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.profiledb-bulkbar__check input { cursor: pointer; }
+
+/* Kolumna checkbox w tabeli */
+.profiledb-th-check { width: 32px; text-align: center; }
+.profiledb-table-check { text-align: center; }
+.profiledb-table-check input { cursor: pointer; }
+
+/* Szerokości kolumn Imię/Headline z ellipsis (#54 polish 2026-05-17) —
+ * Imię ~180px, Headline ~250px; gdy się nie mieszczą, ucinamy z … żeby NIE
+ * wypychać sąsiednich kolumn. `td` ma direct max-width — wymaga
+ * `overflow:hidden + text-overflow:ellipsis + white-space:nowrap`.
+ * Pasuje do `table-layout:auto` przy istniejących klasach.
+ */
+.contacts-table .col-name {
+  max-width: 180px;
+  width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.contacts-table .col-name a {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.contacts-table .col-headline {
+  max-width: 250px;
+  width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Paginacja pod tabelą */
+.profiledb-pagination {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.profiledb-pagination__info {
+  font-variant-numeric: tabular-nums;
+}
+.profiledb-pagination__total {
+  color: var(--text-muted);
+  margin-left: 8px;
+}
+.profiledb-pagination .select {
+  margin-left: auto;
+}
 .profiledb-filters input[type="text"],
 .profiledb-filters select {
   padding: 6px 10px;

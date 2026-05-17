@@ -120,6 +120,7 @@
           <label class="btn btn--small btn--outline file-btn">Import pliku<input type="file" id="import-file" accept=".json,.csv" hidden></label>
           <label class="profiledb-restore-queue"><input type="checkbox" id="import-restore-queue"> przy imporcie pełnego backupu — przywróć też kolejkę zaproszeń</label>
           <button id="btn-import-connections" class="btn btn--small btn--primary">⬇ Importuj kontakty z LinkedIn</button>
+          <label class="btn btn--small btn--primary file-btn" title="Zaimportuj oficjalny LinkedIn-export (Settings → Data Privacy → Get a copy of your data → Connections only). Plik to Connections.csv z paczki.">📥 Importuj CSV (LinkedIn-export)<input type="file" id="import-linkedin-export-file" accept=".csv,text/csv" hidden></label>
           <span id="profiledb-status" class="profiledb-status"></span>
         </div>
 
@@ -130,6 +131,7 @@
             <option value="search">Wyszukiwanie</option>
             <option value="profile_scrape">Scrape profilu</option>
             <option value="connections_import">Import kontaktów</option>
+            <option value="linkedin_export">LinkedIn-export (CSV)</option>
             <option value="manual">Manual outreach</option>
             <option value="bulk">Bulk Connect</option>
           </select>
@@ -140,13 +142,19 @@
           </select>
         </div>
 
+        <div class="profiledb-bulkbar">
+          <label class="profiledb-bulkbar__check"><input type="checkbox" id="profiledb-select-all"> Zaznacz wszystkie widoczne</label>
+          <button id="btn-delete-selected" class="btn btn--small btn--danger" disabled>🗑 Usuń zaznaczone (<span id="profiledb-selected-count">0</span>)</button>
+          <button id="btn-delete-filtered" class="btn btn--small btn--danger" disabled title="Usuń wszystkie rekordy pasujące do aktualnego filtru (tekst/źródło/kontakt) — niezależnie od strony">🗑 Usuń wszystkie pasujące do filtru (<span id="profiledb-filtered-count">0</span>)</button>
+        </div>
+
         <div class="table-wrapper">
           <table id="profiledb-table" class="contacts-table">
             <thead>
               <tr>
-                <th>Imię</th>
-                <th>Headline</th>
-                <th title="Stopień znajomości">Stopień</th>
+                <th class="profiledb-th-check"><span title="Zaznacz wiersz">☑</span></th>
+                <th class="col-name">Imię</th>
+                <th class="col-headline">Headline</th>
                 <th title="Skąd profil trafił do bazy">Źródło</th>
                 <th title="1st degree / zaimportowany kontakt">Kontakt</th>
                 <th title="Jest w kolejce zaproszeń">Kolejka</th>
@@ -157,6 +165,21 @@
             <tbody id="profiledb-tbody"></tbody>
           </table>
           <p id="profiledb-empty" class="empty-state hidden">Baza pusta. Otwórz wyszukiwarkę LinkedIn albo kliknij „Importuj kontakty z LinkedIn".</p>
+        </div>
+
+        <div class="profiledb-pagination">
+          <button id="profiledb-page-prev" class="btn btn--small btn--ghost" disabled>← Poprzednia</button>
+          <span class="profiledb-pagination__info">
+            Strona <span id="profiledb-page-current">1</span> z <span id="profiledb-page-total">1</span>
+            <span class="profiledb-pagination__total">(<span id="profiledb-pagination-shown">0</span> / <span id="profiledb-pagination-filtered">0</span> pasujących)</span>
+          </span>
+          <button id="profiledb-page-next" class="btn btn--small btn--ghost" disabled>Następna →</button>
+          <select id="profiledb-page-size" class="select" title="Wierszy na stronę">
+            <option value="100">100 / stronę</option>
+            <option value="200" selected>200 / stronę</option>
+            <option value="500">500 / stronę</option>
+            <option value="1000">1000 / stronę</option>
+          </select>
         </div>
       </section>
 

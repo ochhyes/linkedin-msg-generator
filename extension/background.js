@@ -1671,6 +1671,9 @@ const SOURCE_RANK = {
   bulk: 2,
   manual: 3,
   connections_import: 4,
+  linkedin_export: 4, // oficjalny LinkedIn CSV-export (Connections.csv) — ta sama liga co
+                      // connections_import, ale dostarcza więcej pól (Company/Position/Email).
+                      // >= w mergeProfileRecord daje nowy import override gdy slug był w connections_import.
   profile_scrape: 5,
 };
 
@@ -1830,12 +1833,61 @@ async function profileDbList(filter = {}) {
   if (wantConn === "no") list = list.filter((r) => !r.isConnection);
 
   list.sort((a, b) => (b.lastSeenAt || 0) - (a.lastSeenAt || 0));
+
+  // Pagination (#54 v1.21.0) — bez limit zwracamy pełną listę (backwards compat
+  // dla buildProfileDbCsv / buildFullBackupJson). UI dashboardu zawsze podaje
+  // limit + offset zeby nie renderować 16k+ wierszy naraz (browser muli).
+  const filteredTotal = list.length;
+  const limit = (typeof filter.limit === "number" && filter.limit > 0) ? filter.limit : null;
+  const offset = (typeof filter.offset === "number" && filter.offset > 0) ? filter.offset : 0;
+  const paged = limit ? list.slice(offset, offset + limit) : list;
+
   return {
     success: true,
-    list,
-    counts: { total: Object.keys(db.profiles).length, connections: connectionsCount, inQueue: inQueueCount, filtered: list.length },
+    list: paged,
+    counts: { total: Object.keys(db.profiles).length, connections: connectionsCount, inQueue: inQueueCount, filtered: filteredTotal },
+    page: limit ? { limit, offset, filteredTotal } : null,
   };
 }
+
+/**
+ * Usuwa rekordy z profileDb. Tryby:
+ *  - slugs: ["a","b",...] — usun konkretne
+ *  - deleteAllFiltered: true + filter — bg sam filtruje pelna baze po (text,
+ *    source, isConnection) i usuwa pasujace. Uzywane do batch-cleanupu
+ *    (np. wszystkie z source="connections_import" gdy stary scroll-import
+ *    zasmiecil baze).
+ * Zwraca {success, deleted, total}.
+ */
+async function profileDbDelete({ slugs, deleteAllFiltered, filter }) {
+  const db = await getProfileDb();
+  let toDelete = [];
+  if (deleteAllFiltered === true) {
+    const text = ((filter && filter.text) || "").trim().toLowerCase();
+    const wantSource = (filter && filter.source) || "";
+    const wantConn = (filter && filter.isConnection) || "";
+    for (const slug of Object.keys(db.profiles)) {
+      const r = db.profiles[slug];
+      if (text) {
+        const hay = `${r.name || ""} ${r.headline || ""} ${r.slug || ""}`.toLowerCase();
+        if (!hay.includes(text)) continue;
+      }
+      if (wantSource && r.source !== wantSource) continue;
+      if (wantConn === "yes" && !r.isConnection) continue;
+      if (wantConn === "no" && r.isConnection) continue;
+      toDelete.push(slug);
+    }
+  } else if (Array.isArray(slugs) && slugs.length) {
+    toDelete = slugs.filter((s) => typeof s === "string" && db.profiles[s]);
+  } else {
+    return { success: false, error: "no_target" };
+  }
+
+  for (const slug of toDelete) delete db.profiles[slug];
+  await writeProfileDb(db);
+  return { success: true, deleted: toDelete.length, total: Object.keys(db.profiles).length };
+}
+
 
 // ── Eksport / backup ──────────────────────────────────────────────────
 
@@ -1981,6 +2033,168 @@ async function getBackupIntervalDays() {
  *  - CSV (string) — wiersze z kolumnami CSV_COLUMNS
  * opts.restoreQueue — gdy true i payload zawiera bulkConnect, nadpisz kolejkę.
  */
+// ── LinkedIn data export (Connections.csv) — parser i mapper ──────────
+//
+// Format (potwierdzone empirycznie 2026-05-16 z 17008-wierszowego dumpu):
+//   linia 1: "Notes:"
+//   linia 2: cytowany abstract w cudzysłowach (jedna logiczna linia)
+//   linia 3: pusta
+//   linia 4: nagłówek `First Name,Last Name,URL,Email Address,Company,Position,Connected On`
+//   linie 5+: dane, RFC4180-compliant quoting + doubled-quote escape (`""`).
+// Defensywnie obsługujemy BOM. Daty: format EN "DD Mon YYYY" (priorytet) + PL fallback.
+// Email puste u ~96.8% (~0.5% to `urn:li:member:<id>` — wewnętrzny URN, MUSIMY blokować).
+
+const LINKEDIN_EXPORT_HEADER_PREFIX = "First Name,Last Name,URL,";
+
+const LINKEDIN_MONTH_MAP = {
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+  jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+  sty: 1, lut: 2, kwi: 4, maj: 5, cze: 6,
+  lip: 7, sie: 8, wrz: 9, paz: 10, "paź": 10, lis: 11, gru: 12,
+};
+
+function parseLinkedInDate(str) {
+  if (!str || typeof str !== "string") return null;
+  const m = String(str).trim().match(/^(\d{1,2})\s+([A-Za-zżźćńółęąśŻŹĆŃÓŁĘĄŚ]+)\s+(\d{4})$/);
+  if (!m) return null;
+  const day = parseInt(m[1], 10);
+  const mon = LINKEDIN_MONTH_MAP[m[2].toLowerCase().slice(0, 3)];
+  const year = parseInt(m[3], 10);
+  if (!mon || !day || day < 1 || day > 31 || !year) return null;
+  return `${year}-${String(mon).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function isValidEmailFromCsv(raw) {
+  if (!raw || typeof raw !== "string") return false;
+  const s = raw.trim();
+  if (!s) return false;
+  if (s.toLowerCase().startsWith("urn:")) return false;
+  return /@[^@\s]+\.[^@\s]+$/.test(s);
+}
+
+function stripBom(text) {
+  if (typeof text !== "string") return "";
+  return text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
+}
+
+function extractLinkedInExportRows(text) {
+  const clean = stripBom(text || "");
+  const lower = clean.toLowerCase();
+  const idx = lower.indexOf(LINKEDIN_EXPORT_HEADER_PREFIX.toLowerCase());
+  if (idx === -1) return { rows: [], error: "header_not_found" };
+  return { rows: parseCsv(clean.slice(idx)), error: null };
+}
+
+function mapLinkedInExportRow(row) {
+  if (!row || typeof row !== "object") return null;
+  const get = (k) => {
+    if (row[k] != null) return String(row[k]).trim();
+    const target = k.toLowerCase();
+    for (const key of Object.keys(row)) {
+      if (key.toLowerCase() === target) return String(row[key]).trim();
+    }
+    return "";
+  };
+  const first = get("First Name");
+  const last = get("Last Name");
+  const url = get("URL");
+  const emailRaw = get("Email Address");
+  const company = get("Company");
+  const position = get("Position");
+  const connectedRaw = get("Connected On");
+
+  let slug = url ? extractSlugFromUrl(url) : null;
+  if (slug) {
+    try { slug = decodeURIComponent(slug).toLowerCase(); } catch (_) { slug = String(slug).toLowerCase(); }
+  }
+  if (!slug) return null;
+
+  return {
+    slug,
+    name: `${first} ${last}`.trim() || null,
+    headline: position || null,
+    company: company || null,
+    profile_url: `https://www.linkedin.com/in/${slug}/`,
+    isConnection: true,
+    connectedOn: parseLinkedInDate(connectedRaw),
+    contactInfo: isValidEmailFromCsv(emailRaw) ? { email: emailRaw.trim() } : null,
+  };
+}
+
+async function profileDbImportLinkedInExport({ csvText, dryRun }) {
+  if (typeof csvText !== "string" || !csvText.trim()) {
+    return { success: false, error: "empty_input" };
+  }
+  const { rows, error } = extractLinkedInExportRows(csvText);
+  if (error) return { success: false, error };
+  if (!rows.length) return { success: false, error: "no_data_rows" };
+
+  let skippedNoSlug = 0, parseErrors = 0, urnEmailsBlocked = 0;
+  const mapped = [];
+  for (const row of rows) {
+    try {
+      const rawEmail = (row && (row["Email Address"] || row["email address"] || "")) || "";
+      if (rawEmail && rawEmail.trim().toLowerCase().startsWith("urn:")) urnEmailsBlocked += 1;
+      const rec = mapLinkedInExportRow(row);
+      if (!rec) { skippedNoSlug += 1; continue; }
+      mapped.push(rec);
+    } catch (_) { parseErrors += 1; }
+  }
+
+  const db = await getProfileDb();
+  let willNew = 0, willMerged = 0;
+  for (const rec of mapped) {
+    if (db.profiles[rec.slug]) willMerged += 1; else willNew += 1;
+  }
+
+  if (dryRun) {
+    return {
+      success: true, dryRun: true,
+      newSlugs: willNew, mergedSlugs: willMerged,
+      skippedNoSlug, parseErrors, urnEmailsBlocked,
+      total: mapped.length,
+    };
+  }
+
+  const now = Date.now();
+  let added = 0, updated = 0;
+  for (const rec of mapped) {
+    const baseRec = profileRecordFromInput(rec, "linkedin_export", now);
+    if (!baseRec) continue;
+    if (rec.contactInfo) baseRec.contactInfo = rec.contactInfo;
+    if (rec.connectedOn) baseRec.connectedOn = rec.connectedOn;
+    if (rec.company) baseRec.company = rec.company;
+    if (db.profiles[baseRec.slug]) {
+      const prev = db.profiles[baseRec.slug];
+      const merged = mergeProfileRecord(prev, baseRec);
+      const prevContact = prev.contactInfo || null;
+      if (rec.contactInfo && rec.contactInfo.email) {
+        merged.contactInfo = {
+          ...(prevContact || {}),
+          email: prevContact && prevContact.email ? prevContact.email : rec.contactInfo.email,
+        };
+      } else if (prevContact) {
+        merged.contactInfo = prevContact;
+      }
+      if (rec.connectedOn && !prev.connectedOn) merged.connectedOn = rec.connectedOn;
+      if (rec.company && !prev.company) merged.company = rec.company;
+      db.profiles[baseRec.slug] = merged;
+      updated += 1;
+    } else {
+      db.profiles[baseRec.slug] = baseRec;
+      added += 1;
+    }
+  }
+  await writeProfileDb(db);
+
+  return {
+    success: true,
+    newSlugs: added, mergedSlugs: updated,
+    skippedNoSlug, parseErrors, urnEmailsBlocked,
+    total: Object.keys(db.profiles).length,
+  };
+}
+
 async function profileDbImport({ json, csv, restoreQueue }) {
   let recordsInput = [];
   let bulkPayload = null;
@@ -2240,6 +2454,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return { success: true, json: await buildFullBackupJson() };
         case "profileDbImport":
           return await profileDbImport({ json: message.json, csv: message.csv, restoreQueue: !!message.restoreQueue });
+        case "profileDbImportLinkedInExport":
+          return await profileDbImportLinkedInExport({ csvText: message.csvText, dryRun: !!message.dryRun });
+        case "profileDbDelete":
+          return await profileDbDelete({ slugs: message.slugs, deleteAllFiltered: !!message.deleteAllFiltered, filter: message.filter });
         case "importConnections":
           return await importConnectionsFlow(message.maxPages);
         case "backupNow":

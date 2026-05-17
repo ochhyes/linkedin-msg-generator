@@ -2,6 +2,8 @@
 
 > **Najważniejszy plik w repo.** Claude czyta go na starcie każdej sesji.
 > Single source of truth dla projektu i workflow loop. Pełna historia commitów = `git log` (releases) + osobne RETRO sekcje wycięte 2026-05-10 dla zwięzłości.
+>
+> **Dla Claude Code (VS Code):** poza tym plikiem czytaj też `PROGRESS.md` (dziennik decyzji, najnowsze na górze) zanim ruszysz z robotą. PROGRESS.md mówi z czym wszedł Marcin do sesji.
 
 ## Opis projektu
 
@@ -207,11 +209,13 @@ PM 5–15 min · Dev 30–120 min · Tester 10–30 min · Commit 2–5 min.
 # CURRENT STATE
 
 ```
-Sprint:        #8 ZDYSTRYBUOWANY (v1.14.0→1.14.6) || #9 UX redesign OVB Professional Minimal — **KOMPLETNY** 2026-05-12: ✅ #24 Header+Tabs (v1.15.0) → ✅ #25 Buttons+3-faz action bar (v1.16.0) → ✅ #26 Cards+Badges (v1.17.0) → ✅ #27 Inputs(focus-ring)+EmptyStates (v1.18.0) → ✅ #28 Dashboard polish + 🔧 2 szlify (v1.19.0). + hotfixe v1.15.1/v1.15.2/v1.16.1. NIEPUSHOWANE — push po smoke + dystrybucji.
-Phase:         PM (Sprint #9 ZAMKNIĘTY 2026-05-12 — smoke wizualny PASS, Marcin: "graficznie bardzo się podoba". Pending operacyjne: regen `extension 1.19.1.zip` + ew. odśwież PDF, dystrybucja zespołowi OVB, `git push`. Nast. sprint do wyboru: #22 reszta / #10 selectors.json / #6 self-test widget / rename→v2.0.0.)
-Active task:   żaden (Sprint #9 ZAMKNIĘTY — #24-#28 + szlify + hotfix v1.19.1, smoke PASS. Czeka tylko: regen zip + dystrybucja + git push.)
+Sprint:        #8 ZDYSTRYBUOWANY (v1.14.0→1.14.6) || #9 UX redesign KOMPLETNY+PUSHED (v1.15.0→1.19.1) || **#10 IN PROGRESS** — #52 DEV DONE (v1.20.0, smoke PASS), #54 DEV DONE (v1.21.0, paginacja+delete), #53 PM ready blocked Marcin
+Phase:         Tester (#52 smoke PASS: 16605 nowych + 56 merged z prawdziwego CSV-eksportu. #54 zaimplementowany 2026-05-17: server-side pagination w `profileDbList` (limit/offset/filteredTotal) + multi-select w tabeli + `profileDbDelete({slugs|deleteAllFiltered+filter})` + UI (toolbar bulkbar + checkbox column + paginacja 100/200/500/1000 per stronę). Testy 581/0 → 608/0 PASS (+12 sekcja I). Marcin smoke #54 wg "How to test manually" + cleanup śmieci ze scroll-importu.)
+Active task:   #54 Dev DONE, czeka na smoke Marcina (#52 smoke PASS — to obok). #53 Dev TODO — przeniesione na sesję Claude Code (VS Code).
+Repo state:    NIEZACOMMITTOWANE — #52 (v1.20.0) + #54+hotfix UX (v1.21.0). Plan: po smoke #54 PASS → jeden commit "feat: LinkedIn-export import + paginacja+delete (#52+#54, v1.21.0)" lub dwa osobne (decyzja Marcina). Dotknięte pliki: extension/{background.js, dashboard.html, dashboard.js, dashboard.css, manifest.json, tests/test_profile_db.js, tests/fixtures/linkedin_connections_export.csv NEW}, INSTRUKCJA.md, CLAUDE.md, PROGRESS.md NEW.
+Następna sesja (Claude Code w VS Code) — przeczytaj PROGRESS.md najpierw. Plan: (a) smoke #54 z Marcin'em, (b) commit, (c) #53 Dev (Ember-only MVP wg PM decomposition w IN PROGRESS — content.js scrapeContactInfo + bg worker contactInfoScrape + popup zakładka "Kontakty" + dashboard kolumny+filter+add-to-queue + test fixture na contact_only_email.html + bump 1.22.0 + INSTRUKCJA rozdział 3.9).
 Last commit:   a75e9ed — fix: scroll w zakładce + rename "Bulk" → "Budowanie sieci" (v1.19.1)  [+ 50223de docs · dde273f #28 v1.19.0]  [+ ddfd084 #27 v1.18.0 · 1844d59 #26 v1.17.0 · 9e6e3aa #25 v1.16.0 · 4a67d99 #24 v1.15.0 · e8433e3 v1.16.1 · 4086547 v1.15.2 · e23b7a1 v1.15.1 · … docs · Sprint #8]
-Updated:       2026-05-12 (Sprint #9 KOMPLETNY + hotfix v1.19.1: fix scroll w zakładce po "Ustawienia" + "Bulk"→"Budowanie sieci"; czeka smoke + regen zip + dystrybucja + push)
+Updated:       2026-05-17 (Dev #52 DONE — parser LinkedIn-export Connections.csv, 47 nowych asercji, manifest 1.20.0, INSTRUKCJA rozdział 3.8; rotacja na Tester)
 ```
 
 **Sprint #8 — podsumowanie (2026-05-12, w toku — czeka na manual smoke + dystrybucję):** Feature z `/ultraplan` rozrósł się w jednym dniu w **7 wersji + zip + PDF instrukcji** napędzane real-time feedbackiem Marcina:
@@ -285,6 +289,272 @@ Original scope (z 2026-05-09): "Stabilizacja + dystrybucja 1.8.0" — 5 tasków 
 4. Domknięcie szlifu z Sprintu #9: rozważyć rename `manifest.name` → "Outreach" + bump major v2.0.0 (decyzja odłożona — header już pokazuje "Outreach"). Drobne.
 
 ## IN PROGRESS
+
+> **═══ SPRINT #10 — Dane kontaktowe na bazie LinkedIn-export (PM plan 2026-05-16) ═══**
+> Marcin ma 16k kontaktów 1st na LinkedIn i chce z każdego wyciągnąć contact info (telefon, email, websites, "O mnie") do `profileDb`. Strategia po rozmowie 2026-05-16: (a) **LinkedIn data export** (Settings → Data Privacy → „Get a copy of your data" → Connections only) — Marcin zażądał, czeka na maila (10 min do 24h; dostarcza First/Last Name, URL, Email (~20-40% kontaktów udostępnia), Company, Position, Connected On). (b) **#52** import CSV do `profileDb` → 16k rekordów ze slug+name+company+position bez ryzyka detekcji. (c) Filtr w dashboardzie — wybór puli priorytetowej (np. 500-2000 z 16k). (d) **#53** scraper `/overlay/contact-info/` na wybranej puli — telefon, email tam gdzie nie ma w CSV, websites, twitter, address, About przez wizytę na profilu.
+> **Arytmetyka** (Marcin musi rozumieć skalę): 16k × ~60s × jitter @ 200/dzień = ~80 dni 24/7. Dlatego filtracja w (c) MUST-HAVE — pełen sweep 16k jest nierealny bez bana. MVP target dla #53: 200-500 priorytetowych w pierwszej iteracji.
+> **Zakres:** #52 (mały, ~1-2h Claude, nie wymaga DOM scrape'u — czysty file parser + UI) + #53 (duży, ~4-6h Claude, blocked DOM dumpem od Marcina; nowy worker analogiczny do bulk-connect ale po contact-info modal).
+> **GATE Dev'a (status 2026-05-16):** (a) Sprint #9 zdystrybuowany (regen zip + `git push`) — **pending Marcin**. (b) Dla #52: ✅ CSV od LinkedIn dostarczony (`Basic_LinkedInDataExport_05-16-2026.zip.zip` — 17008 kontaktów, 3.2% z mailem); fixture wygenerowany jako `extension/tests/fixtures/linkedin_connections_export.csv` (15 wierszy reprezentatywnych z prawdziwego eksportu, obejmuje wszystkie zaobserwowane edge case'y). (c) Dla #53: ✅ Ember-variant fixture (`contact_only_email.html` — Szymon Kracik, sam email + data); ⚠ **SDUI-variant fixture brakuje** — `contact_all_data.html` zawiera dump kilku stron na raz (profil Marek Michalski + Kontakty + Feed × 2) i linki reklamowe, nie nadaje się. Implementacja Ember-only akceptowalna na MVP; SDUI extractor dorobimy gdy telemetria `contact_info_modal_not_found` urośnie. **#52 odblokowany, #53 odblokowany (MVP bez SDUI variant).**
+>
+> **Cleanup TODO przez Marcina:** zamknij plik w Excelu i usuń `extension/tests/fixtures/linkedin_connections_export.csv.xlsx` + `~$linkedin_connections_export.csv.xlsx` (lock file). Sandbox nie ma uprawnień do usunięcia — Windows Excel trzyma blokadę.
+
+- **#52** (Sprint #10, P1) — **Import CSV z LinkedIn data exportu do `profileDb`**. **PM decomposition 2026-05-16:**
+
+  **Zakres:** Parser dla oficjalnego `Connections.csv` od LinkedIn + dashboard button + merge w `profileDb`. ZERO zmian backendu, ZERO scrape'u przez LinkedIn (tylko upload pliku który Marcin dostanie mailem). Pierwszy task Sprintu #10 — odblokowuje #53 (queue contact-info workera czerpie ze slugów które wjadą przez ten import).
+
+  **Format LinkedIn-exportu (`Connections.csv`) — POTWIERDZONE EMPIRYCZNIE 2026-05-16 z dumpu Marcina (17008 wierszy):**
+  ```
+  Notes:                                                                                                        ← linia 1
+  "When exporting your connection data, you may notice that some of the email addresses are missing..."       ← linia 2 (jedna logiczna linia w cudzysłowach, hyperlinki w środku)
+                                                                                                                ← linia 3 PUSTA
+  First Name,Last Name,URL,Email Address,Company,Position,Connected On                                          ← linia 4 HEADER
+  Justyna,Zązel,https://www.linkedin.com/in/justyna-z-2a29b6166,,ING Polska,Specialist - Sales & Advisory,16 May 2026
+  Aleksandra,Sołtys,https://www.linkedin.com/in/aleksandra-so%C5%82tys-ab1978395,urn:li:member:1629761317,Concept13,Doradca klienta,13 May 2026
+  Dorota,Grześkowiak-Stojek,https://www.linkedin.com/in/dorotagrzeskowiak,,"JMGJ Jaworska, Matusiak","radca prawny, wspólnik",08 Aug 2025
+  Izabella,Goździewska,...,,"Agencja Celna ""Betrę""","Agent celny w Agencja Celna ""BeTrę""",31 Oct 2022
+  ...
+  ```
+  **Faktyczne właściwości formatu (różnice względem spec'u):**
+  - **BRAK BOM** (potwierdzone hexdump'em — `4e 6f 74 65 73` = `Notes`, NIE `EF BB BF`). Defensywny BOM-strip nadal warto mieć (1 linia kodu) na wypadek innych userów.
+  - **Email pusty u 96.8%** (549 z 17008 niepustych = 3.2%). **Dla Marcina email z CSV = symboliczna ilość** — to wzmacnia value #53 jako jedynej ścieżki na pozyskanie kontaktu.
+  - **`urn:li:member:1629761317` w polu Email** — LinkedIn dla kontaktów którzy ustawili „pokaż przez wiadomość LinkedIn" zamiast email pakuje tam wewnętrzny URN, NIE literal email. **Parser MUSI walidować:** `email.includes("@") && !email.startsWith("urn:")` → jeśli false, `contactInfo.email = null`. Bez tego do `profileDb` trafia śmieć.
+  - **Daty wyłącznie EN** „DD Mon YYYY" („16 May 2026", „08 Aug 2025", „10 Jan 2014"). PL locale „15 mar 2024" nie wystąpił u Marcina — fallback parser OK, ale priorytet EN.
+  - **RFC4180-compliant quoting + doubled-quote escape** — pola z przecinkami w cudzysłowach (`"JMGJ Jaworska, Matusiak"`), literal `"` w polu jako `""` (`"Agencja Celna ""Betrę"""`). **Istniejący `parseCsv` w `background.js:1870-1896` to obsługuje** (sprawdzone — RFC4180 implementation jest tam już od v1.14.0). NIE trzeba pisać nowego parsera, wystarczy preamble-skip przed `parseCsv()`.
+  - **Ostatni wiersz bez trailing newline** — `parseCsv` to obsługuje (linia 1888 — `if (field.length || row.length) { row.push(field); rows.push(row); }`).
+  - **Trailing space w niektórych polach** (np. `Doradca Klienta Indywidualnego `, `Key Account Manager AWC&CC ` — sufiks spacja). Parser musi trim'ować wartości po stronie mappera (nie w `parseCsv`).
+  - **Edge case w polu Last Name:** `Maciej,Stępa SprzedajFirme com` — ktoś wkleił nazwę firmy do Last Name. `name = "${First} ${Last}".trim()` to po prostu połączy w „Maciej Stępa SprzedajFirme com" — defensywnie OK, nie crash.
+  - **Slug variants:** `justyna-z-2a29b6166` (skrócone imię), `szymon-kracik-96825974` (pełne + hash), `piotrobrebski` (krótki bez hash'a, stary kontakt 2014), `adrian-pysk%C5%82o-596806a4` (percent-encoded polskie znaki). `extractSlugFromUrl` + `decodeURIComponent` + `toLowerCase` handluje wszystkie warianty (sprawdzone w istniejącym helperze).
+
+  **Implementacja:**
+  1. `extension/background.js` — nowa funkcja `parseLinkedInExportCsv(text)`: znajduje linię startującą `First Name,Last Name,URL,` (case-insensitive, BOM-aware), tnie preamble, parsuje resztę przez istniejący `parseCsv` (jest w v1.14.0). Mapuje wiersze na `profileRecordInput`: `name = "${First} ${Last}".trim()`, `slug = extractSlugFromUrl(URL)` (decode + lowercase, reuse istniejącego helper'a), `headline = Position`, `company = Company`, `isConnection = true`, `connectedOn = parseLinkedInDate(Connected On)` (format "DD Mon YYYY" → ISO `YYYY-MM-DD`, obsłuż EN + PL miesiące), `contactInfo.email = Email Address || null`.
+  2. Nowa wartość `source = "linkedin_export"` — w hierarchii `mergeProfileRecord`: `search < connections_import < linkedin_export < bulk < manual < profile_scrape`. `linkedin_export` wyżej niż `connections_import` bo zawiera Company+Position (których import z `/mynetwork/connections/` nie ma), ale niżej niż `profile_scrape` który ma pełny `scrapedProfile` blob.
+  3. Nowy handler `profileDbImportLinkedInExport({csvText, dryRun})` w routerze: parsuje, normalizuje, upsertuje przez istniejący `upsertProfilesToDb`. **Dry-run** zwraca counters `{newSlugs, mergedSlugs, skippedNoSlug, parseErrors}` bez zapisu — UI pokazuje preview przed zatwierdzeniem.
+  4. `extension/dashboard.html|js|css` — w sekcji „🗄️ Baza profili" nowy button „📥 Importuj CSV z LinkedIn (oficjalny export)" obok istniejących Import/Eksport. File picker (`.csv`), 2-step UX: parse + dry-run → preview modal („Znaleziono X nowych + Y do scalenia, pominięto Z bez slug'a, błędów Q. Zatwierdzić?") → upsert. Toast z wynikiem + auto-refresh tabeli.
+  5. `extension/tests/fixtures/linkedin_connections_export.csv` NEW — Marcin dostarcza 5-10 anonimizowanych rekordów z prawdziwego exportu (lub fake'owy z odpowiednim formatem) PO otrzymaniu maila z LinkedIn. Pre-Dev fixture syntetyczny: preamble 3 linie + nagłówek + 5 wierszy (część z emailem, część bez, jeden z dziwnym slug'iem typu `marek-kowalski-aa1b2c3`, jeden z polskimi znakami `Łukasz Świątek`).
+  6. `extension/tests/test_profile_db.js` — rozszerzyć o sekcję „LinkedIn export import": preamble skip, slug extraction z różnych formatów URL (trailing slash, query string, fragment), date parse "15 Mar 2024" → "2024-03-15" + PL "15 mar 2024", BOM handling, merge z istniejącym `connections_import` (nadpisuje headline/company, NIE nadpisuje pełniejszego `scrapedProfile`). +~12 asercji, baseline 534/0 → ~546/0.
+  7. `INSTRUKCJA.md` — nowy rozdział „Jak zażądać exportu z LinkedIn i co z nim zrobić" (Settings path + screenshoty + co dostajesz + co robić w extension).
+  8. Bump 1.19.1 → 1.20.0 (nowa funkcja, minor).
+
+  **Pliki:** `extension/background.js` (parser + handler + new source value w hierarchii merge), `extension/dashboard.html|js|css` (button + preview modal + toast), `extension/tests/test_profile_db.js` (+sekcja, +~12 asercji), `extension/tests/fixtures/linkedin_connections_export.csv` NEW, `extension/manifest.json` (bump 1.20.0), `INSTRUKCJA.md` (+rozdział).
+
+  **Ryzyka:**
+  1. **Format CSV może się zmienić** — LinkedIn dodaje kolumny (ostatnio: "Connected On" pojawiło się w 2022). Parser MUSI czytać po nazwach kolumn z headera (mapowanie {name→index}), nie po pozycji. Nowe kolumny których nie znamy → ignoruj, nie crash.
+  2. **Rozmiar** — 16k × ~300 bajtów = ~5 MB CSV. Parsing w pamięci OK (`unlimitedStorage` mamy od v1.14.0). ALE `chrome.storage.local.set({profileDb})` to atomic write — pełen profileDb z 16k × ~1 KB JSON = ~16 MB write. Sprawdzić czas zapisu na sprzęcie Marcina; jeśli >5s → wprowadzić chunked write (1k rekordów per `set`, batchowanie w `upsertProfilesToDb`).
+  3. **Duplikaty z `connections_import`** — Marcin może już mieć część slugów w bazie z v1.14.0 importu kontaktów. Merge musi je zachować i wzbogacić o Company/Position/Email z exportu, nie wymazać. `mergeProfileRecord` już to robi przez source-hierarchy — przetestować dedykowaną asercją.
+  4. **Polskie znaki** (ś, ć, ż, ł) — LinkedIn CSV jest UTF-8 z BOM (`﻿` na pierwszym bajcie). Parser musi BOM strip'ować inaczej pierwsza komórka headera = `﻿First Name` i mapping pada.
+  5. **Slug z hashem** — LinkedIn dorzuca random hash dla popularnych imion (`anna-nowak` zajęte → `anna-nowak-1234`). Slug to slug, parser NIE próbuje dedup'ować po imieniu.
+  6. **Email z CSV vs email z overlay** (po #53) — który wygrywa? Decyzja: oba do `contactInfo.emails[]`, primary = `contactInfo.email` = ostatnio zobaczony niepuski (overlay > CSV bo świeższy + bardziej kompletny).
+
+  **Acceptance criteria:**
+  - [ ] Parser ignoruje preamble (wykrywa nagłówek `First Name,Last Name,URL,` case-insensitive)
+  - [ ] Slug ekstraktowany z URL niezależnie od trailing slash / query / fragment
+  - [ ] Data "15 Mar 2024" → "2024-03-15"; PL "15 mar 2024" też
+  - [ ] Brak emaila w wierszu → `contactInfo.email = null` (nie crash, nie pusty string)
+  - [ ] Polskie znaki czytane poprawnie (BOM handling: `﻿` strip na początku)
+  - [ ] Dry-run preview pokazuje: newSlugs, mergedSlugs, skippedNoSlug, parseErrors
+  - [ ] Po imporcie 16k: <30s wall-clock end-to-end, popup/dashboard nie crashuje, baza ma `source:"linkedin_export"` na nowych
+  - [ ] Filtr w dashboardzie po źródle `linkedin_export` działa
+  - [ ] Merge: istniejący `connections_import` slug dostaje headline+company+email z exportu, NIE traci `scrapedProfile` jeśli już był scrape'owany
+  - [ ] Test fixture'owy: +~12 asercji w `test_profile_db.js`, baseline 534/0 → ~546/0
+  - [ ] `manifest.json` bump 1.19.1 → 1.20.0
+  - [ ] Smoke (Marcin, ~10 min): zażądaj CSV → upload → preview → zatwierdź → filtr w dashboardzie po źródle `linkedin_export` pokazuje nowe rekordy → klik w wiersz otwiera profil LinkedIn
+
+  **Dev notes (2026-05-17, Claude — Phase Dev → Tester):**
+
+  **What changed (5 plików):**
+  - `extension/background.js` (+167 linii) — dodany `linkedin_export: 4` w `SOURCE_RANK` (równa rangą `connections_import`). Nowe helpers przed `profileDbImport`: `parseLinkedInDate(str)` (EN priorytet, PL fallback, ISO output), `isValidEmailFromCsv(raw)` (blokuje `urn:li:member:` + waliduje `@.`), `stripBom(text)`, `extractLinkedInExportRows(text)` (slice preamble do `First Name,Last Name,URL,`, wywołuje istniejący `parseCsv` z v1.14.0 który już handluje RFC4180+doubled-quote), `mapLinkedInExportRow(row)` (mapowanie kolumn LI → record shape z `slug`/`name`/`headline`=Position/`company`/`isConnection:true`/`connectedOn`/`contactInfo:{email}` lub null). Nowy handler `profileDbImportLinkedInExport({csvText, dryRun})` z counterami `newSlugs/mergedSlugs/skippedNoSlug/parseErrors/urnEmailsBlocked` + atomic upsert z reuse'em `mergeProfileRecord` (custom merge dla `contactInfo`/`connectedOn`/`company` które są spoza standardowego shape'a — istniejący scrape NIE traci tych pól). Router: case `profileDbImportLinkedInExport`.
+  - `extension/dashboard.html` — nowy button `📥 Importuj CSV (LinkedIn-export)` obok istniejących import/eksport w `.profiledb-actions` + hidden `<input type="file" id="import-linkedin-export-file" accept=".csv">`. W `#profiledb-source-filter` dodana opcja `<option value="linkedin_export">LinkedIn-export (CSV)</option>`.
+  - `extension/dashboard.js` — `importLinkedInExportFile` lookup + handler z 2-step UX: (1) file.text() → bg `profileDbImportLinkedInExport({csvText, dryRun:true})` → preview counters w confirm() z PL labelami (`X nowych do dodania / Y do scalenia / Z pominiętych / urn maili odrzucono / błędów`); (2) potwierdzenie → bg ten sam call z `dryRun:false` → toast `Import OK: N nowych, M zaktualizowanych. Filtruj po źródle "LinkedIn-export"`. `SOURCE_LABELS` rozszerzony o `linkedin_export: "LinkedIn-export"` żeby tabela ładnie wyświetlała źródło.
+  - `extension/tests/test_profile_db.js` (+47 asercji) — nowa sekcja H z 16 grupami testów: H.1 date EN parse (4), H.2 PL fallback (2), H.3 invalid dates (4), H.4 urn:li: blocking (6), H.5 BOM strip (3), H.6 preamble skip (4), H.7 header_not_found (1), H.8 BOM+preamble (2), H.9 happy-path mapper (7), H.10 urn email → null + polski slug decode (2), H.11 empty email → null (1), H.12 trailing space trim (1), H.13 no URL → null (1), H.14 doubled-quote w Company/Position (3), H.15 merge zachowuje scrapedProfile gdy linkedin_export trafi na slug z `profile_scrape` (4), H.16 linkedin_export overrides `connections_import` przy równej randze (2). Port pełnych helperów + `mapLinkedInExportRow` jako standalone (sync z bg, debt #10).
+  - `extension/manifest.json` — bump `1.19.1 → 1.20.0` (nowa funkcja, minor).
+  - `extension/tests/fixtures/linkedin_connections_export.csv` NEW — 15 reprezentatywnych wierszy z prawdziwego eksportu Marcina (anonimizowanego nie ma — to jego baza, fixture zawiera realne nazwiska/slug'i; do code-review). Pokrywa edge case'y: pusty email, `urn:li:member:`, polskie znaki w slug'u (`adrian-pysk%C5%82o-...`), RFC4180 quoting (`"JMGJ Jaworska, Matusiak..."`), doubled-quotes (`"Agencja Celna ""Betrę"""`), trailing space w Position, krótki slug bez hash'a (`piotrobrebski`), stare daty (2014).
+  - `INSTRUKCJA.md` — nowy rozdział 3.8 "Import oficjalnego CSV z LinkedIn" (krok po kroku Settings → Data privacy → Get a copy of your data → wybór "Connections" → 10min mail → upload Connections.csv → preview → zatwierdź). Stary 3.8 dark mode przesunięty na 3.9.
+
+  **Test results (automated):** test_profile_db.js **82/0** (35 baseline + 47 nowych H.*), pełny suite **581/0** (baseline 534/0 + 47), `node --check` 6/6 czyste, 0 NUL bytes w 13 plikach `*.js *.html *.css manifest.json`, pre-commit hook PASS (test_syntax.js 12/0).
+
+  **How to test manually (Marcin, ~10 min):**
+  1. **Reload rozszerzenia** w `chrome://extensions/` → wersja **1.20.0** widoczna.
+  2. **Test parsera (fixture testowy):** dashboard 📊 → "🗄️ Baza profili" → **"📥 Importuj CSV (LinkedIn-export)"** → wybierz `extension/tests/fixtures/linkedin_connections_export.csv` (15 wierszy). Preview powinien pokazać: "15 kontaktów, 15 nowych do dodania, 1 mail odrzucono (LinkedIn URN zamiast literal email)" (Aleksandra Sołtys ma `urn:li:member:...`). Anuluj. Filtr źródła w dashboardzie zostaje na "Wszystkie".
+  3. **Test prawdziwego importu:** wypakuj `Connections.csv` z paczki `Basic_LinkedInDataExport_05-16-2026.zip.zip` (od LinkedIn). Ten sam button "📥 Importuj CSV (LinkedIn-export)" → wybierz `Connections.csv`. Preview: "17008 kontaktów, ~17000 nowych do dodania, ~550 maili odrzucono (URN)" (dokładne liczby zależne od stanu Twojej bazy — jeśli wcześniej robiłeś "⬇ Importuj kontakty z LinkedIn", część slug'ów będzie do scalenia, nie nowych). **Zatwierdź**. Zapis end-to-end powinien być <30 sekund.
+  4. **Weryfikacja w bazie:** dashboard → "🗄️ Baza profili" → filtr "Źródło: LinkedIn-export (CSV)" → tabela pokazuje rekordy z headline'em = Position, kolumna Źródło = "LinkedIn-export". Klik w wiersz → otwiera profil LinkedIn (nowa karta).
+  5. **Weryfikacja merge'u** (jeśli wcześniej był `connections_import`): znajdź slug który był w bazie pod `Import kontaktów` przed v1.20.0 — po imporcie powinien mieć `linkedin_export` jako źródło (rank ≥), plus dodane Company i Position (czego scroll-import nie zbierał). Jeśli był `profile_scrape` (rank 5 > 4), źródło zostaje `profile_scrape`, ale company/connectedOn dorzucone z exportu.
+  6. **Sanity — nic nie pęka:** scrape profilu z popup'u (zakładka Profil) działa, Generuj wiadomość działa, bulk-connect kolejka istnieje, dashboard follow-upów działa. Pełne wpisy w bazie nie zostały skasowane.
+  7. **Edge case — błędny plik:** w "📥 Importuj CSV (LinkedIn-export)" wybierz plik losowy nie-CSV (np. `extension/manifest.json` zmień rozszerzenie na .csv). Powinno: toast "Import nieudany: Nie znaleziono nagłówka `First Name,Last Name,URL,…`. To na pewno Connections.csv z LinkedIn-export'u?" (komunikat zrozumiały, brak crash'a).
+
+  **Manualne smoke nie obejmuje #53** (scraper contact-info) — to osobny task, czeka na DOM dump SDUI od Marcina (Ember-only fixture mam, ale chcę oba warianty przed Dev'em #53).
+
+  → Po #52: PM rotuje na #53. Bez #52 nie ma puli 16k slugów dla workera contact-info (Marcin może oczywiście dodawać przez Bulk z search results, ale to ścieżka dla nowych kontaktów, nie dla bazy 1st).
+
+- **#54** (Sprint #10, P0 hotfix, v1.21.0) — **Paginacja + multi-select + delete w bazie profili**. **Tło:** po imporcie 16679 kontaktów (CSV #52 OK) dashboard renderował wszystkie wiersze w DOM naraz → przeglądarka mulała; plus stary scroll-import zostawił ~60 śmieci ("Praca w bankowości…", "Dzień dobry, poproszę…", slug'i bez imion) i nie było funkcji delete. Marcin sygnalizował oba problemy 2026-05-17 w trakcie smoke'u #52.
+
+  **Dev notes (2026-05-17, Claude — Phase Dev → Tester):**
+
+  **What changed (5 plików):**
+  - `extension/background.js` — `profileDbList(filter)` dostaje `filter.limit + filter.offset` (bez nich zwraca all, backwards compat dla `buildProfileDbCsv`/`buildFullBackupJson`); zwracana struktura ma teraz `{list, counts, page:{limit, offset, filteredTotal}}`. Nowy handler `profileDbDelete({slugs?, deleteAllFiltered?, filter?})` — dwa tryby: usunięcie konkretnych slug-ów albo bulk-delete wszystkich pasujących do filtru (text/source/isConnection). Router case dodany.
+  - `extension/dashboard.html` — toolbar "🗑 Bulk-bar" nad tabelą z (a) master checkbox "Zaznacz widoczne", (b) button "Usuń zaznaczone (N)", (c) button "Usuń wszystkie pasujące do filtru (M)". Kolumna checkbox jako pierwsza w tabeli. Paginacja pod tabelą: prev/next/page-info + selector "100/200/500/1000 per stronę" (default 200).
+  - `extension/dashboard.js` — state module-level (`profileDbPage`, `profileDbPageSize`, `profileDbSelectedSlugs:Set`, `profileDbCurrentPageSlugs`, `profileDbFilteredTotal`). `loadProfileDb` przekazuje limit/offset, aktualizuje pagination UI. `buildProfileDbRow` dodaje checkbox z listenerem do Set. Master-select toggluje wszystkie widoczne. Delete-selected: confirm + bg + clear Set + refresh. Delete-filtered: confirm z opisem filtru + DRUGA bramka gdy brak filtra (CAŁA BAZA), bg + refresh. Filter change → reset page=1.
+  - `extension/dashboard.css` — `.profiledb-bulkbar` (8px padding, border, bg-muted), `.profiledb-pagination` (flex, tabular-nums, page-size selector po prawej), `.profiledb-th-check`/`.profiledb-table-check` (32px width, centered).
+  - `extension/tests/test_profile_db.js` (+12 asercji w sekcji I) — `profileDbListLogic` port: I.1 bez limit→all, I.2 limit+offset+sort, I.3 offset slice, I.4 source filter + pagination, I.5 offset poza zakresem. `profileDbDeleteLogic` port: I.6 delete konkretnych, I.7 nieistniejący slug ignored, I.8 deleteAllFiltered po source, I.9 po text, I.10 po isConnection, I.11 bez filtra→all, I.12 brak args→noop.
+  - `extension/manifest.json` — bump 1.20.0 → **1.21.0** (nowa funkcja, minor).
+
+  **Test results (automated):** test_profile_db.js **109/0** (82 sprzed #54 + 12 nowych I + drobne adjustments po linterze), pełny suite **608/0** (z 10 plików counter-able), `node --check` 6/6 czyste, syntax OK.
+
+  **Uwaga z fazy Dev (3-krotne obcięcie pliku przez Edit tool):** `Edit` urwał plik 3× pod rząd przy długich blokach: `background.js` (2×: po #52 helpers, po #54 profileDbList rozszerzeniu), `tests/test_profile_db.js` (1×: po sekcji I). Każdy raz wykryte przez `node --check` od razu po edycji. Restore z `git show HEAD:…` + replay przez Python atomic write — `python3 << PYEOF + open("w")` zapisuje plik atomicznie bez ryzyka obcięcia. **Decyzja na resztę sprintu:** dla bloków >50 linii albo z polskimi znakami w stringach JS — używać Python heredoc, NIE `Edit` tool. Dla małych edytów (1-10 linii) `Edit` jest OK.
+
+  **How to test manually (Marcin, ~5 min):**
+  1. **Reload** `chrome://extensions/` → wersja **1.21.0**.
+  2. **Performance:** Dashboard 📊 → "🗄️ Baza profili" → tabela ładuje się **natychmiast** (200 wierszy, nie 16679). Strona NIE muli. Pod tabelą paginacja: "Strona 1 z 84 (200 / 16679 pasujących)".
+  3. **Paginacja:** klik "Następna →" → strona 2 / 84, kolejne 200 wierszy. Selektor "1000/stronę" → przeliczy strony. Search po imieniu / źródle → reset do strony 1.
+  4. **Multi-select widoczne:** master checkbox "Zaznacz wszystkie widoczne" → wszystkie 200 wierszy widocznych dostaje ✓. Button "Usuń zaznaczone (200)" aktywuje się.
+  5. **Cleanup śmieci scroll-importu:** filtr "Źródło: Import kontaktów" → liczba pasujących pojawia się na buttonie "Usuń wszystkie pasujące do filtru (N)". Kliknij → confirm z opisem filtru → potwierdź. Z bazy znikają wszystkie z `source:"connections_import"` (te śmieci typu "Praca w bankowości…", "Dzień dobry, poproszę…", slug-i jako imię, "Dziękuję, Marcinie" — całe ~60 sztuk jednym kliknięciem). Zostaje czysta baza z `linkedin_export` + ewentualne ze scrape'ów/searchu.
+  6. **Delete bramka destrukcji:** zresetuj filtry (wszystkie puste) → "Usuń wszystkie pasujące do filtru (16679)" → confirm #1 ("Operacja nieodwracalna") + confirm #2 ("UWAGA: brak filtra — to usunie CAŁĄ BAZĘ"). NIE klikaj OK na drugim — anuluj i sprawdź że baza nietknięta. (Test bramki.)
+  7. **Sanity:** bulk-connect/follow-up/scrape profilu/generuj wiadomość — działają jak przed (zmiany #54 są wyłącznie w `profileDb` flow, nie ruszają reszty).
+
+  → Po smoke #54 PASS: Commit phase (`git add` + commit "#52+#54 v1.20.0+v1.21.0 LinkedIn-export import + paginacja+delete"), potem #53 Dev (czeka na drugi DOM dump contact-info — ale można też ruszyć Ember-only MVP z tym co jest).
+
+- **#53** (Sprint #10, P1) — **Scraper contact info (telefon, email, websites, address, twitter, birthday) + About z `/in/<slug>/overlay/contact-info/`**. **PM decomposition 2026-05-16:**
+
+  **Zakres:** Nowy worker analogiczny do `bulkConnect`, ale tickujący po slugach z `profileDb` filtrowanych „brak/stale contactInfo". Każdy tick: otwiera `linkedin.com/in/<slug>/overlay/contact-info/` w karcie w tle (`active:false`), parse modal, BONUS scrape `about` z głównej strony, zapis do `profileDb.profiles[slug].contactInfo + about`, zamyka tab, jitter, loop. UI w dashboardzie (multi-select + add-to-queue + filtr „brak contact info") + nowa zakładka „Kontakty" w popupie (worker control + status + ETA).
+
+  **Założenia:**
+  - Contact info na LinkedIn widoczne TYLKO dla 1st connections (po imporcie z #52 wszystkie mają `isConnection:true`, ale Marcin może też mieć w bazie 2nd-degree z `bulk`/`search` → worker je skip'uje z `failed:"not_first_degree"`)
+  - URL `/in/<slug>/overlay/contact-info/` przez direct nav otwiera modal NAD profilem; LinkedIn auto-otwiera modal po hydration dla większości routów
+
+  **Struktura DOM Ember variant — POTWIERDZONE EMPIRYCZNIE 2026-05-16 z `contact_only_email.html` (kontakt Szymon Kracik, sam email + data połączenia):**
+  ```html
+  <div role="dialog" tabindex="-1" data-test-modal data-test-modal-container ...>   ← top-level modal
+    <div class="artdeco-modal-overlay--is-top-layer ...">
+      <div class="artdeco-modal artdeco-modal--layer-default ...">
+        <button data-test-modal-close-btn class="artdeco-modal__dismiss">...</button>
+        <header class="artdeco-modal__header">
+          <h2>Informacje kontaktowe</h2>                                              ← top marker (PL) / "Contact info" (EN)
+        </header>
+        <div class="artdeco-modal__content">
+          <section class="pv-contact-info__contact-type">                              ← SEKCJA #1: identifier (slug LinkedIn'owy)
+            <svg data-test-icon="people-medium">...</svg>                              ← ikona = stabilny TYPE key
+            <h3 class="pv-contact-info__header t-16 t-black t-bold">Profil użytkownika Szymon Kracik</h3>
+            <div class="<hashowane> t-14">
+              <a href="https://www.linkedin.com/in/szymon-kracik-96825974">...</a>
+            </div>
+          </section>
+          <section class="pv-contact-info__contact-type">                              ← SEKCJA #2: Email
+            <svg data-test-icon="envelope-medium">...</svg>
+            <h3 class="pv-contact-info__header">Wiadomość e-mail</h3>
+            <div class="<hashowane>"><a href="mailto:szymonkracikbiz@gmail.com">szymonkracikbiz@gmail.com</a></div>
+          </section>
+          <section class="pv-contact-info__contact-type">                              ← SEKCJA #3: data połączenia
+            <svg data-test-icon="people-medium">...</svg>
+            <h3 class="pv-contact-info__header">W kontakcie</h3>
+            <div class="<hashowane> t-14"><span class="<hashowane>">16 maj 2026</span></div>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>
+  ```
+  **Kluczowe obserwacje:**
+  - **Top marker:** `<h2>Informacje kontaktowe</h2>` (PL) / `<h2>Contact info</h2>` (EN) — gate'uje że modal się załadował. Wewnątrz `[role="dialog"][data-test-modal]`.
+  - **CSS classes są hashowane** (`mWWHRQepZhvwbvsbiXEsBoYPQLzYcHVrrwWrWU`, `hnKrPRPnwFbnRVvtDKSMCuojjjYRpBvZf`) — LinkedIn'owy CSS-in-JS, **NIE używać jako selektora**. Zamiast tego używać struktury parent>child + atrybutów `data-test-*` które są stabilne.
+  - **`data-test-icon` to NAJSTABILNIEJSZY key typu sekcji** (lokalizacja-niezależny, niezależny od zmian tekstu): `envelope-medium`→email, `phone-medium`→phone, `link-medium`→website, `home-medium`→address, `birthday-medium`→birthday, `people-medium`→connectedOn lub identifier (rozróżniane po pozycji + obecności `<a href="/in/">`), `chat-bubble-medium`→im (do potwierdzenia), `twitter`/`x-medium`→twitter (do potwierdzenia — brak fixture).
+  - **Fallback po headerze** gdy ikona nieznana — `<h3 class="pv-contact-info__header">` text. Mapowanie PL/EN: „Wiadomość e-mail"/„Email"→email, „Numer telefonu"/„Phone"→phone, „Adres"/„Address"→address, „Witryna internetowa"/„Website"→website, „Urodziny"/„Birthday"→birthday, „W kontakcie"/„Connected"→connectedOn, „Komunikator"/„IM"→im, „X"/„Twitter"→twitter, „Profil użytkownika X"/„X's profile"→IDENTIFIER (skip — slug zapisany pod `a[href*="/in/"]`).
+  - **Sekcja identifier** (`Profil użytkownika ...`) zawiera link do profilu — można użyć do walidacji że overlay zwraca dane dla zamówionego sluga (defense przeciw race condition gdy modal otwiera się dla innego profilu).
+  - **`button[data-test-modal-close-btn]`** — robust close selector (zamiast `aria-label*="Zamknij"` które lokalizowane).
+
+  **Status fixture'ów:**
+  - ✅ `contact_only_email.html` — Ember variant z 3 sekcjami (identifier + email + connectedOn). Wystarczy do napisania extractora Ember na MVP.
+  - ❌ `contact_all_data.html` (199 KB) — pomyłka Marcina: 4 różne tytuły stron w jednym pliku (`Marek Michalski`, `Kontakty`, `Kanał informacji` × 2) + linki reklamowe (`1betandgonow.com`, `candyai.love`). NIE jest dumpem contact-info overlay. Potrzebny ponowny dump z faktycznego `/overlay/contact-info/` kontaktu który MA telefon+websites+address (lub odpuszczamy SDUI variant na MVP — patrz niżej).
+  - ⚠ **SDUI variant NIE pokazał się u Marcina** (mimo że v1.12.0 mamy SDUI dla profile-page) — być może contact-info modal nie został jeszcze przerollowany na SDUI w jego cookie-buckecie. **Decyzja PM: implementacja Ember-only na MVP**. Telemetria `contact_info_modal_not_found` wystrzeli gdy LinkedIn przerolluje SDUI dla Marcina — wtedy nowy dump + osobny `extractFromContactInfoSdui`.
+
+  **Implementacja:**
+  1. `extension/content.js` — nowy entry `scrapeContactInfo(slug)`:
+     - czeka na modal (poll 100ms × 50, max 5s; markery: `[role="dialog"]` zawierający `<h2>` z „Informacje kontaktowe"/„Contact info", lub `section[class*="pv-contact-info"]` w głównym DOM)
+     - probe oba warianty: klasyczny artdeco modal (top-level DOM) + shadow DOM (`#interop-outlet` jak w preload modal #19); pierwszy który znajdzie → parse
+     - `extractFromContactInfoOverlay(rootEl)`: dla każdej sekcji `section.pv-contact-info__contact-type` (lub equivalent SDUI) — header text → field (`email`/`phone`/`website`/`twitter`/`address`/`birthday`/`im`), value scrape (`a[href^="mailto:"]` → email, `a[href^="tel:"]` → phone, `a[href^="http"]` → website {url, label}, plain text → address/birthday)
+     - zwraca `{email, emails[], phones[], websites:[{url,label}], twitter, address, birthday}` — pola `null`/`[]` jeśli sekcja nieobecna (kontakt nie udostępnił)
+     - BONUS: po scrape modal'u → zamknij overlay (klik `button[aria-label*="Zamknij"]` / `Escape`) + wywołaj `scrapeProfileAsync()` z ograniczeniem do `about` field'u (reuse istniejącego, tylko skip jeśli `profileDb` już ma `about` świeższy niż 30 dni)
+     - jeśli modal nie wjedzie w 5s → fallback: wróć na `/in/<slug>/`, znajdź button „Informacje kontaktowe" (`a[href$="/overlay/contact-info/"]`), klik → retry modal wait
+     - jeśli dalej nic → telemetria `event_type:"contact_info_modal_not_found"` + return `{error:"modal_not_found"}`
+
+  2. `extension/background.js` — nowy state `contactInfoScrape` w `BULK_DEFAULTS`:
+     ```
+     contactInfoScrape: {
+       active: false,
+       queue: [],              // [slug, ...]
+       inFlight: null,
+       sentToday: 0,
+       lastSentDate: null,
+       dailyCap: 150,          // conservative — contact info może mieć tighter limit niż connect
+       jitterMin: 45000,
+       jitterMax: 120000,
+       hoursStart: 9,
+       hoursEnd: 18,
+       lastTickAt: null,
+       lastErrorAt: null,
+       lastError: null,
+       failsByType: {},        // {modal_not_found: 3, parse_fail: 1, ...}
+     }
+     ```
+     - nowy worker `contactInfoTick()` analogiczny do `bulkConnectTick`: pobiera next slug z queue, `probeProfileTab(slug, "scrapeContactInfo", {urlSuffix:"/overlay/contact-info/"})`, persistuje `profileDb.profiles[slug].contactInfo = {...result.contactInfo, scrapedAt: Date.now(), source:"overlay"}` + `profileDb.profiles[slug].about = result.about` (jeśli niepusty), inkrement `sentToday`, jitter, schedule next via `setTimeout`/`chrome.alarms`
+     - `chrome.alarms` keep-alive 24s (reuse z bulk connect)
+     - failure handling: 3 kolejne `contact_info_modal_not_found` → auto-pause + telemetria + `lastError:"modal_repeatedly_missing"`; pojedyncze fail'e → log + skip do next slug
+     - godziny 9-18 respektowane (poza godzinami `active:true` ale tick idle'uje + `status:"idle_hours"`)
+     - daily reset: porównaj `lastSentDate` z dziś → reset `sentToday=0`
+     - handlers: `contactInfoStart`, `contactInfoStop`, `contactInfoAddSlugs([slug,...])`, `contactInfoClearQueue`, `contactInfoGetState`, `contactInfoSetDailyCap(n)` (max 300 — UI nie pozwala wyżej)
+     - **konflikt z bulk-connect:** sprawdź `bulkConnect.active` w `contactInfoStart` → jeśli active, return `{error:"bulk_connect_running"}` + toast. Oba używają `probeProfileTab` + otwierają taby w tle, równoległość = chaos + double detection risk.
+
+  3. `extension/popup.html|css|js` — **nowa zakładka „Kontakty"** (4. po Profil / Bulk / Follow-upy). **Decyzja PM:** osobna zakładka (a nie sekcja w Bulk) — workflow fundamentalnie inny (nie connect/message, tylko data fetch), miejsce w Bulk by mieszało dwa workery na jednej zakładce. Zakładka pokazuje:
+     - badge active/pauza/idle_hours/idle (queue empty)
+     - queue count + sentToday/dailyCap + ETA („~14 dni przy 150/dzień")
+     - last error + lastErrorAt
+     - Start / Stop / Wyczyść kolejkę buttons
+     - info: „Dodaj do kolejki → Dashboard → Baza profili → zaznacz → Dodaj do kontaktów"
+     - link do dashboardu
+
+  4. `extension/dashboard.html|css|js` — w tabeli „Baza profili":
+     - 4 nowe kolumny: „📧" (email tick / cross), „📞" (phone tick / cross), „🌐" (websites count), „📝" (about: short/long/empty)
+     - filtr „Brak danych kontaktowych" (gdzie `!contactInfo?.scrapedAt`)
+     - multi-select checkbox per wiersz + master „Zaznacz widoczne"
+     - button „📥 Dodaj zaznaczone do kolejki contact info" → `contactInfoAddSlugs` + toast z liczbą dodanych (deduped z istniejącą queue)
+     - osobna sekcja u góry (analogicznie do follow-up sekcji): „📞 Worker contact info" — status, queue count, sentToday/cap, ETA, controls (Start/Stop/Clear)
+
+  5. `extension/tests/test_contact_info.js` NEW — parsing fixture'u: email z mailto, phone z tel:, websites z hrefs (label = text), address z plain text, ukryte sekcje (kontakt nie udostępnił phone → field=null), modal nieobecny → error path. **Wymaga fixture'u od Marcina.** +~15 asercji.
+
+  6. `extension/tests/fixtures/contact_info_overlay.html` NEW — DOM dump z dowolnego kontaktu Marcin'a (`Ctrl+S` z otwartego `linkedin.com/in/<slug>/overlay/contact-info/`, lub `document.documentElement.outerHTML` w DevTools). Idealnie 2 warianty: jeden z pełnymi danymi (email+telefon+websites+twitter+address+birthday), drugi z minimalnymi (sam email). **Blocker przed Dev'em — bez tego selektory są zgadywanką.**
+
+  7. `INSTRUKCJA.md` — nowy rozdział „Pobieranie kontaktów (telefony, emaile, O mnie)" — flow: filtr w dashboardzie → zaznacz → dodaj do kolejki → Start w popup'ie „Kontakty" → czekaj. Żelazna regułą: dzienne limity, ryzyko detekcji, nie odpalać w nocy, NIE odpalać razem z bulk-connect, planować horyzont w tygodniach/miesiącach przy dużych pulach.
+
+  8. Bump 1.20.0 → 1.21.0 (nowa funkcja, minor). Decyzja o major v2.0.0 odłożona — to drugi feature dodający worker, ale architektura kontraktu z backendem bez zmian.
+
+  **Pliki:** `extension/content.js` (scrapeContactInfo + extractFromContactInfoOverlay + closeOverlayAndScrapeAbout), `extension/background.js` (contactInfoScrape state, tick, handlers, alarm + konflikt-guard z bulk-connect), `extension/popup.html|js|css` (nowa zakładka „Kontakty"), `extension/dashboard.html|js|css` (kolumny + filtr + add-to-queue + worker control panel), `extension/tests/test_contact_info.js` NEW, `extension/tests/fixtures/contact_info_overlay.html` NEW (Marcin), `extension/manifest.json` (bump 1.21.0), `INSTRUKCJA.md` (+rozdział).
+
+  **Ryzyka:**
+  1. **DOM dump blocker** — bez `contact_info_overlay.html` od Marcina nie ma jak napisać extractora. LinkedIn ma 2 prawdopodobne warianty (klasyczny artdeco + ewentualnie SDUI A/B test, jak w v1.12.0 dla profile-page). Dev gate'owany na dump.
+  2. **Rate limit detection** — contact info to osobny Voyager endpoint (`voyagerIdentityDashProfiles?...contactInfo` lub similar). Anegdoty z community: ban 24-72h po ~500-1000/dzień. **Conservative dailyCap 150** w default, max 300 exposed w UI. Jitter 45-120s MUST. Godziny 9-18 MUST.
+  3. **16k profili = ~80-100 dni przy 200/dzień** — Marcin musi rozumieć skalę; UI MUSI pokazywać ETA w popup'ie i dashboardzie, inaczej user thinks „nie działa" po godzinie i wyłączy worker.
+  4. **Profile prywatne** (kontakt schował telefon/email w settings) — overlay pokaże TYLKO sekcje udostępnione. Parser pisze `null` na brakujące pola, status `partial` lub `empty` (nie `failed`). `scrapedAt` set żeby NIE retry'ować w nieskończoność.
+  5. **Modal w shadow DOM** — niektóre wersje LinkedIn'a renderują modal w `#interop-outlet` shadow root. Probe oba warianty.
+  6. **Tab race** — direct nav `/in/<slug>/overlay/contact-info/` czasem ląduje na profile bez auto-otwartego modal'u (LinkedIn auto-opens warunkowo). Fallback: znajdź button „Informacje kontaktowe" w profile top card, klik → retry.
+  7. **SDUI variant** — od v1.12.0 wiemy że LinkedIn rolluje SDUI. Contact-info overlay też może. Bez dumpu wiedza = 0; po dumpie być może osobny `extractFromContactInfoOverlaySdui` analogiczny do `extractFromSdui` w profilach.
+  8. **Konflikt z bulk-connect** — oba workery używają `probeProfileTab` + otwierają taby w tle. **Decyzja:** tylko jeden worker active naraz. UI explicit message gdy user próbuje Start contact-info przy aktywnym bulk-connect.
+  9. **Lokalne dane sensitive** — email + telefon w `chrome.storage.local`. To są dane kontaktów Marcina, które oni udostępnili LinkedIn'owi do widoku 1st connections — Marcin ma legalne prawo je tam mieć (LinkedIn ToS pozwala 1st widzieć contact info). Auto-backup z v1.14.0 będzie te dane zrzucał do pliku w `Pobrane/linkedin-msg-backup/` — Marcin powinien być świadomy że plik ma sensitive data (GDPR — backup pliki nie w cloud sync, nie w shared folder).
+
+  **Acceptance criteria:**
+  - [ ] Worker startuje z popup'a/dashboardu: tick co 45-120s (jitter), otwiera `/in/<slug>/overlay/contact-info/` w karcie tle, parse modal, zapisuje, zamyka tab
+  - [ ] `profileDb.profiles[slug].contactInfo = {email, emails[], phones[], websites[], twitter, address, birthday, scrapedAt, source:"overlay"}` zapisany
+  - [ ] `profileDb.profiles[slug].about` zapisany (bonus inline z głównej strony, fail nie blokuje contact info)
+  - [ ] Profile prywatne (brak udostępnionych pól) → `contactInfo` z `null`-ami, `scrapedAt` set, status `empty`, NIE retry
+  - [ ] DailyCap respektowany (worker idle'uje gdy `sentToday >= dailyCap`)
+  - [ ] Godziny 9-18 respektowane (poza godzinami status `idle_hours`, nie crashuje, tick odpala się po 9:00)
+  - [ ] Bulk-connect + contact-info NIE działają równolegle (Start contact-info przy active bulk → error toast „zatrzymaj bulk najpierw")
+  - [ ] Telemetria `contact_info_modal_not_found` i `contact_info_parse_fail` leci na backend (reuse `/api/diagnostics/scrape-failure`)
+  - [ ] Dashboard: 4 nowe kolumny (email/phone/websites/about), filtr „brak danych", multi-select + add-to-queue, panel worker controls
+  - [ ] Popup zakładka „Kontakty": status, controls, ETA aktualizowany live
+  - [ ] Testy: ≥15 asercji w `test_contact_info.js`, fixture'owy parsing pełnego + minimalnego wariantu
+  - [ ] `manifest.json` bump 1.20.0 → 1.21.0
+  - [ ] INSTRUKCJA.md zaktualizowana (rozdział „Pobieranie kontaktów" + ostrzeżenie o GDPR backup pliki)
+  - [ ] Smoke (Marcin, ~30 min): dodaj 5 slugów do queue → Start → czekaj 5-10 min (3-5 jitterów) → `profileDb` ma `contactInfo` dla zescrapowanych → ETA aktualizuje się w popup'ie → Stop działa → ponowny Start kontynuuje od następnego sluga → profil prywatny zapisuje `null`-e bez retry → próba Start gdy bulk-connect active → error toast
+
+  → Po #53: Sprint #10 zamknięty. Następny do wyboru: #22 reszta (pagination + 2nd-only filter — master-select już w v1.14.6) / #10 selectors.json + dedup Voyager parsera / #6 self-test scraper widget.
 
 > **═══ SPRINT #9 — UX redesign OVB Professional Minimal (PM plan 2026-05-12) ═══**
 > Domknięcie Sprintu #7 (#46 design tokeny v1.13.0 + dark mode v1.14.1 już zrobione) — zostały **komponenty**. Spec: `UX_REDESIGN.md` sekcje 3.1–3.8 + 4 ("Sprint #7 — dekompozycja na 6 podtasków", numeracja `#23-#28` w spec to placeholdery — #23=tokeny ZROBIONE jako v1.13.0; tu kontynuujemy #24-#28). Wizualny redesign, ZERO zmian kontraktu z backendem ani flow danych. **Wersja:** wg `UX_REDESIGN.md` bump major → **v2.0.0** przy starcie (UX_REDESIGN traktuje redesign + rename "LinkedIn MSG" → "Outreach" + 3-fazowy action bar jako breaking-visual). Alternatywa: 1.15.0 jeśli zostawiamy nazwę i flow — **decyzja Marcina przy starcie Dev'a.**
@@ -456,6 +726,119 @@ Lessons: pre-commit hook + `node --check` przed commit to MUST-HAVE dla MV3 popu
 - **#6** Self-test scraper widget w popup (settings → diagnostyka)
 - **#10** Wersjonowanie selektorów + auto-fallback chain (selectors.json + hot-update z backendu, plus refactor żeby Voyager parser nie był zduplikowany w test_e2e.js i content.js)
 - **#22 fix** Auto-pagination "Wypełnij do limitu" (1.4.1 zatrzymuje się po 1 stronie). Wymaga: DOM dump paginacji od Marcina (`extension/tests/fixtures/search_results_pagination.html`) → fix selektorów `bulkAutoExtract` w content.js (~linie 1430-1440) → test fixture'owy. Plus master-select checkboxy (Select all / 2nd degree only / Unselect Pending) + `Stop after N pages` setting (default 5). Estymata: ~0.5+0.5 sprintu Marcina.
+
+---
+
+# REGUŁY PRACY AUTONOMICZNEJ (Claude Code session)
+
+> WORKFLOW LOOP powyżej opisuje **fazy** (PM/Dev/Tester/Commit). Ten blok opisuje **jak się w nich zachowywać** — filozofia iteracji, samokrytyki i decyzji bez operatora. Adaptowane z patternu Marcina ("agentic loop / self-review") do specyfiki tego stacku (Chrome Extension MV3 + FastAPI, nie Next.js).
+
+## Pętla iteracji — NIE zatrzymuj się po jednej fazie
+
+Po rotacji WORKFLOW LOOP nie kończ pracy. Wchodzisz w pętlę krytyki:
+
+1. **Dev → test** — po każdej edycji JS odpal natychmiast `node --check <file>` + relevant `node tests/test_<file>.js`. Nie zostawiaj „sprawdzimy na końcu".
+2. **Tester (self)** — testy zielone, zrób smoke samodzielnie (reload extension'u, klik po zakładkach, scrape happy-path jeśli zmiana w content.js). Nie oddawaj na Marcina bez tego kroku.
+3. **Identyfikuj 1-3 słabe miejsca** — UX wygląda średnio, brakuje edge case'u, error message jest bezbarwny, popup się zaciekł na małym ekranie. Wpisz do PROGRESS.md jako „Self-review pass N: X".
+4. **Fix 3 najgorsze rzeczy → wróć do (1)**. Co najmniej 2 iteracje cyklu zanim oddasz Marcin'owi.
+5. **Update PROGRESS.md po każdej sesji** — sekcje `Zrobione`, `Decyzje`, `Lessons learned`, `BLOCKED / TODO`, `Status końcowy`.
+
+## Reguły zachowania
+
+1. **Commituj per task.** Po każdym DONE w SPRINT BACKLOG. Wiadomość po polsku, imperative, `<typ>: <opis>` (`feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`). Bez kropki na końcu, ≤72 znaki.
+2. **Update `PROGRESS.md` po każdej sesji.** Najnowsze na górze. Marcin czyta rano — musi w 30 sekund wiedzieć z czym wstać.
+3. **Nie pytaj operatora.** Binarny wybór → wariant bardziej standardowy / mniej destruktywny. Zapisz w PROGRESS.md: „Decyzja: X (zamiast Y), bo Z". Pytaj **tylko** gdy decyzja wpływa na user-flow, kontrakt z backendem, albo wymaga akcji Marcina poza kodem (np. push, dystrybucja, smoke na realnym koncie LI).
+4. **3-strike fix rule.** Coś nie działa po 3 próbach → wyłącz feature flagą, dodaj TODO komentarz, idź dalej. Lista do PROGRESS.md → „BLOCKED".
+5. **Estymata × 2 = STOP.** Wytnij scope, zaznacz TODO, idź. Nie ślęcz nad jednym problemem 8 godzin.
+6. **Mock > brak.** Brakuje DOM dumpu → syntetyczny fixture z reprezentatywnymi edge case'ami. Test fixture powinien pokrywać oba warianty LinkedIn (SDUI + Ember) gdy to relevant — A/B testy są częste, raz na kilka tygodni jeden z nich się rolluje na nowe konta.
+7. **Polski w copy widocznym dla użytkownika, EN/PL w kodzie** (konsekwentnie w pliku). Commit messages po polsku.
+8. **Bezpieczeństwo.** `ANTHROPIC_API_KEY` w `backend/.env` (gitignore'owane), `API_KEYS` (hasło dostępu) tam samo. `key` field w `extension/manifest.json` jest publiczny — to NIE sekret (to extension fingerprint chroniący stabilne ID przy Load Unpacked). NIGDY nie commituj `.env`. NIGDY hardcoded tokeny w `*.js`.
+9. **Microcopy konkretnie.** `"Import nieudany: Nie znaleziono nagłówka 'First Name,Last Name,URL,...'. To na pewno Connections.csv z LinkedIn-export'u?"` zamiast `"Coś poszło nie tak"`. User MUSI wiedzieć co poszło źle i co zrobić.
+10. **Pre-commit hook NIE bypass.** `.git/hooks/pre-commit` sprawdza `node --check` + NUL bytes w `extension/*.js`. Istnieje od incydentu 1.8.0/1.8.1 (popup SyntaxError + 169 NUL bytes po Edit/Write zablokowało parsowanie SW). Jak hook fail → napraw kod, nie `--no-verify`.
+11. **Mock backend w testach extension'a.** `extension/tests/test_*.js` to standalone node — port czystych funkcji z `background.js`/`content.js` bez `chrome.*`. Synchronizuj ręcznie po zmianach w bg. Dług: #10 BACKLOG (selectors.json + dedup).
+
+## ⚠ Edit tool — incydent 2026-05-17 (Cowork session)
+
+W jednej sesji `Edit` tool **4× pod rząd uszkodził pliki** przy długich blokach lub blokach z polskimi znakami w JS-stringach: `background.js` ×2 (obcięcie ~10 linii końcówki), `tests/test_profile_db.js` ×1 (obcięcie ~80 linii końcówki), `dashboard.js` ×1 (15 NUL bytes na końcu pliku). Każdy raz złapane przez `node --check` lub pre-commit hook.
+
+**Reguła operacyjna od teraz (dla każdej sesji Claude — Cowork lub Claude Code):**
+
+- Bloki **<50 linii** lub bez polskich znaków → `Edit` OK.
+- Bloki **>50 linii** ALBO z polskimi znakami w JS-stringach (`"Importuj…"`, `"Brak emaila"`, `"Zaznacz widoczne"`, etc.) → **Python heredoc przez Bash**:
+  ```bash
+  python3 << 'PYEOF'
+  with open("file.js", "r", encoding="utf-8") as f: t = f.read()
+  assert "anchor_substring" in t, "anchor not found"
+  t = t.replace("anchor_substring", "anchor_substring + new_block", 1)
+  with open("file.js", "w", encoding="utf-8") as f: f.write(t)
+  PYEOF
+  ```
+  Atomic write przez `open("w")`, bez ryzyka obcięcia, bez NUL bytes.
+- **Po każdej edycji JS:** `node --check <file>` natychmiast. Jak fail → `git show HEAD:<file>` do `/tmp/` + replay przez Python. NIE pod koniec zmian — od razu.
+- **Cleanup NUL bytes** (gdyby się wkradły):
+  ```bash
+  python3 -c "
+  with open('file.js','rb') as f: d = f.read().rstrip(b'\\x00')
+  open('file.js','wb').write(d)
+  "
+  ```
+
+## SELF-REVIEW per faza Dev → Tester
+
+Przed oddaniem tasku na zewnętrznego Testera (smoke Marcin'a):
+
+1. **Syntax sanity** (~10s):
+   ```bash
+   cd extension && for f in *.js; do node --check "$f" || echo FAIL: $f; done
+   node tests/test_syntax.js
+   ```
+   Cel: 6/6 plików OK, 12/12 asercji PASS (z NUL detection), 0 NUL bytes.
+
+2. **Test suite** (~30s):
+   ```bash
+   cd extension && node tests/test_profile_db.js
+   # + każdy test_*.js który dotyczy zmienionego komponentu
+   ```
+   Cel: zero regresji vs baseline. Aktualny baseline po Sprint #10 #52+#54: **608/0**.
+
+3. **Smoke wzrokowy** (~60s, jeśli zmiana w UI):
+   - Reload `chrome://extensions/`, sprawdź że wersja widoczna obok nazwy zmieniła się na bumpowaną
+   - Otwórz popup, klik po wszystkich zakładkach (Profil / Bulk / Follow-upy / Kontakty jeśli #53 done)
+   - Otwórz dashboard 📊, sprawdź że sekcje renderują się spójnie, nic nie zlewa się na siebie
+   - Coś wygląda słabo → wpis do PROGRESS.md jako „Self-review pass N: X" → fix → re-screenshot
+
+4. **Manual happy-path** (jeśli zmiana w content.js / scrape / messaging):
+   - Scrape profilu Joanna lub Grzegorz (znani dobrze-scrape'owalni z fixture'ów)
+   - Generuj wiadomość → kopiuj+śledź → check że queue item się stworzył
+   - Bulk-connect z 1 osoby → check że pending się zaznacza po prawidłowo wykonanym Connect
+
+5. **Dev notes do CLAUDE.md** — sekcja `IN PROGRESS` dla aktualnego tasku:
+   - „What changed (N plików): plik X — Y zdań, plik Y — Z zdań"
+   - „Test results (automated): T/0 PASS, baseline `X` → `X+N`"
+   - „How to test manually (Marcin, ~M min): 1. Reload → wersja, 2. ..."
+   - „Edge cases tested: ..."
+
+## WHAT GOOD LOOKS LIKE — finalny stan po sesji Claude Code
+
+Kiedy Marcin sprawdza rano:
+
+- **`git log`** pokazuje 2-8 commitów konwencjonalnych za sesję, każdy odpowiada jednemu task'owi z DONE. Po polsku, imperative.
+- **`CLAUDE.md`** ma:
+  - `CURRENT STATE` → `Phase` = wskazuje co dalej (zwykle "Commit" lub "PM" gdy task zamknięty)
+  - `IN PROGRESS` pusta lub z wpisami oczekującymi smoke Marcin'a (każdy z „How to test manually")
+  - `DONE` rozszerzona o nowe taski z `Commit: <sha>` + krótki opis
+  - `SPRINT BACKLOG` → następny task naturalnie wybrany (P0 przed P1)
+- **`PROGRESS.md`** ma nowy wpis (data 2026-05-NN):
+  - `Zrobione` (1-5 punktów)
+  - `Decyzje` (każda z „bo Z" — uzasadnienie)
+  - `Lessons learned` (1-3 punkty — co Cię zaskoczyło, co odkryłeś, co warto pamiętać)
+  - `BLOCKED / TODO` (jeśli coś)
+  - `Status końcowy` (1 zdanie podsumowania)
+- **Pełny test runner zielony**: baseline + N (gdzie N to liczba nowych asercji z bieżącej sesji). Każdy nowy task dodaje 5-30 asercji do relevant `test_*.js`.
+- **`manifest.json`** zbumpowany; wersja widoczna w `chrome://extensions/` po Reload.
+- **`INSTRUKCJA.md`** zaktualizowana jeśli user-facing change. Nowy rozdział lub odświeżony istniejący — nie pomijaj, zespół OVB to czyta.
+- **`backend/`** nietknięty jeśli sprint czysto extension'owy (typowo, 80% sprintów). Jeśli ruszany — `cd backend && pip install -r requirements.txt && python -m pytest tests/ -v` zielone.
+- **Brak `.env` w commits**, brak hardcoded secret'ów w `*.js`, brak `console.log` w hot paths (akceptowalne tylko: error handlery + SW DevTools diagnostics z `[lmg]` prefix'em).
 
 ---
 

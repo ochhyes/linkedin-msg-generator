@@ -583,12 +583,31 @@
   // ── Profile DB (#45 v1.14.0) ───────────────────────────────────────
 
   const profileDbSection = $("#profiledb-section");
+  // #54 v1.21.0 — state paginacji + multi-select w bazie profili
+  let profileDbPage = 1;
+  let profileDbPageSize = 200;
+  let profileDbFilteredTotal = 0;
+  const profileDbSelectedSlugs = new Set();
+  let profileDbCurrentPageSlugs = [];
+
   const profileDbTbody = $("#profiledb-tbody");
   const profileDbCount = $("#profiledb-count");
   const profileDbEmpty = $("#profiledb-empty");
   const profileDbSearch = $("#profiledb-search");
   const profileDbSourceFilter = $("#profiledb-source-filter");
   const profileDbConnFilter = $("#profiledb-conn-filter");
+  const selectAllCb = $("#profiledb-select-all");
+  const btnDeleteSelected = $("#btn-delete-selected");
+  const btnDeleteFiltered = $("#btn-delete-filtered");
+  const selectedCountEl = $("#profiledb-selected-count");
+  const filteredCountEl = $("#profiledb-filtered-count");
+  const pagePrev = $("#profiledb-page-prev");
+  const pageNext = $("#profiledb-page-next");
+  const pageCurrent = $("#profiledb-page-current");
+  const pageTotal = $("#profiledb-page-total");
+  const paginationShown = $("#profiledb-pagination-shown");
+  const paginationFiltered = $("#profiledb-pagination-filtered");
+  const pageSizeSel = $("#profiledb-page-size");
   const backupBannerText = $("#backup-banner-text");
   const backupBanner = $("#backup-banner");
   const profileDbStatus = $("#profiledb-status");
@@ -597,6 +616,7 @@
     search: "Wyszukiwanie",
     profile_scrape: "Scrape profilu",
     connections_import: "Import kontaktów",
+    linkedin_export: "LinkedIn-export",
     manual: "Manual",
     bulk: "Bulk",
   };
@@ -614,53 +634,100 @@
   async function loadProfileDb() {
     if (!profileDbTbody) return;
     try {
-      const resp = await chrome.runtime.sendMessage({ action: "profileDbList", filter: profileDbFilter() });
+      const filter = { ...profileDbFilter(), limit: profileDbPageSize, offset: (profileDbPage - 1) * profileDbPageSize };
+      const resp = await chrome.runtime.sendMessage({ action: "profileDbList", filter });
       if (!resp || !resp.success) {
         if (profileDbSection) profileDbSection.classList.add("hidden");
         return;
       }
       if (profileDbSection) profileDbSection.classList.remove("hidden");
+      profileDbFilteredTotal = (resp.page && resp.page.filteredTotal) || (resp.counts && resp.counts.filtered) || 0;
       renderProfileDb(resp.list || [], resp.counts || {});
+      updatePaginationUI();
+      updateFilteredCountUI();
     } catch (err) {
       console.warn("[dashboard] loadProfileDb fail:", err);
     }
   }
 
+  function updatePaginationUI() {
+    const totalPages = Math.max(1, Math.ceil(profileDbFilteredTotal / profileDbPageSize));
+    if (profileDbPage > totalPages) profileDbPage = totalPages;
+    if (pageCurrent) pageCurrent.textContent = String(profileDbPage);
+    if (pageTotal) pageTotal.textContent = String(totalPages);
+    if (paginationShown) paginationShown.textContent = String(profileDbCurrentPageSlugs.length);
+    if (paginationFiltered) paginationFiltered.textContent = String(profileDbFilteredTotal);
+    if (pagePrev) pagePrev.disabled = profileDbPage <= 1;
+    if (pageNext) pageNext.disabled = profileDbPage >= totalPages;
+  }
+
+  function updateSelectedUI() {
+    if (selectedCountEl) selectedCountEl.textContent = String(profileDbSelectedSlugs.size);
+    if (btnDeleteSelected) btnDeleteSelected.disabled = profileDbSelectedSlugs.size === 0;
+    if (selectAllCb) {
+      const allChecked = profileDbCurrentPageSlugs.length > 0 &&
+        profileDbCurrentPageSlugs.every((s) => profileDbSelectedSlugs.has(s));
+      selectAllCb.checked = allChecked;
+      selectAllCb.indeterminate = !allChecked && profileDbCurrentPageSlugs.some((s) => profileDbSelectedSlugs.has(s));
+    }
+  }
+
+  function updateFilteredCountUI() {
+    if (filteredCountEl) filteredCountEl.textContent = String(profileDbFilteredTotal);
+    if (btnDeleteFiltered) btnDeleteFiltered.disabled = profileDbFilteredTotal === 0;
+  }
+
   function renderProfileDb(list, counts) {
     profileDbTbody.innerHTML = "";
+    profileDbCurrentPageSlugs = list.map((r) => r.slug);
     if (profileDbCount) {
       profileDbCount.textContent = String(counts.total || 0);
       profileDbCount.title = `${counts.total || 0} profili — ${counts.connections || 0} kontaktów, ${counts.inQueue || 0} w kolejce`;
     }
     if (!list.length) {
       if (profileDbEmpty) profileDbEmpty.classList.remove("hidden");
+      updateSelectedUI();
       return;
     }
     if (profileDbEmpty) profileDbEmpty.classList.add("hidden");
     for (const r of list) profileDbTbody.appendChild(buildProfileDbRow(r));
+    updateSelectedUI();
   }
 
   function buildProfileDbRow(r) {
     const tr = document.createElement("tr");
     tr.dataset.slug = r.slug;
 
+    // Checkbox (#54 v1.21.0)
+    const checkTd = document.createElement("td");
+    checkTd.className = "profiledb-table-check";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = profileDbSelectedSlugs.has(r.slug);
+    cb.addEventListener("change", () => {
+      if (cb.checked) profileDbSelectedSlugs.add(r.slug);
+      else profileDbSelectedSlugs.delete(r.slug);
+      updateSelectedUI();
+    });
+    checkTd.appendChild(cb);
+    tr.appendChild(checkTd);
+
     const nameTd = document.createElement("td");
+    nameTd.className = "col-name";
     const a = document.createElement("a");
     a.href = r.profileUrl || `https://www.linkedin.com/in/${encodeURIComponent(r.slug)}/`;
     a.target = "_blank";
     a.rel = "noopener noreferrer";
     a.textContent = r.name || r.slug;
+    a.title = r.name || r.slug;
     nameTd.appendChild(a);
     tr.appendChild(nameTd);
 
     const hlTd = document.createElement("td");
+    hlTd.className = "col-headline";
     hlTd.textContent = r.headline || "";
     hlTd.title = r.headline || "";
     tr.appendChild(hlTd);
-
-    const degTd = document.createElement("td");
-    degTd.textContent = r.degree || "—";
-    tr.appendChild(degTd);
 
     const srcTd = document.createElement("td");
     srcTd.textContent = SOURCE_LABELS[r.source] || r.source || "—";
@@ -734,6 +801,7 @@
     const btnImportConnections = $("#btn-import-connections");
     const importFile = $("#import-file");
     const importRestoreQueue = $("#import-restore-queue");
+    const importLinkedInExportFile = $("#import-linkedin-export-file");
     const btnRefreshProfileDb = $("#btn-refresh-profiledb");
 
     if (btnExportCsv) btnExportCsv.addEventListener("click", async () => {
@@ -789,6 +857,52 @@
       finally { btnImportConnections.disabled = false; btnImportConnections.textContent = orig; }
     });
 
+    if (importLinkedInExportFile) importLinkedInExportFile.addEventListener("change", async () => {
+      const file = importLinkedInExportFile.files && importLinkedInExportFile.files[0];
+      if (!file) return;
+      setProfileDbStatus(`Wczytuję ${file.name}…`);
+      try {
+        const text = await file.text();
+        // Krok 1: dry-run → counters bez zapisu.
+        setProfileDbStatus("Analizuję CSV (dry-run)…");
+        const preview = await chrome.runtime.sendMessage({ action: "profileDbImportLinkedInExport", csvText: text, dryRun: true });
+        if (!preview || !preview.success) {
+          const errMap = {
+            empty_input: "Plik pusty.",
+            header_not_found: "Nie znaleziono nagłówka `First Name,Last Name,URL,…`. To na pewno Connections.csv z LinkedIn-export'u?",
+            no_data_rows: "Brak wierszy danych w pliku.",
+          };
+          setProfileDbStatus("Import nieudany: " + (errMap[preview && preview.error] || preview && preview.error || "unknown"), true);
+          return;
+        }
+        // Krok 2: confirm.
+        const msg = [
+          `LinkedIn-export: ${preview.total} kontaktów.`,
+          `• ${preview.newSlugs} nowych do dodania`,
+          `• ${preview.mergedSlugs} istniejących do scalenia (Company/Position/Email dorzucone, scrape zachowany)`,
+          `• ${preview.skippedNoSlug} pominiętych (brak URL/slug)`,
+          preview.urnEmailsBlocked ? `• ${preview.urnEmailsBlocked} maili odrzucono (LinkedIn URN zamiast literal email)` : null,
+          preview.parseErrors ? `• ${preview.parseErrors} błędów parsowania (pominięte)` : null,
+          "",
+          "Zatwierdzić i zapisać do bazy?",
+        ].filter(Boolean).join("\n");
+        if (!confirm(msg)) {
+          setProfileDbStatus("Import anulowany.");
+          return;
+        }
+        // Krok 3: real upsert.
+        setProfileDbStatus("Importuję do bazy…");
+        const resp = await chrome.runtime.sendMessage({ action: "profileDbImportLinkedInExport", csvText: text, dryRun: false });
+        if (resp && resp.success) {
+          setProfileDbStatus(`Import OK: ${resp.newSlugs} nowych, ${resp.mergedSlugs} zaktualizowanych. Filtruj po źródle „LinkedIn-export" żeby zobaczyć.`);
+          refreshAll();
+        } else {
+          setProfileDbStatus("Zapis nieudany: " + (resp && resp.error || "unknown"), true);
+        }
+      } catch (e) { setProfileDbStatus("Błąd: " + ((e && e.message) || e), true); }
+      finally { importLinkedInExportFile.value = ""; }
+    });
+
     if (importFile) importFile.addEventListener("change", async () => {
       const file = importFile.files && importFile.files[0];
       if (!file) return;
@@ -811,15 +925,84 @@
       finally { importFile.value = ""; }
     });
 
+    if (selectAllCb) selectAllCb.addEventListener("change", () => {
+      if (selectAllCb.checked) {
+        for (const s of profileDbCurrentPageSlugs) profileDbSelectedSlugs.add(s);
+      } else {
+        for (const s of profileDbCurrentPageSlugs) profileDbSelectedSlugs.delete(s);
+      }
+      loadProfileDb();
+    });
+
+    if (btnDeleteSelected) btnDeleteSelected.addEventListener("click", async () => {
+      if (profileDbSelectedSlugs.size === 0) return;
+      const n = profileDbSelectedSlugs.size;
+      if (!confirm(`Usunąć ${n} ${n === 1 ? "profil" : (n < 5 ? "profile" : "profili")} z bazy?\n\nOperacja nieodwracalna (oprócz importu z backupu).`)) return;
+      btnDeleteSelected.disabled = true;
+      try {
+        const slugs = Array.from(profileDbSelectedSlugs);
+        const resp = await chrome.runtime.sendMessage({ action: "profileDbDelete", slugs });
+        if (resp && resp.success) {
+          setProfileDbStatus(`Usunięto ${resp.deleted} ${resp.deleted === 1 ? "profil" : "profili"}. W bazie: ${resp.total}.`);
+          profileDbSelectedSlugs.clear();
+          refreshAll();
+        } else {
+          setProfileDbStatus("Usuwanie nieudane: " + (resp && resp.error || "unknown"), true);
+        }
+      } catch (e) { setProfileDbStatus("Błąd: " + ((e && e.message) || e), true); }
+      finally { btnDeleteSelected.disabled = false; }
+    });
+
+    if (btnDeleteFiltered) btnDeleteFiltered.addEventListener("click", async () => {
+      if (profileDbFilteredTotal === 0) return;
+      const n = profileDbFilteredTotal;
+      const filter = profileDbFilter();
+      const filterDesc = [
+        filter.text ? `tekst="${filter.text}"` : null,
+        filter.source ? `źródło=${SOURCE_LABELS[filter.source] || filter.source}` : null,
+        filter.isConnection === "yes" ? "tylko kontakty" : null,
+        filter.isConnection === "no" ? "tylko niezconnectowani" : null,
+      ].filter(Boolean).join(", ") || "brak filtra (CAŁA BAZA)";
+      if (!confirm(`Usunąć WSZYSTKIE ${n} profili pasujących do filtru?\n\nFiltr: ${filterDesc}\n\nOperacja nieodwracalna.`)) return;
+      if (!filter.text && !filter.source && !filter.isConnection) {
+        if (!confirm(`UWAGA: brak aktywnego filtru — to usunie CAŁĄ BAZĘ (${n} profili). Na pewno?`)) return;
+      }
+      btnDeleteFiltered.disabled = true;
+      try {
+        const resp = await chrome.runtime.sendMessage({ action: "profileDbDelete", deleteAllFiltered: true, filter });
+        if (resp && resp.success) {
+          setProfileDbStatus(`Usunięto ${resp.deleted} profili. W bazie: ${resp.total}.`);
+          profileDbSelectedSlugs.clear();
+          profileDbPage = 1;
+          refreshAll();
+        } else {
+          setProfileDbStatus("Usuwanie nieudane: " + (resp && resp.error || "unknown"), true);
+        }
+      } catch (e) { setProfileDbStatus("Błąd: " + ((e && e.message) || e), true); }
+      finally { btnDeleteFiltered.disabled = false; }
+    });
+
+    if (pagePrev) pagePrev.addEventListener("click", () => {
+      if (profileDbPage > 1) { profileDbPage -= 1; loadProfileDb(); }
+    });
+    if (pageNext) pageNext.addEventListener("click", () => {
+      const totalPages = Math.max(1, Math.ceil(profileDbFilteredTotal / profileDbPageSize));
+      if (profileDbPage < totalPages) { profileDbPage += 1; loadProfileDb(); }
+    });
+    if (pageSizeSel) pageSizeSel.addEventListener("change", () => {
+      const n = parseInt(pageSizeSel.value, 10);
+      if (n && n > 0) { profileDbPageSize = n; profileDbPage = 1; loadProfileDb(); }
+    });
+
     if (btnRefreshProfileDb) btnRefreshProfileDb.addEventListener("click", (e) => { e.stopPropagation(); loadProfileDb(); loadBackupStatus(); });
 
     const onFilterChange = () => {
       if (_profileDbSearchDebounce) clearTimeout(_profileDbSearchDebounce);
-      _profileDbSearchDebounce = setTimeout(loadProfileDb, 250);
+      _profileDbSearchDebounce = setTimeout(() => { profileDbPage = 1; loadProfileDb(); }, 250);
     };
     if (profileDbSearch) profileDbSearch.addEventListener("input", onFilterChange);
-    if (profileDbSourceFilter) profileDbSourceFilter.addEventListener("change", loadProfileDb);
-    if (profileDbConnFilter) profileDbConnFilter.addEventListener("change", loadProfileDb);
+    if (profileDbSourceFilter) profileDbSourceFilter.addEventListener("change", () => { profileDbPage = 1; loadProfileDb(); });
+    if (profileDbConnFilter) profileDbConnFilter.addEventListener("change", () => { profileDbPage = 1; loadProfileDb(); });
   }
 
   function refreshAll() {
