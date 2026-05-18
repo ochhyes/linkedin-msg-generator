@@ -8,6 +8,38 @@
 
 ---
 
+## 2026-05-18 (Cowork, claude-opus-4-7) — fix: bulk connect nie widzi kontaktów na classic Ember search layout (v1.22.1)
+
+### Zrobione
+
+- **Diagnoza zgłoszenia Marcina** (zespół OVB: bulk connect na search „obsługa klienta" pokazuje imiona jako `—`, akcje jako `?`, „0 dostępnych do Connect"). Z dumpu (`do marcina.txt`, 1.1 MB): strona to **classic Ember `entity-result`**, NIE SDUI. `extractSearchResults()` był przepisany wyłącznie pod SDUI (parsowanie `<p>`, `role="listitem"`, Connect = `<a href*="/preload/search-custom-invite/">`) → na Ember-layoucie imię siedzi w `span[aria-hidden="true"]`, Connect to `<button aria-label="Zaproś...">` — parser nie czytał ani imienia, ani przycisku.
+- **`content.js`** — `extractSearchResults()` zrobiony layout-aware: wykrywa Ember po `div[data-chameleon-result-urn]` → nowy `extractSearchResultsEmber()`; inaczej leci dotychczasowy SDUI-parser (bez zmian). `extractSearchResultsEmber()` parsuje per `div[data-chameleon-result-urn]`: imię z `span[aria-hidden="true"]` w name-linku, slug z `href` (mutual connections w `.entity-result__insights` odfiltrowane — mają obfuskowane slugi `ACoAA...`), stopień z `.entity-result__badge-text`, headline/location z `div.t-14` (headline ma `t-black`), buttonState po `aria-label` przycisków (Connect=`Zaproś`, Follow=`Obserwuj`, +Pending/Message defensywnie). Helper `normalizeDegree()` → `"1st"/"2nd"/"3rd"`.
+- **`search_entity_result.html`** NEW — fixture (dump Marcina, classic Ember).
+- **`test_search_extractor.js`** — re-impl rozszerzony o gałąź Ember + 17 nowych asercji (14→31): 10 wierszy, imiona niepuste, slug=czysty vanity, zero obfuskowanych, ≥6 Connect, ≥1 Follow, zero Unknown, degree znormalizowany, headline/location, per-row try/catch.
+- **`manifest.json`** 1.22.0 → 1.22.1.
+
+### Decyzje
+
+- **Layout-aware zamiast przepisania na Ember** — LinkedIn A/B-testuje OBA warianty per konto. Wywalenie SDUI-parsera zepsułoby konta w drugim buckecie. Detekcja po `data-chameleon-result-urn` (Ember) vs `role="listitem"` (SDUI), oba parsery żyją obok siebie.
+- **`degree` Ember znormalizowany do `"1st"/"2nd"/"3rd"`** (SDUI zostawia surowe `"2"`) — popup.js sprawdza tylko `degree.startsWith("1")`, oba kontrakty spełnione.
+- **Klasy `t-14/t-black/t-normal` do headline/location** — stabilne LinkedIn typography utilities (nie hashowane); `entity-result__badge*`/`__insights` też strukturalnie stabilne.
+- **Patch (1.22.1) nie minor** — regresja przywrócona, zero nowej funkcji user-facing.
+- **`bulkConnectClick`/`connectFromProfile` nietknięte** — od v1.14.5 faktyczny connect idzie przez `connectFromProfile` na stronie profilu; `extractSearchResults` służy tylko liście + pickowi connectable.
+
+### Lessons learned
+
+- Wcześniejsza diagnoza („SDUI selector drift") była połowicznie błędna — drift poszedł w DRUGĄ stronę: LinkedIn cofnął konto Marcina na classic Ember, a extension stracił wsparcie dla niego przy przepisaniu na SDUI. Wniosek do #10: search-page potrzebuje fallback chain tak samo jak profile-page.
+
+### BLOCKED / TODO
+
+- `do marcina.txt` w repo root — surowy dump (źródło fixture'u). NIE commitowany, Marcin może usunąć.
+
+### Status końcowy
+
+`v1.22.1` zacommitowane. Test suite zielony (test_search_extractor 31/0, reszta bez regresji). Czeka smoke Marcina (~3 min, „How to test" w CLAUDE.md DONE) + regen zipa + dystrybucja zespołowi OVB. Po smoke PASS — PM rotuje na #53.
+
+---
+
 ## 2026-05-17 (Cowork, claude-opus-4-7) — folder outreach/ + build.js (wersja publikacyjna)
 
 ### Zrobione

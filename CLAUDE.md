@@ -112,7 +112,11 @@ Commity zmieniające tylko `backend/`, `deploy/` lub dokumentację — NIE bumpu
 
 **SDUI variant na `/in/<slug>/` (od 2026-05-11, A/B test per-cookie-bucket)** — detect: brak `h1`, brak `[data-member-id]`, brak Voyager payloadów (`code[id^="bpr-guid-"]`), `<main>` z hashowanymi klasami. Dane w `section[componentkey*="Topcard"]` (`name` w `<h2>`, headline/company/location w `<p>` heurystycznie — degree markers "· 1." filtrowane, company split " · ", location regex PL/EU) + `section[componentkey$="HQAbout"]` (`$=` rozróżnia od `HQSuggestedForYou`). Extractor `extractFromSdui` w `content.js`, fixture `profile_sdui_dump.html`. **LIMITATION**: SDUI dump nie zawiera `experience`/`skills`/`featured`/`education` inline — te pola puste.
 
-**Search results (`/search/results/people/`)** — SDUI layout, hashed classes, atrybuty `componentkey`/`data-sdui-screen`/`role="radio"`. Pagination URL-based (`?page=N` przez `searchParams.set`). Content script injection przez manifest `content_scripts` zawodzi na SDUI → fallback przez `chrome.scripting.executeScript` (od v1.8.2).
+**Search results (`/search/results/people/`)** — DWA warianty (A/B per konto). `extractSearchResults` w content.js wykrywa wariant i wybiera parser:
+- **SDUI** — wiersz `div[role="listitem"]`, dane w `<p>` (name+degree po `" • "`), Connect = `<a href*="/preload/search-custom-invite/">`, atrybuty `componentkey`/`data-sdui-screen`/`role="radio"`. Content script injection przez manifest `content_scripts` zawodzi na SDUI → fallback przez `chrome.scripting.executeScript` (od v1.8.2).
+- **classic Ember `entity-result`** (przywrócone wsparcie v1.22.1) — wiersz `div[data-chameleon-result-urn]`, imię w `span[aria-hidden="true"]` w name-linku, Connect = `<button aria-label="Zaproś...">` (NIE `<a>`), stopień `.entity-result__badge-text`, headline/location `div.t-14` (headline ma `t-black`). Mutual connections w `.entity-result__insights` (obfuskowane slugi `ACoAA...`) filtrowane. Extractor `extractSearchResultsEmber`, fixture `search_entity_result.html`.
+
+Pagination URL-based (`?page=N` przez `searchParams.set`).
 
 **Pending invite detection** — `a[aria-label^="W toku"]` (PL) / `^="Pending"` (EN), NIE textContent "Oczekuje". Bulk connect MUSI filtrować takie profile.
 
@@ -157,12 +161,12 @@ Uruchom testy automatyczne (pytest backend + jsdom extension). Wykonaj kroki man
 # CURRENT STATE
 
 ```
-Sprint:        #10 — #52+#54 DONE+COMMITTED (21f28df). #55 (ulepszony follow-up, v1.22.0) DONE+COMMITTED (89d5f88). #53 następny.
-Phase:         PM → wybór #53 (Scraper contact info — PM decomposition gotowa w IN PROGRESS). #55 czeka smoke Marcina (How to test w DONE).
-Active task:   #53 — Dev TODO. #55 zacommitowany, czeka smoke.
-Repo state:    CZYSTE (poza tym docs-commitem). Ostatni commit 89d5f88.
-Last commit:   89d5f88 — feat: follow-up Brak zgody + odroczenie + rollback zależności (#55, v1.22.0)
-Updated:       2026-05-17 (#55 DONE+COMMITTED loop PM→Dev→Tester→Commit; CLAUDE.md skompresowany 136k→<40k)
+Sprint:        #10 — #52+#54 DONE (21f28df), #55 DONE (89d5f88). v1.22.1 fix Ember search-page DONE+COMMITTED (30b0e0d). #53 następny.
+Phase:         PM → wybór #53 (Scraper contact info — PM decomposition gotowa w IN PROGRESS). v1.22.1 + #55 czekają smoke Marcina (How to test w DONE).
+Active task:   #53 — Dev TODO. v1.22.1 + #55 zacommitowane, czekają smoke.
+Repo state:    CZYSTE (poza docs-commitem). Ostatni commit 30b0e0d.
+Last commit:   30b0e0d — fix: parsuj classic Ember entity-result na search-page (v1.22.1)
+Updated:       2026-05-18 (v1.22.1 fix bulk connect na classic Ember search-layout; loop PM→Dev→Tester→Commit)
 ```
 
 **Pending operacyjne (Marcin):** (1) `git push` — lokalny `master` przed origin. (2) Smoke #52 (~10 min) i #54 (~5 min) wg "How to test" w DONE. (3) Smoke v1.19.0 wg `docs/SMOKE-TEST.md`, regen `extension 1.21.0.zip`, dystrybucja zespołowi OVB. (4) VPS: `API_KEYS=DreamComeTrue!` w prod `.env` → `cd deploy && docker compose up -d --build`. (5) Cleanup: usunąć `extension/tests/fixtures/linkedin_connections_export.csv.xlsx` + lock file `~$...` (Excel trzyma blokadę, sandbox nie ma uprawnień).
@@ -232,6 +236,14 @@ Updated:       2026-05-17 (#55 DONE+COMMITTED loop PM→Dev→Tester→Commit; C
 ## DONE
 
 > Format: 1 linia per release (sha, opis, bump). Pełne treści w `git show <sha>`.
+
+**v1.22.1 — fix: bulk connect na classic Ember search-layout (2026-05-18):**
+- ✅ `30b0e0d` v1.22.1 — `extractSearchResults()` w content.js zrobiony layout-aware. Objaw (zgłoszenie Marcina, zespół OVB): na search-page imiona `—`, akcje `?`, „0 dostępnych do Connect" mimo connectable profili. Przyczyna: LinkedIn A/B-serwuje classic Ember `entity-result` zamiast SDUI, a parser czytał tylko SDUI.
+  - **Fix:** detekcja wariantu po `div[data-chameleon-result-urn]` → nowy `extractSearchResultsEmber()` (imię z `span[aria-hidden="true"]`, Connect z `button[aria-label^="Zaproś"]`, stopień z `.entity-result__badge-text`, headline/location z `div.t-14`/`t-black`, mutual connections z `.entity-result__insights` odfiltrowane). SDUI-parser bez zmian. Helper `normalizeDegree()` → `"1st"/"2nd"/"3rd"`.
+  - **Pliki:** `content.js` (+`extractSearchResultsEmber`+`normalizeDegree`, `extractSearchResults` orchestrator), `tests/fixtures/search_entity_result.html` NEW (dump Marcina), `tests/test_search_extractor.js` (14→**31** asercji, +17 Ember), `manifest.json` 1.22.0→1.22.1.
+  - **Test results:** test_search_extractor 31/0, `node --check` 5/5 extension JS OK, test_syntax 12/0, 0 NUL bytes, reszta suite bez regresji (test_bulk_connect 180/0, test_profile_db 109/0, test_reply 88/0 itd.).
+  - **How to test manually (Marcin, ~3 min):** Reload extension → sprawdź `1.22.1` w `chrome://extensions/`. Wejdź na search-page „obsługa klienta" (ten z bugu) → zakładka „Budowanie sieci" → Odśwież. Lista MUSI pokazać imiona (nie `—`), badge „Połącz" na connectable, licznik „N dostępnych do Connect" > 0. Start bulk connect → profile otwierają się w tle i wysyłają zaproszenie. Sprawdź też inny search (np. „doradca finansowy") — działa tak samo. Jeśli któreś konto dalej na SDUI — też ma działać (parser SDUI nietknięty).
+  → Po smoke v1.22.1 PASS: regen zipa + dystrybucja zespołowi OVB (to fix dla nich); PM rotuje na #53.
 
 **#55 — Ulepszony follow-up: status "Brak zgody" + odroczenie + rollback zależności (2026-05-17, v1.22.0):**
 - ✅ `89d5f88` v1.22.0 — feat: dashboard follow-up zyskuje 3 akcje. (1) **"Brak zgody"** — `followupStatus="no_consent"` (kontakt nie wyraził zgody; mirror skip, item → Historia, żadnej wiadomości). (2) **"Odroczony w czasie"** — `bulkDeferFollowup(slug, days)`: prompt liczby dni (numeric, min 1, default 60), planuje FU#1 na T+X i FU#2 na T+X+4 (`FOLLOWUP_SET_GAP_DAYS`) JEDNYM atomowym patchem, oznacza `followupSetId` (zestaw zależny) + `followupDeferredDays`. (3) **Rollback zależności** — `voidScheduledFollowupSet(slug, followupIdToCancel)`: gdy item ma `followupSetId`, anuluje CAŁY zestaw (FU#1+FU#2, drafty, setId, status→skipped) jednym `updateQueueItem` = jeden atomowy zapis storage (brak stanu pośredniego gdzie A anulowane a B nie); bez setId — anuluje tylko żądany follow-up.
