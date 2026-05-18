@@ -1232,17 +1232,151 @@
     return { type, url: window.location.href };
   }
 
+  // ── Search results extractor (#18) ───────────────────────────────
+  //
+  // extractSearchResults() = orchestrator dwóch wariantów LinkedIn'a:
+  //  - classic Ember `entity-result` → extractSearchResultsEmber()
+  //  - SDUI (role="listitem", <p>) → parser inline w extractSearchResults()
+  // Każdy wariant: per item try/catch (jeden zepsuty wiersz nie zabija
+  // listy), failed item → push `{slug: null, error: <msg>}`.
+  // Zwraca: Array<{name, headline, location, degree, slug, buttonState, error?}>.
+
+  // Normalizuj stopień znajomości do "1st"/"2nd"/"3rd". Wejście to teksty
+  // typu "• 2.", "Kontakt 2. stopnia", "2nd". Zwraca null gdy brak cyfry.
+  // Kontrakt z popup.js: isFirstDegree sprawdza degree.startsWith("1").
+  function normalizeDegree(raw) {
+    if (!raw) return null;
+    const m = String(raw).match(/[123]/);
+    if (!m) return null;
+    return { "1": "1st", "2": "2nd", "3": "3rd" }[m[0]] || null;
+  }
+
   /**
-   * Ekstraktuje listę profili z search results page LinkedIn'a.
-   * Selektory wyłącznie strukturalne (role/href/struktura DOM) — bez hashed
-   * classes typu `entity-result__*` które LinkedIn rotuje co kilka tygodni.
-   *
-   * Per item: try/catch żeby pojedynczy fail nie zabił całej listy.
-   * Failed item → push `{slug: null, error: <msg>}` (do diagnostyki).
-   *
-   * @returns {Array<{name, headline, location, degree, slug, buttonState, error?}>}
+   * Parser wariantu classic Ember `entity-result` search results.
+   * Wiersz = div[data-chameleon-result-urn]. Selektory strukturalne:
+   * aria-label przycisków + stabilne klasy typografii (t-14/t-black/
+   * t-normal) + entity-result__badge / insights. Hashowane klasy wierszy
+   * ignorowane. Patrz extractSearchResults() — orchestracja wariantów.
    */
+  function extractSearchResultsEmber(rows) {
+    const results = [];
+    for (const row of rows) {
+      try {
+        // Linki profilowe — wyklucz mutual connections (entity-result__insights),
+        // które mają obfuskowane slugi ACoAA... zamiast czystego vanity.
+        const profileLinks = Array.from(
+          row.querySelectorAll('a[href*="/in/"]')
+        ).filter((a) => !a.closest(".entity-result__insights"));
+        if (profileLinks.length === 0) continue;
+
+        // Name link = ten z <span aria-hidden="true"> o niepustym tekście.
+        let name = null;
+        let nameLink = null;
+        for (const a of profileLinks) {
+          const span = a.querySelector('span[aria-hidden="true"]');
+          const txt = span ? (span.innerText || span.textContent || "").trim() : "";
+          if (txt) { name = txt; nameLink = a; break; }
+        }
+        const chosenLink = nameLink || profileLinks[0];
+        const href = chosenLink.getAttribute("href") || "";
+        const slugMatch = href.match(/\/in\/([^/?#]+)/);
+        let slug = null;
+        if (slugMatch) {
+          try { slug = decodeURIComponent(slugMatch[1]).toLowerCase(); }
+          catch (_) { slug = slugMatch[1].toLowerCase(); }
+        }
+
+        // Stopień — badge "• 2." (aria-hidden) lub "Kontakt 2. stopnia".
+        const badge = row.querySelector(".entity-result__badge-text");
+        let degree = null;
+        if (badge) {
+          const badgeAh = badge.querySelector('span[aria-hidden="true"]');
+          degree =
+            normalizeDegree(badgeAh && badgeAh.textContent) ||
+            normalizeDegree(badge.textContent);
+        }
+
+        // Headline / location — divy typografii t-14. headline ma t-black,
+        // location samo t-normal (bez t-black). Pierwszy z każdego rodzaju.
+        let headline = null;
+        let location = null;
+        const textDivs = Array.from(row.querySelectorAll("div.t-14"));
+        for (const d of textDivs) {
+          const txt = (d.innerText || d.textContent || "").trim();
+          if (!txt) continue;
+          if (d.classList.contains("t-black")) {
+            if (!headline) headline = txt;
+          } else if (d.classList.contains("t-normal")) {
+            if (!location) location = txt;
+          }
+        }
+
+        // Stan przycisku — strukturalnie po aria-label (button LUB a).
+        // Connect w tym wariancie to <button aria-label="Zaproś...">,
+        // NIE <a href="/preload/search-custom-invite/"> jak w SDUI.
+        const q = (sel) => row.querySelector(sel);
+        const pendingBtn = q(
+          'button[aria-label^="W toku"], a[aria-label^="W toku"], ' +
+          'button[aria-label^="Oczekuje"], a[aria-label^="Oczekuje"], ' +
+          'button[aria-label^="Pending"], a[aria-label^="Pending"]'
+        );
+        const connectBtn = q(
+          'button[aria-label^="Zaproś"], a[aria-label^="Zaproś"], ' +
+          'button[aria-label^="Invite "], a[aria-label^="Invite "], ' +
+          'button[aria-label^="Connect"], a[aria-label^="Connect"], ' +
+          'a[href*="search-custom-invite"]'
+        );
+        const messageBtn = q(
+          'button[aria-label^="Wiadomość"], a[aria-label^="Wiadomość"], ' +
+          'button[aria-label^="Wyślij wiadomość"], a[aria-label^="Wyślij wiadomość"], ' +
+          'button[aria-label^="Napisz wiadomość"], a[aria-label^="Napisz wiadomość"], ' +
+          'button[aria-label^="Message"], a[aria-label^="Message"], ' +
+          'a[href*="/messaging/"]'
+        );
+        const followBtn = q(
+          'button[aria-label^="Obserwuj"], a[aria-label^="Obserwuj"], ' +
+          'button[aria-label^="Follow"], a[aria-label^="Follow"]'
+        );
+
+        let buttonState = "Unknown";
+        if (pendingBtn) buttonState = "Pending";
+        else if (connectBtn) buttonState = "Connect";
+        else if (messageBtn) buttonState = "Message";
+        else if (followBtn) buttonState = "Follow";
+
+        results.push({
+          name: name || null,
+          headline,
+          location,
+          degree,
+          slug,
+          buttonState,
+        });
+      } catch (err) {
+        // Defensive: jeden zepsuty wiersz nie zabija listy.
+        results.push({
+          slug: null,
+          error: err && err.message ? err.message : String(err),
+        });
+      }
+    }
+    return results;
+  }
+
   function extractSearchResults() {
+    // LinkedIn serwuje dwa warianty /search/results/people/ (A/B per konto):
+    //  - classic Ember `entity-result` — wiersz div[data-chameleon-result-urn],
+    //    Connect = <button aria-label="Zaproś...">, imię w span[aria-hidden].
+    //  - SDUI — wiersz div[role="listitem"], dane w <p>, Connect = <a preload>.
+    // Wykryj Ember po data-chameleon-result-urn; inaczej leć SDUI-parserem.
+    const emberRows = document.querySelectorAll(
+      'div[data-chameleon-result-urn], ' +
+      'div[data-view-name="search-entity-result-universal-template"]'
+    );
+    if (emberRows.length > 0) {
+      return extractSearchResultsEmber(emberRows);
+    }
+
     const results = [];
     // Listing items mają role="listitem" w search results scaffold'u.
     // Fallback do <li> jeśli LinkedIn zmieni atrybut role.

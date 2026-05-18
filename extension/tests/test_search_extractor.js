@@ -1,12 +1,14 @@
 /**
  * Search Results extractor tests (#18 Faza 1A) — wykrywa regresje
- * DOM SDUI dla `/search/results/people/` ZANIM zespół OVB zauważy.
- * Fixture to realny DOM zrzucony przez Marcina z search "OVB".
+ * DOM dla `/search/results/people/` ZANIM zespół OVB zauważy.
+ * Fixture'y to realny DOM zrzucony przez Marcina.
  *
  * Run: node tests/test_search_extractor.js
  *
  * Fixtures:
- *  - search_results_people.html — search "ovb", 10 listitems, all 2nd degree
+ *  - search_results_people.html — wariant SDUI, search "ovb", 10 listitems
+ *  - search_entity_result.html  — wariant classic Ember `entity-result`,
+ *    search "obsługa klienta", 10 wierszy div[data-chameleon-result-urn]
  *
  * UWAGA: `extractSearchResults(doc)` jest tu RE-IMPLEMENTOWANY (taka sama
  * logika jak w extension/content.js). Vanilla JS / brak modułów ES, więc
@@ -54,21 +56,114 @@ function assertEqual(actual, expected, testName) {
 
 // ── Search results extractor (port z extension/content.js) ────────
 //
-// Plan implementacji #18 step 2 — re-implementowane tu dla testów
-// (parametryzacja po `doc`, nie globalne `window.document`).
-//
-// Pseudocode:
-//  - Root: doc.querySelectorAll('div[role="listitem"]'), filter
-//    przez obecność a[href*="/in/"] (skip cards bez profilu).
-//  - Per item: parsuj p[0] → name + degree po " • " (lastIndexOf,
-//    bo nazwy mogą mieć kropki/bullets). headline = p[1], location = p[2].
-//  - Slug: regex /\/in\/([^/?#]+)/ na href profilowego linka.
-//  - buttonState: connect link (a[href*="/preload/search-custom-invite/"])
-//    → "Connect"; message link (a[href*="/messaging/"]) → "Message";
-//    fallback "Pending" gdy textContent zawiera "Oczekuje" lub "Pending";
-//    else "Unknown".
+// extractSearchResults(doc) = orchestrator dwóch wariantów LinkedIn'a:
+//  - classic Ember `entity-result` → extractSearchResultsEmber()
+//  - SDUI (role="listitem", <p>) → parser inline
+// Parametryzacja po `doc` (nie globalne window.document). Synchronizuj
+// z extension/content.js po każdej zmianie.
+
+function normalizeDegree(raw) {
+  if (!raw) return null;
+  const m = String(raw).match(/[123]/);
+  if (!m) return null;
+  return { "1": "1st", "2": "2nd", "3": "3rd" }[m[0]] || null;
+}
+
+// Wariant classic Ember `entity-result`.
+function extractSearchResultsEmber(rows) {
+  const results = [];
+  for (const row of rows) {
+    try {
+      const profileLinks = Array.from(
+        row.querySelectorAll('a[href*="/in/"]')
+      ).filter((a) => !a.closest(".entity-result__insights"));
+      if (profileLinks.length === 0) continue;
+
+      let name = null;
+      let nameLink = null;
+      for (const a of profileLinks) {
+        const span = a.querySelector('span[aria-hidden="true"]');
+        const txt = span ? (span.textContent || "").trim() : "";
+        if (txt) { name = txt; nameLink = a; break; }
+      }
+      const chosenLink = nameLink || profileLinks[0];
+      const href = chosenLink.getAttribute("href") || "";
+      const slugMatch = href.match(/\/in\/([^/?#]+)/);
+      let slug = null;
+      if (slugMatch) {
+        try { slug = decodeURIComponent(slugMatch[1]).toLowerCase(); }
+        catch (_) { slug = slugMatch[1].toLowerCase(); }
+      }
+
+      const badge = row.querySelector(".entity-result__badge-text");
+      let degree = null;
+      if (badge) {
+        const badgeAh = badge.querySelector('span[aria-hidden="true"]');
+        degree =
+          normalizeDegree(badgeAh && badgeAh.textContent) ||
+          normalizeDegree(badge.textContent);
+      }
+
+      let headline = null;
+      let location = null;
+      const textDivs = Array.from(row.querySelectorAll("div.t-14"));
+      for (const d of textDivs) {
+        const txt = (d.textContent || "").trim();
+        if (!txt) continue;
+        if (d.classList.contains("t-black")) {
+          if (!headline) headline = txt;
+        } else if (d.classList.contains("t-normal")) {
+          if (!location) location = txt;
+        }
+      }
+
+      const q = (sel) => row.querySelector(sel);
+      const pendingBtn = q(
+        'button[aria-label^="W toku"], a[aria-label^="W toku"], ' +
+        'button[aria-label^="Oczekuje"], a[aria-label^="Oczekuje"], ' +
+        'button[aria-label^="Pending"], a[aria-label^="Pending"]'
+      );
+      const connectBtn = q(
+        'button[aria-label^="Zaproś"], a[aria-label^="Zaproś"], ' +
+        'button[aria-label^="Invite "], a[aria-label^="Invite "], ' +
+        'button[aria-label^="Connect"], a[aria-label^="Connect"], ' +
+        'a[href*="search-custom-invite"]'
+      );
+      const messageBtn = q(
+        'button[aria-label^="Wiadomość"], a[aria-label^="Wiadomość"], ' +
+        'button[aria-label^="Wyślij wiadomość"], a[aria-label^="Wyślij wiadomość"], ' +
+        'button[aria-label^="Napisz wiadomość"], a[aria-label^="Napisz wiadomość"], ' +
+        'button[aria-label^="Message"], a[aria-label^="Message"], ' +
+        'a[href*="/messaging/"]'
+      );
+      const followBtn = q(
+        'button[aria-label^="Obserwuj"], a[aria-label^="Obserwuj"], ' +
+        'button[aria-label^="Follow"], a[aria-label^="Follow"]'
+      );
+
+      let buttonState = "Unknown";
+      if (pendingBtn) buttonState = "Pending";
+      else if (connectBtn) buttonState = "Connect";
+      else if (messageBtn) buttonState = "Message";
+      else if (followBtn) buttonState = "Follow";
+
+      results.push({ name: name || null, headline, location, degree, slug, buttonState });
+    } catch (err) {
+      results.push({ slug: null, error: String((err && err.message) || err) });
+    }
+  }
+  return results;
+}
 
 function extractSearchResults(doc) {
+  // Wykryj wariant Ember po data-chameleon-result-urn.
+  const emberRows = doc.querySelectorAll(
+    'div[data-chameleon-result-urn], ' +
+    'div[data-view-name="search-entity-result-universal-template"]'
+  );
+  if (emberRows.length > 0) return extractSearchResultsEmber(emberRows);
+
+  // ── Wariant SDUI ──────────────────────────────────────────────
   const items = doc.querySelectorAll('div[role="listitem"]');
   const results = [];
   const isMutualText = (s) =>
@@ -138,7 +233,7 @@ function extractSearchResults(doc) {
       results.push({ name, slug, headline, location, degree, buttonState });
     } catch (err) {
       // Per-item try/catch — fail jednego li nie wywala całej listy.
-      results.push({ slug: null, error: String(err && err.message || err) });
+      results.push({ slug: null, error: String((err && err.message) || err) });
     }
   }
   return results;
@@ -231,6 +326,101 @@ console.log("\n▸ Per-item try/catch resilience — corrupt one item, expect le
   // Inne itemy nadal poprawne
   assertEqual(profiles[0].name, "Mariusz Fedorowski", "Item[0] still intact after corrupting [5]");
   assertEqual(profiles[9].slug, "cezary-matyska-694b2a2b8", "Item[9] still intact after corrupting [5]");
+}
+
+// ── Wariant classic Ember `entity-result` (regresja v1.22.1) ──────
+//
+// LinkedIn A/B-serwuje classic Ember layout zamiast SDUI. Dump Marcina
+// z search "obsługa klienta": 10 wierszy div[data-chameleon-result-urn],
+// Connect = <button aria-label="Zaproś...">, imię w span[aria-hidden].
+console.log("\n▸ search_entity_result.html — Ember entity-result extractor");
+{
+  const { doc } = loadFixture("search_entity_result.html");
+  const profiles = extractSearchResults(doc);
+
+  // AC: 10 wierszy (data-chameleon-result-urn × 10).
+  assertEqual(profiles.length, 10, "Ember: returns array of length 10");
+
+  // AC: imiona NIE puste — to był objaw bugu ("—" w popupie).
+  const namedCount = profiles.filter((p) => p.name && p.name.length > 1).length;
+  assertEqual(namedCount, 10, "Ember: all 10 rows have non-empty name");
+
+  // AC: konkretne imię z dumpu.
+  const toron = profiles.find((p) => p.name === "Małgorzata Toroń");
+  assert(!!toron, "Ember: 'Małgorzata Toroń' wyekstrahowana");
+
+  // AC: slug = czysty vanity, mutual connections (ACoAA...) odfiltrowane.
+  if (toron) {
+    assertEqual(toron.slug, "malgorzatatoron", "Ember: Toroń slug = czysty vanity");
+  }
+  const obfuscatedSlugs = profiles.filter(
+    (p) => p.slug && /^acoaa/i.test(p.slug)
+  ).length;
+  assertEqual(obfuscatedSlugs, 0, "Ember: zero obfuskowanych slugów (mutual conn. odfiltrowane)");
+
+  // AC: każdy wiersz ma slug.
+  const sluggedCount = profiles.filter((p) => p.slug).length;
+  assertEqual(sluggedCount, 10, "Ember: all 10 rows have slug");
+
+  // AC: Connect rozpoznany — to był drugi objaw bugu ("0 dostępnych").
+  const connectCount = profiles.filter((p) => p.buttonState === "Connect").length;
+  assert(connectCount >= 6, "Ember: ≥6 rows buttonState=Connect", `got ${connectCount}`);
+
+  // AC: Follow rozpoznany (≥1 profil follow-only w dumpie).
+  const followCount = profiles.filter((p) => p.buttonState === "Follow").length;
+  assert(followCount >= 1, "Ember: ≥1 row buttonState=Follow", `got ${followCount}`);
+
+  // AC: żaden wiersz nie ma buttonState=Unknown (objaw "?" w popupie).
+  const unknownCount = profiles.filter((p) => p.buttonState === "Unknown").length;
+  assertEqual(unknownCount, 0, "Ember: zero rows buttonState=Unknown");
+
+  // AC: degree znormalizowany do "2nd" (kontrakt isFirstDegree).
+  if (toron) {
+    assertEqual(toron.degree, "2nd", "Ember: Toroń degree = '2nd'");
+  }
+  const degreeOk = profiles.filter(
+    (p) => p.degree === "1st" || p.degree === "2nd" || p.degree === "3rd"
+  ).length;
+  assert(degreeOk >= 8, "Ember: ≥8 rows mają znormalizowany degree", `got ${degreeOk}`);
+
+  // AC: headline + location wyekstrahowane.
+  if (toron) {
+    assert(
+      toron.headline && toron.headline.includes("Obsługa klienta"),
+      "Ember: Toroń headline zawiera 'Obsługa klienta'",
+      `got "${toron && toron.headline}"`
+    );
+    assert(
+      toron.location && /Cracow|Krak/i.test(toron.location),
+      "Ember: Toroń location wyekstrahowana",
+      `got "${toron && toron.location}"`
+    );
+  }
+  const headlineCount = profiles.filter((p) => p.headline).length;
+  assert(headlineCount >= 8, "Ember: ≥8 rows mają headline", `got ${headlineCount}`);
+}
+
+// ── Ember: per-row try/catch resilience ───────────────────────────
+console.log("\n▸ Ember per-row try/catch — corrupt one row, expect length still 10");
+{
+  const { doc } = loadFixture("search_entity_result.html");
+  const rows = doc.querySelectorAll("div[data-chameleon-result-urn]");
+  // Korupcja: wywal querySelector na 4. wierszu podmieniając go na thrower.
+  const target = rows[4];
+  target.querySelector = () => { throw new Error("corrupt-row"); };
+  target.querySelectorAll = () => { throw new Error("corrupt-row"); };
+
+  const profiles = extractSearchResults(doc);
+  assertEqual(profiles.length, 10, "Ember: length still 10 after corrupting row[4]");
+  assert(
+    profiles[4].error !== undefined,
+    "Ember: corrupted row[4] degrades to {error}",
+    `got ${JSON.stringify(profiles[4])}`
+  );
+  assert(
+    profiles[0].name && profiles[9].name,
+    "Ember: rows [0] and [9] still intact after corrupting [4]"
+  );
 }
 
 // ── Summary ───────────────────────────────────────────────────────
