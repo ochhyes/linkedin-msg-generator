@@ -2187,6 +2187,25 @@
       } catch (err) {
         sendResponse({ success: false, profiles: [], error: err && err.message ? err.message : String(err) });
       }
+    } else if (message.action === "extractRecentConnections") {
+      // ASYNC — czeka aż lista wyrenderuje, zwraca pierwsze N BEZ scroll'a.
+      // Używane przez auto accept-tracker (#56A v1.23.0) — hidden tab,
+      // świeże akcepty są zawsze na górze (LinkedIn sortuje "Recently added").
+      (async () => {
+        try {
+          const limit = Math.max(1, Math.min(message.limit || 100, 500));
+          const ok = await waitFor(() => extractConnectionsList().length > 0, message.timeoutMs || 12000);
+          if (!ok) {
+            if (isContextValid()) sendResponse({ success: false, profiles: [], error: "empty_list_timeout" });
+            return;
+          }
+          const all = extractConnectionsList();
+          if (isContextValid()) sendResponse({ success: true, profiles: all.slice(0, limit), total: all.length });
+        } catch (err) {
+          if (isContextValid()) sendResponse({ success: false, profiles: [], error: err && err.message ? err.message : String(err) });
+        }
+      })();
+      return true; // keep channel open
     } else if (message.action === "importAllConnections") {
       // ASYNC — infinite-scroll po stronie kontaktów.
       importAllConnections(message.maxPages)

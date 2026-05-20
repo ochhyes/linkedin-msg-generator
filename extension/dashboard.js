@@ -1076,12 +1076,75 @@
     if (profileDbConnFilter) profileDbConnFilter.addEventListener("change", () => { profileDbPage = 1; loadProfileDb(); });
   }
 
+
+  // #56A v1.23.0 - render statusu auto accept-trackera (Section 0.5).
+  async function loadAcceptCheck() {
+    const badge = $("#accept-check-badge");
+    const lineLast = $("#accept-check-line-last");
+    const lineNext = $("#accept-check-line-next");
+    const lineError = $("#accept-check-line-error");
+    const btnToggle = $("#btn-accept-check-toggle");
+    if (!badge || !lineLast || !lineNext) return;
+    try {
+      const resp = await chrome.runtime.sendMessage({ action: "acceptCheckGetState" });
+      if (!resp || !resp.success) {
+        badge.textContent = "?";
+        lineLast.innerHTML = 'Ostatni scan: <span class="muted">błąd ładowania</span>';
+        return;
+      }
+      const s = resp.state || {};
+      badge.textContent = s.enabled ? "Włączone" : "Wyłączone";
+      if (btnToggle) btnToggle.textContent = s.enabled ? "Wyłącz" : "Włącz";
+
+      if (s.lastSuccessAt) {
+        const r = s.lastResult || {};
+        lineLast.innerHTML = "Ostatni scan: <strong>" + formatDate(s.lastSuccessAt) +
+          "</strong> — przeskanowano " + (r.scanned || 0) +
+          ", oznaczono akceptów: <strong>" + (r.accepted || 0) + "</strong>";
+      } else if (s.lastRunAt) {
+        lineLast.innerHTML = "Ostatni tick: <strong>" + formatDate(s.lastRunAt) +
+          '</strong> <span class="muted">(brak udanego scanu jeszcze)</span>';
+      } else {
+        lineLast.innerHTML = 'Ostatni scan: <span class="muted">jeszcze nie odpalony</span>';
+      }
+
+      if (s.enabled && s.nextScanAt) {
+        const diffMs = s.nextScanAt - Date.now();
+        if (diffMs <= 0) {
+          lineNext.innerHTML = "Następny scan: <strong>w ciągu godziny</strong> (alarm tick co 60min sprawdzi)";
+        } else {
+          const diffH = Math.floor(diffMs / 3600000);
+          const diffMin = Math.floor((diffMs % 3600000) / 60000);
+          const human = diffH > 0 ? (diffH + "h " + diffMin + "min") : (diffMin + "min");
+          lineNext.innerHTML = "Następny scan: za <strong>" + human + "</strong> (" + formatDate(s.nextScanAt) + ")";
+        }
+      } else if (s.enabled) {
+        lineNext.innerHTML = 'Następny scan: <span class="muted">niezaplanowany — czekam na pierwszy alarm tick (do 60min)</span>';
+      } else {
+        lineNext.innerHTML = 'Następny scan: <span class="muted">tracker wyłączony</span>';
+      }
+
+      if (lineError) {
+        if (s.lastError) {
+          lineError.textContent = "Ostatni błąd: " + s.lastError + " (failCount: " + (s.failCount || 0) + ")";
+          lineError.classList.remove("hidden");
+        } else {
+          lineError.classList.add("hidden");
+        }
+      }
+    } catch (err) {
+      console.warn("[dashboard] loadAcceptCheck fail:", err);
+    }
+  }
+
   function refreshAll() {
     loadAll();
     loadStats();
     loadContactsList();
     loadProfileDb();
+    loadAcceptCheck();
     loadBackupStatus();
+    loadAcceptCheck();
   }
 
   // ── Helpers ────────────────────────────────────────────────────────
@@ -1119,6 +1182,52 @@
     });
   }
 
+  // #56A v1.23.0 - handlery auto accept-trackera (Sprawdz teraz / Wlacz/Wylacz).
+  const btnAcceptCheckNow = $("#btn-accept-check-now");
+  const btnAcceptCheckToggle = $("#btn-accept-check-toggle");
+
+  if (btnAcceptCheckNow) {
+    btnAcceptCheckNow.addEventListener("click", async () => {
+      btnAcceptCheckNow.disabled = true;
+      const orig = btnAcceptCheckNow.textContent;
+      btnAcceptCheckNow.textContent = "Skanuję…";
+      try {
+        const resp = await chrome.runtime.sendMessage({ action: "acceptCheckRunNow" });
+        if (resp && resp.success) {
+          alert("✓ Przeskanowano " + (resp.scanned || 0) + " kontaktów, oznaczono " + (resp.accepted || 0) + " akceptów.");
+        } else if (resp && resp.skipped) {
+          const map = {
+            disabled: "Tracker wyłączony — najpierw kliknij Włącz.",
+            bulk_running: "Bulk-connect worker pracuje — sprawdź za chwilę, żeby uniknąć konfliktów.",
+            idle_hours: "Poza godzinami pracy (9–18). Force-run też respektuje to ograniczenie tylko częściowo — zaplanowano kolejną próbę.",
+            not_due: "Jeszcze za wcześnie na kolejny scan."
+          };
+          alert("Skip: " + (map[resp.skipped] || resp.skipped));
+        } else {
+          alert("Błąd: " + ((resp && resp.error) || "nieznany"));
+        }
+      } catch (err) {
+        alert("Błąd: " + (err.message || err));
+      } finally {
+        btnAcceptCheckNow.disabled = false;
+        btnAcceptCheckNow.textContent = orig;
+        loadAcceptCheck();
+        loadStats();
+        loadContactsList();
+      }
+    });
+  }
+
+  if (btnAcceptCheckToggle) {
+    btnAcceptCheckToggle.addEventListener("click", async () => {
+      const cur = await chrome.runtime.sendMessage({ action: "acceptCheckGetState" });
+      if (!cur || !cur.success) return;
+      const action = cur.state.enabled ? "acceptCheckDisable" : "acceptCheckEnable";
+      await chrome.runtime.sendMessage({ action });
+      loadAcceptCheck();
+    });
+  }
+
   // Auto-refresh gdy storage zmienia się (np. user kliknął "Wysłałem"
   // w popup'ie i wraca do dashboardu).
   chrome.storage.onChanged.addListener((changes, area) => {
@@ -1128,6 +1237,7 @@
       loadStats();
       loadContactsList();
       loadProfileDb();
+      loadAcceptCheck();
     }
     if (changes.profileDb) {
       loadProfileDb();

@@ -373,6 +373,30 @@ body {
 /* ── Stats funnel (#38 v1.11.0) ──────────────────────────────── */
 .block--stats { border-left: 3px solid var(--brand-primary); }
 
+/* ── Auto accept-tracker (#56A v1.23.0) ──────────────────────── */
+.block--accept-check { border-left: 3px solid var(--brand-primary); }
+.accept-check__status {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: var(--space-md) 0;
+}
+.accept-check__line {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.accept-check__line .muted { color: var(--text-secondary); }
+.accept-check__line--error {
+  color: var(--danger, #b00020);
+  font-weight: 500;
+}
+.accept-check__actions {
+  display: flex;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+}
+
 .stats-funnel {
   display: flex;
   flex-direction: column;

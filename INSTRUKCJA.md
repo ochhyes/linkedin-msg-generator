@@ -96,14 +96,15 @@ Rozwiń **"Ustawienia bulk connect"** w popup'ie:
 
 ### Krok D — Sprawdzanie akceptacji (codziennie, ~30s)
 
-Następnego dnia (lub co kilka dni):
+**Od v1.23.0 sprawdzanie odbywa się automatycznie w tle — nie musisz nic klikać.** Co 24h (godziny 9-18, z losowym jitter'em) plugin otwiera w tle listę Twoich kontaktów na LinkedIn (`/mynetwork/invite-connect/connections/`), skanuje pierwsze ~100 wpisów i automatycznie zaznacza zaakceptowanych w funnel'u i tabeli kontaktów.
 
-1. Klik ikonę LinkedIn MSG.
-2. W sekcji **"Wiadomości po-Connect"** (pojawia się gdy ktoś Cię zaakceptował): klik **"Sprawdź akceptacje"**.
-3. Plugin otwiera w tle karty profili z kolejki (po jednym, ~3-5s każda) — sprawdza czy są już 1st degree.
-4. Po skończeniu: lista zaakceptowanych z badge'em **zaakcept.**
+**Status auto-trackera widzisz w dashboardzie** (sekcja **"🔍 Auto-tracking akceptów"** tuż pod Statystykami) — pokazuje kiedy był ostatni scan, ile osób zostało oznaczonych, kiedy będzie następny scan. Tam też możesz:
+- **"Sprawdź teraz"** — wymusza scan natychmiast (zamiast czekać na następny zaplanowany).
+- **"Wyłącz"/"Włącz"** — toggle auto-trackera (np. gdy chcesz mieć ciszę w tle podczas demo).
 
-> **Ograniczenie:** każdy profil jest sprawdzany max raz na 4 godziny (anti-spam LinkedIn).
+**Manual fallback (stara metoda, dla stragglerów):** w popup'ie w sekcji "Wiadomości po-Connect" jest przycisk **"Sprawdź akceptacje"** który otwiera profil każdego oczekującego po kolei (~3-5s na profil). Używaj gdy auto-tracker nie złapał kogoś (akcepty starsze niż tydzień zsuwają się w głąb listy connections).
+
+> **Bezpieczeństwo:** auto-tracker chodzi w hidden tab (nie wskakuje Ci kart), w godzinach pracy, mutex z bulk-connect (nie kolidują). Po 3 kolejnych błędach automatycznie się wyłącza i wisi error w dashboardzie. Per-profil manual sprawdzanie ma rate-limit 4h.
 
 ### Krok E — Generowanie wiadomości (~1 min na 5 osób)
 

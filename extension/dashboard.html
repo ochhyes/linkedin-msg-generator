@@ -34,6 +34,24 @@
         </div>
       </section>
 
+      <!-- Section 0.5: AUTO ACCEPT-TRACKER (#56A v1.23.0) -->
+      <section id="accept-check-section" class="block block--accept-check">
+        <h2>
+          🔍 Auto-tracking akceptów
+          <span id="accept-check-badge" class="count-badge">…</span>
+        </h2>
+        <p class="hint">Co 24h (godziny 9–18, hidden tab) skanuje pierwszą porcję listy kontaktów na LinkedIn i automatycznie zaznacza "Zaakceptowane" dla świeżo zaakceptowanych zaproszeń. Bez tego licznik wyżej zostaje na 0.</p>
+        <div id="accept-check-status" class="accept-check__status">
+          <p class="accept-check__line" id="accept-check-line-last">Ostatni scan: <span class="muted">brak danych</span></p>
+          <p class="accept-check__line" id="accept-check-line-next">Następny scan: <span class="muted">—</span></p>
+          <p class="accept-check__line accept-check__line--error hidden" id="accept-check-line-error"></p>
+        </div>
+        <div class="accept-check__actions">
+          <button id="btn-accept-check-now" class="btn btn--primary btn--sm">Sprawdź teraz</button>
+          <button id="btn-accept-check-toggle" class="btn btn--ghost btn--sm">Wyłącz</button>
+        </div>
+      </section>
+
       <!-- Section 1: DUE NOW -->
       <section class="block block--due">
         <h2>

@@ -232,6 +232,21 @@ const BULK_DEFAULTS = {
   // autoFillRunning żeby popup wiedział kiedy pokazać "Stop" zamiast "Wypełnij".
   autoFillRunning: false,
   autoFillCancelRequested: false,
+  // #56A v1.23.0 — auto accept-tracker w tle. 1× dziennie hidden tab na
+  // /mynetwork/invite-connect/connections/, scan pierwszej porcji listy,
+  // match po slug → flip acceptedAt dla wszystkich pasujących queue items
+  // (status:"sent" && !acceptedAt). Eliminuje konieczność klikania
+  // "Sprawdź akcepty" w popup'ie ręcznie. Mutex z bulk-connect worker'em.
+  acceptCheck: {
+    enabled: true,
+    lastRunAt: null,            // ms — kiedy ostatni tick zakończony (success lub skip)
+    lastSuccessAt: null,        // ms — kiedy ostatni tick z prawdziwym scan'em
+    lastResult: null,           // {scanned, accepted, total} z ostatniego scan'a
+    nextScanAt: null,           // ms — kiedy najwcześniej kolejny scan
+    lastError: null,            // string — ostatni komunikat błędu
+    lastErrorAt: null,          // ms — kiedy ostatni error
+    failCount: 0,               // licznik kolejnych błędów; >=3 → auto-disable
+  },
 };
 
 const BULK_ALARM_NAME = "bulkKeepAlive";
@@ -525,6 +540,213 @@ async function bulkCheckAccepts() {
     accepted: acceptedCount,
   };
 }
+
+// -- Auto accept-tracker (#56A v1.23.0) -------------------------------
+//
+// Background worker odpalany przez chrome.alarms co 60min. Tick sprawdza
+// czy minal nextScanAt; jesli tak - otwiera /mynetwork/invite-connect/
+// connections/ w hidden tab (active:false), parsuje pierwsze ~100 wpisow
+// (BEZ scrolla, swieze akcepty na gorze listy LinkedIn'a), match slug
+// w queue -> flip acceptedAt dla wszystkich pasujacych queue items
+// (status:"sent" && !acceptedAt). Eliminuje koniecznosc klikania
+// "Sprawdz akcepty" w popupie recznie.
+//
+// Mutex: gdy bulkConnect.active=true -> skip + reschedule za 30min.
+// Godziny 9-18: poza -> skip + reschedule na 9:05 dzis/jutro.
+// Auto-disable po 3 kolejnych bledach.
+
+const ACCEPT_CHECK_ALARM_NAME = "acceptCheckTick";
+const ACCEPT_CHECK_PERIOD_MS = 24 * 60 * 60 * 1000; // 24h base period
+const ACCEPT_CHECK_JITTER_MS = 30 * 60 * 1000;     // +/- 30 min
+const ACCEPT_CHECK_TAB_TIMEOUT_MS = 30000;
+const ACCEPT_CHECK_RETRY_DELAY_MS = 30 * 60 * 1000; // 30min retry
+const ACCEPT_CHECK_FAIL_LIMIT = 3;
+
+/**
+ * Pure logic: match listy connections (z .slug) przeciwko queue items.
+ * Flip acceptedAt na items pasujacych slug && status==="sent" && !acceptedAt.
+ * Portowane do test_accept_check.js (sync z tym kodem manualnie - debt #10).
+ */
+function matchAndFlipAccepts(queue, connections, nowMs) {
+  if (!Array.isArray(queue) || !Array.isArray(connections)) {
+    return { queue: queue || [], accepted: 0, matchedSlugs: [] };
+  }
+  const connSlugs = new Set(
+    connections
+      .map((c) => (c && c.slug ? String(c.slug).toLowerCase() : null))
+      .filter(Boolean)
+  );
+  if (connSlugs.size === 0) {
+    return { queue, accepted: 0, matchedSlugs: [] };
+  }
+  let accepted = 0;
+  const matchedSlugs = [];
+  const newQueue = queue.map((item) => {
+    if (!item || !item.slug) return item;
+    if (item.status !== "sent") return item;
+    if (item.acceptedAt) return item;
+    if (!connSlugs.has(item.slug)) return item;
+    accepted += 1;
+    matchedSlugs.push(item.slug);
+    return { ...item, acceptedAt: nowMs, lastAcceptCheckAt: nowMs };
+  });
+  return { queue: newQueue, accepted, matchedSlugs };
+}
+
+/**
+ * Schedule next scan with jitter +/-30min around 24h base period.
+ */
+function scheduleNextAcceptCheck(nowMs) {
+  const jitter = Math.floor((Math.random() - 0.5) * 2 * ACCEPT_CHECK_JITTER_MS);
+  return nowMs + ACCEPT_CHECK_PERIOD_MS + jitter;
+}
+
+/**
+ * Working-hours guard: gdy poza 9-18, zwroc timestamp nastepnego 9:05.
+ * null = jestesmy w oknie pracy (mozna scanowac).
+ */
+function nextWorkingHourTs(nowMs, hourStart, hourEnd) {
+  const d = new Date(nowMs);
+  const hour = d.getHours();
+  if (hour >= hourStart && hour < hourEnd) return null;
+  const next = new Date(d);
+  if (hour < hourStart) {
+    next.setHours(hourStart, 5, 0, 0);
+  } else {
+    next.setDate(next.getDate() + 1);
+    next.setHours(hourStart, 5, 0, 0);
+  }
+  return next.getTime();
+}
+
+async function getAcceptCheckState() {
+  const bulk = await getBulkState();
+  return { ...BULK_DEFAULTS.acceptCheck, ...(bulk.acceptCheck || {}) };
+}
+
+async function setAcceptCheckState(patch) {
+  const bulk = await getBulkState();
+  const next = { ...BULK_DEFAULTS.acceptCheck, ...(bulk.acceptCheck || {}), ...patch };
+  await setBulkState({ acceptCheck: next });
+  return next;
+}
+
+/**
+ * Otwiera hidden tab na connections page i pobiera swieza liste (bez scrolla).
+ * Zwraca {success, profiles, total, error?}.
+ */
+async function fetchRecentConnections(limit) {
+  let tab = null;
+  try {
+    tab = await chrome.tabs.create({ url: CONNECTIONS_TAB_URL, active: false });
+    let resp = null, lastErr = null;
+    const start = Date.now();
+    while (Date.now() - start < ACCEPT_CHECK_TAB_TIMEOUT_MS) {
+      try {
+        resp = await chrome.tabs.sendMessage(tab.id, {
+          action: "extractRecentConnections",
+          limit: limit || 100,
+        });
+        break;
+      } catch (err) {
+        lastErr = err;
+        await new Promise((r) => setTimeout(r, 600));
+      }
+    }
+    if (!resp) throw lastErr || new Error("tab_no_response");
+    if (!resp.success) return { success: false, error: resp.error || "extract_failed" };
+    return { success: true, profiles: resp.profiles || [], total: resp.total || 0 };
+  } catch (err) {
+    return { success: false, error: err && err.message ? err.message : String(err) };
+  } finally {
+    if (tab && tab.id) {
+      try { await chrome.tabs.remove(tab.id); } catch (_) { /* tab already closed */ }
+    }
+  }
+}
+
+/**
+ * Glowny tick auto-trackera. Idempotent - bezpieczny do force-run i scheduled.
+ * @param {object} opts - {force:boolean} - bypassuje period + hours check
+ */
+async function acceptCheckTick(opts) {
+  const force = !!(opts && opts.force);
+  const state = await getAcceptCheckState();
+  const bulkState = await getBulkState();
+  const now = Date.now();
+
+  if (!state.enabled && !force) {
+    return { skipped: "disabled" };
+  }
+
+  if (bulkState.active) {
+    await setAcceptCheckState({ lastRunAt: now, nextScanAt: now + ACCEPT_CHECK_RETRY_DELAY_MS });
+    return { skipped: "bulk_running", nextScanAt: now + ACCEPT_CHECK_RETRY_DELAY_MS };
+  }
+
+  if (!force) {
+    const wakeTs = nextWorkingHourTs(now, bulkState.config.workingHoursStart, bulkState.config.workingHoursEnd);
+    if (wakeTs !== null) {
+      await setAcceptCheckState({ lastRunAt: now, nextScanAt: wakeTs });
+      return { skipped: "idle_hours", nextScanAt: wakeTs };
+    }
+    if (state.nextScanAt && now < state.nextScanAt) {
+      return { skipped: "not_due", nextScanAt: state.nextScanAt };
+    }
+  }
+
+  const fetched = await fetchRecentConnections(100);
+  if (!fetched.success) {
+    const failCount = (state.failCount || 0) + 1;
+    const patch = {
+      lastRunAt: now,
+      lastError: fetched.error,
+      lastErrorAt: now,
+      failCount,
+      nextScanAt: now + ACCEPT_CHECK_RETRY_DELAY_MS,
+    };
+    if (failCount >= ACCEPT_CHECK_FAIL_LIMIT) {
+      patch.enabled = false;
+    }
+    await setAcceptCheckState(patch);
+    return { success: false, error: fetched.error, failCount, disabled: patch.enabled === false };
+  }
+
+  // Match w queue (re-read state - moglo sie zmienic miedzy fetchem a teraz).
+  const freshBulk = await getBulkState();
+  const { queue: newQueue, accepted, matchedSlugs } = matchAndFlipAccepts(freshBulk.queue, fetched.profiles, now);
+  if (accepted > 0) {
+    await setBulkState({ queue: newQueue });
+  }
+
+  // BONUS: upsert do profileDb (swieze dane connections).
+  try {
+    const profilesForDb = fetched.profiles.map((p) => ({ ...p, degree: "1st", isConnection: true }));
+    upsertProfilesToDb(profilesForDb, "connections_import").catch(() => {});
+  } catch (_) { /* upsert best-effort */ }
+
+  const nextScanAt = scheduleNextAcceptCheck(now);
+  await setAcceptCheckState({
+    lastRunAt: now,
+    lastSuccessAt: now,
+    lastResult: { scanned: fetched.profiles.length, accepted, total: fetched.total || fetched.profiles.length },
+    nextScanAt,
+    lastError: null,
+    lastErrorAt: null,
+    failCount: 0,
+  });
+
+  return {
+    success: true,
+    scanned: fetched.profiles.length,
+    accepted,
+    matchedSlugs,
+    nextScanAt,
+  };
+}
+
+/**
+ * Pre-flight scrape
 
 /**
  * Pre-flight scrape pełnego profilu (reuse `scrapeProfile` z #1).
@@ -1656,6 +1878,12 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   } else if (alarm.name === DB_BACKUP_ALARM_NAME) {
     // #45: sprawdź czy minął interwał auto-backupu; jeśli tak — zapisz plik.
     doAutoBackup(false).catch((e) => console.warn("[LinkedIn MSG] auto-backup tick fail:", e && e.message));
+  } else if (alarm.name === ACCEPT_CHECK_ALARM_NAME) {
+    // #56A: alarm odpala co 60min; tick wewnętrznie sprawdza czy minął
+    // nextScanAt + working hours + mutex. Realny scan tylko ~1× dziennie.
+    acceptCheckTick({ force: false }).catch((e) =>
+      console.warn("[LinkedIn MSG] acceptCheckTick fail:", e && e.message)
+    );
   }
 });
 
@@ -2480,6 +2708,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case "bulkCheckAccepts":
           return await bulkCheckAccepts();
 
+        // #56A v1.23.0 — auto accept-tracker
+        case "acceptCheckGetState":
+          return { success: true, state: await getAcceptCheckState() };
+        case "acceptCheckRunNow":
+          return await acceptCheckTick({ force: true });
+        case "acceptCheckEnable":
+          return { success: true, state: await setAcceptCheckState({ enabled: true, failCount: 0, lastError: null }) };
+        case "acceptCheckDisable":
+          return { success: true, state: await setAcceptCheckState({ enabled: false }) };
+
         case "bulkScrapeProfileForQueue":
           return await bulkScrapeProfileForQueue(message.slug);
 
@@ -2620,6 +2858,9 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   await chrome.alarms.create(FOLLOWUP_ALARM_NAME, { periodInMinutes: 360 });
   // #45 v1.14.0: alarm auto-backupu — sprawdza co 12h czy minął interwał.
   await chrome.alarms.create(DB_BACKUP_ALARM_NAME, { periodInMinutes: 720 });
+  // #56A v1.23.0: auto accept-tracker. Alarm co 60min; tick wewnętrznie
+  // decyduje czy odpalić scan (period 24h + jitter, godziny 9-18, mutex).
+  await chrome.alarms.create(ACCEPT_CHECK_ALARM_NAME, { periodInMinutes: 60 });
   await updateFollowupBadge();
 });
 
@@ -2629,6 +2870,9 @@ chrome.runtime.onStartup.addListener(async () => {
   await migrateSlugEncoding();
   await chrome.alarms.create(FOLLOWUP_ALARM_NAME, { periodInMinutes: 360 });
   await chrome.alarms.create(DB_BACKUP_ALARM_NAME, { periodInMinutes: 720 });
+  // #56A v1.23.0: auto accept-tracker. Alarm co 60min; tick wewnętrznie
+  // decyduje czy odpalić scan (period 24h + jitter, godziny 9-18, mutex).
+  await chrome.alarms.create(ACCEPT_CHECK_ALARM_NAME, { periodInMinutes: 60 });
   await updateFollowupBadge();
 });
 
