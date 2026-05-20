@@ -8,6 +8,47 @@
 
 ---
 
+## 2026-05-20 (Claude Code, claude-opus-4-7) — feat: auto accept-tracker w tle (#56A v1.23.0)
+
+### Zrobione
+
+- **Diagnoza zgłoszenia Marcina** (WhatsApp screenshot funnel'a dashboardu): "Zaakceptowane: 0" mimo 38 invites i 16 wiadomości #1. Wystarczyło spojrzeć w kod: `bulkCheckAccepts` (background.js:488) istnieje, ale odpalany TYLKO ręcznie z popup.js:1312 — bez kliknięcia nigdy nie poleci. Reply-tracker w ogóle nie istnieje (tylko manual ✅ z dashboardu). Pola `acceptedAt`/`messageReplyAt` są w schemie od dawna, brakuje karmienia.
+- **Sprint #11 / #56A** — PM→Dev→Tester→Commit w jednej sesji (Marcin: "jedziemy #56 teraz" po propozycji decomposition).
+- **`background.js`**: nowy moduł "Auto accept-tracker" (~180 linii). `BULK_DEFAULTS.acceptCheck` sub-obiekt (enabled, lastRunAt, lastSuccessAt, lastResult, nextScanAt, lastError, lastErrorAt, failCount). Pure helpers `matchAndFlipAccepts(queue, connections, now)` / `scheduleNextAcceptCheck(now)` / `nextWorkingHourTs(now, 9, 18)` (portowalne do testów). `fetchRecentConnections(limit)` — otwiera `/mynetwork/invite-connect/connections/` w **hidden tab** (`active:false`), retry sendMessage przez 30s, zamyka tab w `finally`. Główny `acceptCheckTick({force})` — mutex (`bulkConnect.active`), godziny 9-18, period check `nextScanAt`, fetch+match, BONUS upsert do `profileDb` jako `source:"connections_import"`, schedule next z jitter ±30min, auto-disable po 3 fail'ach. Alarm `ACCEPT_CHECK_ALARM_NAME` (`periodInMinutes: 60`) w `onInstalled`/`onStartup`/`onAlarm`. 4 nowe message router handlers (`acceptCheckGetState`/`acceptCheckRunNow`/`acceptCheckEnable`/`acceptCheckDisable`).
+- **`content.js`**: nowy async handler `extractRecentConnections` — czeka `waitFor(... > 0, 12s)`, zwraca pierwsze N (default 100) **bez scroll'a**. Reuse istniejącego `extractConnectionsList`.
+- **`dashboard.html|js|css`**: Section 0.5 "🔍 Auto-tracking akceptów" tuż pod Stats. Badge enabled/disabled, "Ostatni scan: <data> — przeskanowano N, oznaczono akceptów M", "Następny scan: za X godz./jutro 9:05/wyłączone", error line (gdy `lastError`), przyciski **"Sprawdź teraz"** (force tick + spinner + result alert + reload sąsiednich sekcji) i **"Wyłącz/Włącz"** (toggle `enabled`). Render funkcja `loadAcceptCheck()` wpięta w `refreshAll`/storage listener (`changes.bulkConnect`)/init.
+- **`INSTRUKCJA.md`**: rozdział "Krok D — Sprawdzanie akceptacji" przepisany — auto-tracker jako default, manual przycisk z popup'u jako fallback dla stragglerów.
+- **`tests/test_accept_check.js`** NEW — 37/0 PASS. Sekcje: A (matchAndFlipAccepts edge cases A1-A10 — empty, idempotent, case-insensitive, multi-match, null inputs), B (scheduleNext jitter bounds B1-B4 — min/max/middle + 50 random calls in range), C (nextWorkingHourTs C1-C4 — in/before/after/exact boundary), D (integration scenario z 6-itemową queue).
+- **`manifest.json`** 1.22.1 → 1.23.0.
+- **Commit `70e44c8`** — feat: auto accept-tracker w tle (#56A v1.23.0). Pre-commit hook OK.
+
+### Decyzje
+
+- **`active:false` + BEZ scrolla** — naturalne user behaviour (brak tabów wskakujących Marcinowi przed nosem). Świeże akcepty są na górze listy connections (LinkedIn sortuje "Recently added") — pierwsze ~100 wpisów wystarczy. Background tab + scroll i tak nie działa (IntersectionObserver pauzowany dla hidden tabów).
+- **Alarm `periodInMinutes: 60` zamiast 1440** — daje elastyczność jitter'a (tick może być w dowolnej godzinie pracy) + lepiej znosi SW idle kill (alarm budzi SW co godzinę). Real scan i tak tylko ~1×/dzień (gating przez `nextScanAt`).
+- **Reuse `extractConnectionsList` + nowy lekki action `extractRecentConnections`** zamiast scaling istniejącego `importAllConnections` — ten ma infinite-scroll + retry pętle dla pełnego importu, niepotrzebne tu (jednorazowy scan top-N bez scroll'a).
+- **#56B (reply-tracker) odsunięty do BLOCKED** — bez fixture'a DOM `/messaging/` od Marcina to strzelanie w ciemno. Decomposition po dumpie. Worker będzie analogiczny do accept-trackera (alarm + tick + mutex + hidden tab), więc gdy fixture wpadnie — robota głównie po stronie extractora.
+- **Brak tooltipu w popup'ie funnel'u** (było w AC) — Marcin pokazał screenshot z dashboardu, nie popup'u. Status auto-trackera jest TUŻ POD funnel'em w dashboardzie, tooltip w popup'ie byłby duplikatem.
+
+### Lessons learned
+
+- **Pełen sprint w jednej sesji działa gdy:** (1) PM decomposition jest porządna z dokładnym mapowaniem na pliki + AC; (2) test scaffold rozpisany w PM (nazwy sekcji + ile asercji); (3) decyzje "active:false bez scrolla" zapadły w PM zanim weszedł kod — uniknięte ~30min strzelania po implementacji.
+- **Python heredoc przez Bash zawodzi przy polskich apostrofach** (`popup'ie`, `scan'u`) — bash zinterpretował niektóre apostrofy jako `'` token terminator. Workaround: zapisać Python skrypt do `tmp_*.py` przez `Write`, odpalić, usunąć. Też uważać na apostrofy w JS single-quoted stringach (zepsuło syntax JS w `scan'u jeszcze`).
+- **Komenda Python na maszynie Marcina to `py -3.11`** (nie `python3`, nie `python`, nie `.venv/Scripts/python` — `.venv` `pyvenv.cfg` wskazuje na nieistniejący Python313 install). To samo ostrzeżenie było w CLAUDE.md od 2026-05-17, potwierdzenie dziś.
+- **Edit tool z `replace_all:true` poprawnie ogarnął dwa miejsca `await chrome.alarms.create(DB_BACKUP_ALARM_NAME, ...)` w `onInstalled` + `onStartup`** — zaoszczędzony jeden duplikat-edit.
+
+### BLOCKED / TODO
+
+- **#56B BLOCKED na dump `/messaging/` od Marcina** — instrukcja w CLAUDE.md sekcja BLOCKED. Po dumpie: 1 sesja PM→Dev→Tester→Commit, ~3h roboty.
+- **Smoke #56A czeka Marcina** — How to test w CLAUDE.md DONE (krok 1-7, ~10 min).
+- **`do marcina.txt`** + `outreach.zip` — śmieci w repo root, gitignored, można usunąć ręcznie.
+
+### Status końcowy
+
+`v1.23.0` zacommitowane (`70e44c8`). Test suite zielony: 689/0 PASS (+37 z `test_accept_check.js`, reszta bez regresji). Pre-commit hook OK. Dashboard po reload extension'u pokaże nową sekcję "🔍 Auto-tracking akceptów" pod Statystykami. Po smoke #56A PASS: PM rotuje na #56B (czeka na dump) lub #53.
+
+---
+
 ## 2026-05-18 (Cowork, claude-opus-4-7) — fix: bulk connect nie widzi kontaktów na classic Ember search layout (v1.22.1)
 
 ### Zrobione

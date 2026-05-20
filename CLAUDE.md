@@ -161,12 +161,12 @@ Uruchom testy automatyczne (pytest backend + jsdom extension). Wykonaj kroki man
 # CURRENT STATE
 
 ```
-Sprint:        #10 — #52+#54 DONE (21f28df), #55 DONE (89d5f88). v1.22.1 fix Ember search-page DONE+COMMITTED (30b0e0d). #53 następny.
-Phase:         PM → wybór #53 (Scraper contact info — PM decomposition gotowa w IN PROGRESS). v1.22.1 + #55 czekają smoke Marcina (How to test w DONE).
-Active task:   #53 — Dev TODO. v1.22.1 + #55 zacommitowane, czekają smoke.
-Repo state:    CZYSTE (poza docs-commitem). Ostatni commit 30b0e0d.
-Last commit:   30b0e0d — fix: parsuj classic Ember entity-result na search-page (v1.22.1)
-Updated:       2026-05-18 (v1.22.1 fix bulk connect na classic Ember search-layout; loop PM→Dev→Tester→Commit)
+Sprint:        #11 — #56A DONE+COMMITTED (70e44c8 v1.23.0). #56B BLOCKED na DOM dump /messaging/.
+Phase:         PM → wybór następnego. Pending smoke Marcina #56A (~10 min). Po smoke: #56B czeka na dump albo wracamy do #53.
+Active task:   (none — #56A czeka smoke, #56B BLOCKED).
+Repo state:    CZYSTE (poza docs-commitem).
+Last commit:   70e44c8 — feat: auto accept-tracker w tle (#56A v1.23.0)
+Updated:       2026-05-20 (sprint #56A: PM→Dev→Tester→Commit w jednej sesji; full loop autonomicznie po "jedziemy #56 teraz")
 ```
 
 **Pending operacyjne (Marcin):** (1) `git push` — lokalny `master` przed origin. (2) Smoke #52 (~10 min) i #54 (~5 min) wg "How to test" w DONE. (3) Smoke v1.19.0 wg `docs/SMOKE-TEST.md`, regen `extension 1.21.0.zip`, dystrybucja zespołowi OVB. (4) VPS: `API_KEYS=DreamComeTrue!` w prod `.env` → `cd deploy && docker compose up -d --build`. (5) Cleanup: usunąć `extension/tests/fixtures/linkedin_connections_export.csv.xlsx` + lock file `~$...` (Excel trzyma blokadę, sandbox nie ma uprawnień).
@@ -185,6 +185,11 @@ Updated:       2026-05-18 (v1.22.1 fix bulk connect na classic Ember search-layo
 3. **#6** — self-test scraper widget w popup (settings → diagnostyka). Mały.
 
 ## IN PROGRESS
+
+> **═══ SPRINT #11 — Auto-tracker akceptów i odpowiedzi ═══**
+> Zgłoszenie 2026-05-20: funnel pokazuje "Zaakceptowane: 0" mimo 38 invites + 16 wiadomości #1, "Odpowiedź na msg 1: 0". Diagnoza: `bulkCheckAccepts` (background.js:488) odpalany tylko manualnie z popup'u; reply-detection w ogóle nie istnieje. Pola w schema są (`acceptedAt`, `messageReplyAt`), brakuje karmienia.
+
+- **#56A** — Auto accept-tracker w tle (v1.23.0). DONE+COMMITTED `70e44c8` 2026-05-20. Pełna treść decomposition + AC w `git show 70e44c8`. Pending smoke Marcina (~10 min, How to test w DONE).
 
 > **═══ SPRINT #10 — Dane kontaktowe na bazie LinkedIn-export ═══**
 > Marcin ma ~16k kontaktów 1st na LinkedIn, chce z każdego wyciągnąć contact info (telefon, email, websites, "O mnie") do `profileDb`. Strategia: (a) LinkedIn data export — Connections.csv dostarczony (17008 kontaktów, 3.2% z mailem); (b) **#52** import CSV do profileDb — DONE; (c) filtr w dashboardzie — wybór puli priorytetowej; (d) **#53** scraper `/overlay/contact-info/` na wybranej puli.
@@ -231,11 +236,30 @@ Updated:       2026-05-18 (v1.22.1 fix bulk connect na classic Ember search-layo
 
 ## BLOCKED
 
-(none)
+- **#56B** (Sprint #11, P0 — BLOCKED na DOM dump `/messaging/` od Marcina) — Auto reply-tracker w tle. Worker analogiczny do accept-trackera (1× co 8h, hidden tab, mutex, godziny), ale na `/messaging/`. Parse sidebar: slug, lastSender, lastMessageAt, unread marker. Match po slug → flip najnowszego nullowego `*ReplyAt` gdy `lastSender != me && lastMessageAt > *SentAt`. Decomposition po dumpie.
+
+  **Marcin TODO:** otwórz `https://www.linkedin.com/messaging/` z paroma realnymi konwersacjami (mix: ostatni sender = ja vs kontakt, mix unread/read), w devtools console: `copy(document.body.outerHTML)`, save jako `extension/tests/fixtures/messaging_inbox.html`.
 
 ## DONE
 
 > Format: 1 linia per release (sha, opis, bump). Pełne treści w `git show <sha>`.
+
+**v1.23.0 — feat: auto accept-tracker w tle (#56A, 2026-05-20):**
+- ✅ `70e44c8` v1.23.0 — Background worker odpalany przez `chrome.alarms` co 60min — tick wewnętrznie decyduje czy odpalić scan (period 24h + jitter ±30min, godziny 9-18, mutex z bulk-connect). Otwiera `/mynetwork/invite-connect/connections/` w hidden tab (`active:false`), parsuje pierwsze ~100 wpisów listy BEZ scrolla (świeże akcepty na górze), match po slug w queue items `status:"sent" && !acceptedAt` → flip `acceptedAt`. Auto-disable po 3 błędach.
+  - **Eliminuje** wymaganie manualnego klikania "Sprawdź akcepty" w popup'ie — funnel "Zaakceptowane" naturalnie napełnia się z czasem.
+  - **Pliki:** `background.js` (+`BULK_DEFAULTS.acceptCheck`, +`matchAndFlipAccepts`, +`scheduleNextAcceptCheck`, +`nextWorkingHourTs`, +`acceptCheckTick`, +`fetchRecentConnections`, +`ACCEPT_CHECK_ALARM_NAME` alarm w `onInstalled`/`onStartup`/`onAlarm`, +4 message router cases), `content.js` (+`extractRecentConnections` async handler — wait list>0 12s, return top N bez scrolla), `dashboard.html|js|css` (Section 0.5 "🔍 Auto-tracking akceptów" pod Stats — badge enabled/disabled, last/next scan, "Sprawdź teraz", toggle), `INSTRUKCJA.md` (rozdział "Krok D — Sprawdzanie akceptacji" przepisany pod auto-trackera), `manifest.json` 1.22.1→1.23.0, `tests/test_accept_check.js` NEW (37/0: matchAndFlipAccepts edge cases A1-A10, scheduleNext jitter bounds B1-B4, nextWorkingHourTs godziny C1-C4, integration D1).
+  - **Test results:** test_accept_check 37/0, suite baseline 689/0 PASS (poprzedni baseline 634→689 +55: 37 nowych + 18 ze starszych testów z innych formatów summary jak test_e2e/test_scraper). `node --check` 6/6, 0 NUL bytes, syntax test 12/0.
+  - **Decyzje:** (1) alarm period 60min zamiast 1440min — daje elastyczność jitter'a + lepiej znosi SW idle kill; (2) `active:false` + BEZ scrolla — naturalne user behaviour (brak tabów wskakujących), świeże akcepty i tak na górze listy; (3) reuse `extractConnectionsList` + nowy lekki action `extractRecentConnections` zamiast scaling istniejącego `importAllConnections` (ten ma infinite-scroll, niepotrzebny tu); (4) #56B (reply-tracker) odsunięty — bez fixture'a `/messaging/` to strzelanie w ciemno.
+  - **Ryzyka znane:** akcepty w "ogonie" listy (>100 nowych/dzień) → per-profile `bulkCheckAccepts` z popup'u jako manual fallback; LinkedIn lazy-load w hidden tab może czasem dać 0 — telemetria błędu + auto-disable po 3 fail'ach.
+  - **How to test manually (Marcin, ~10 min):**
+    1. Reload extension → sprawdź `1.23.0` w `chrome://extensions/`.
+    2. Otwórz Dashboard (📊 z popup'u) — pod Statystykami nowa sekcja **"🔍 Auto-tracking akceptów"** z badge'em "Włączone" i komunikatem "Następny scan: niezaplanowany — czekam na pierwszy alarm tick (do 60min)" (świeży install).
+    3. Klik **"Sprawdź teraz"** → spinner "Skanuję…" → po ~10-30s alert "✓ Przeskanowano N kontaktów, oznaczono M akceptów" (N≈100 jeśli masz tyle connections; M≈liczba osób z queue które już Cię zaakceptowały).
+    4. Sekcja statusu się odświeża: "Ostatni scan: <data> — przeskanowano N, oznaczono akceptów: M". Funnel powyżej powinien teraz pokazywać "Zaakceptowane" > 0 (jeśli ktoś z 38 invite'ów rzeczywiście zaakceptował).
+    5. Klik **"Wyłącz"** → badge zmienia się na "Wyłączone", przycisk na "Włącz", "Następny scan: tracker wyłączony". Klik z powrotem **"Włącz"** → wraca do "Włączone".
+    6. Edge: gdy bulk-connect worker pracuje → klik "Sprawdź teraz" pokazuje alert "Skip: Bulk-connect worker pracuje…". OK.
+    7. Edge: gdy aktualnie jest <9:00 lub ≥18:00 → przy scheduled scan (BEZ force) widać w UI "Następny scan: za X godz. (jutro 9:05)". Force-run z dashboardu i tak działa (bypass godzin).
+  → Po smoke #56A PASS: PM rotuje na #56B (czeka na dump `/messaging/` od Marcina) → potem #53.
 
 **v1.22.1 — fix: bulk connect na classic Ember search-layout (2026-05-18):**
 - ✅ `30b0e0d` v1.22.1 — `extractSearchResults()` w content.js zrobiony layout-aware. Objaw (zgłoszenie Marcina, zespół OVB): na search-page imiona `—`, akcje `?`, „0 dostępnych do Connect" mimo connectable profili. Przyczyna: LinkedIn A/B-serwuje classic Ember `entity-result` zamiast SDUI, a parser czytał tylko SDUI.
