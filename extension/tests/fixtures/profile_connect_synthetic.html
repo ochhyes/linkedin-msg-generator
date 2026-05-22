@@ -1,0 +1,43 @@
+<!-- https://www.linkedin.com/in/jan-profilowy/ -->
+<!--
+  SYNTETYCZNY fixture profilu: top-card właściciela (Connect) + sekcja
+  "Osoby, które możesz znać" (Connect sugestii + "Usuń jako sugestię").
+  findConnectEl MUSI zwrócić przycisk WŁAŚCICIELA, NIE sugestii.
+-->
+<html lang="pl"><body data-rehydrated="true">
+  <main>
+    <section class="topcard-xyz">
+      <h1>Jan Profilowy</h1>
+      <p>Doradca finansowy</p>
+      <div class="actions">
+        <button aria-label="Zaproś użytkownika Jan Profilowy do nawiązania kontaktu" type="button">Połącz</button>
+        <button aria-label="Wyślij wiadomość do Jan Profilowy" type="button">Wiadomość</button>
+        <button aria-label="Więcej działań" type="button">Więcej</button>
+      </div>
+    </section>
+
+    <section class="pymk-xyz">
+      <h2>Osoby, które możesz znać</h2>
+      <div class="pymk-card">
+        <a href="/in/sugestia-jeden/"><span aria-hidden="true">Sugestia Jeden</span></a>
+        <button aria-label="Zaproś użytkownika Sugestia Jeden do nawiązania kontaktu" type="button">Połącz</button>
+        <button aria-label="Usuń: Sugestia Jeden jako sugestię" type="button">✕</button>
+      </div>
+      <div class="pymk-card">
+        <a href="/in/sugestia-dwa/"><span aria-hidden="true">Sugestia Dwa</span></a>
+        <button aria-label="Zaproś użytkownika Sugestia Dwa do nawiązania kontaktu" type="button">Połącz</button>
+        <button aria-label="Usuń: Sugestia Dwa jako sugestię" type="button">✕</button>
+      </div>
+    </section>
+  </main>
+
+  <aside class="scaffold-layout__aside">
+    <section>
+      <h2>Podobne profile</h2>
+      <div>
+        <a href="/in/aside-osoba/"><span aria-hidden="true">Aside Osoba</span></a>
+        <button aria-label="Zaproś użytkownika Aside Osoba do nawiązania kontaktu" type="button">Połącz</button>
+      </div>
+    </section>
+  </aside>
+</body></html>

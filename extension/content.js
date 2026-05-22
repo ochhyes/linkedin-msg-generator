@@ -1847,28 +1847,63 @@
   // (linki `/preload/custom-invite/?vanityName=...` które LinkedIn intercepts
   // do shadow modal'a — patrz preload_modal_dump.md). Connect może być w
   // top-card LUB schowany w menu "Więcej" — sprawdzamy oba.
+  // #58-followup (2026-05-22): czy element Connect należy do sekcji "Osoby,
+  // które możesz znać" / sugestii (NIE do top-card właściciela profilu)?
+  // Klik w taki przycisk = zaproszenie do PRZYPADKOWEJ osoby. Sygnały:
+  // sąsiad "Usuń: X jako sugestię", aside, nagłówek sekcji "możesz znać".
+  function isSuggestionEl(el) {
+    if (!el) return true;
+    if (el.closest("aside, .scaffold-layout__aside")) return true;
+    // Nagłówek sekcji (najpewniejszy sygnał).
+    const sec = el.closest("section");
+    if (sec) {
+      const h = sec.querySelector('h2, h3, [role="heading"]');
+      const ht = h ? (h.innerText || h.textContent || "").toLowerCase() : "";
+      if (/mo[zż]esz zna|people you may know|sugestie|podobne profile|people also viewed|inne osoby przegl/.test(ht)) {
+        return true;
+      }
+    }
+    // Sąsiad "Usuń: X jako sugestię" w obrębie TEJ SAMEJ karty. Przerwij climb
+    // gdy przodek ma >1 przycisk Connect (= to sekcja wielu kart, nie karta) —
+    // inaczej top-card właściciela byłby flagowany przez sugestie niżej w <main>.
+    const CONNECTISH = 'button[aria-label*="Zaproś"], a[aria-label*="Zaproś"], ' +
+      'button[aria-label*="Invite"], a[aria-label*="Invite"]';
+    let cur = el;
+    for (let i = 0; i < 4 && cur; i++) {
+      if (cur.querySelectorAll && cur.querySelectorAll(CONNECTISH).length > 1) break;
+      if (cur.querySelector && cur.querySelector(
+        '[aria-label*="jako sugesti"], [aria-label*="as a suggestion"], ' +
+        '[aria-label^="Usuń:"], [aria-label^="Remove:"]'
+      )) return true;
+      cur = cur.parentElement;
+    }
+    return false;
+  }
+
   function findConnectEl(root) {
-    // SDUI: <a href="/preload/custom-invite/..."> lub search-custom-invite.
-    let el = root.querySelector(
-      'a[href*="/preload/custom-invite/"], a[href*="/preload/search-custom-invite/"]'
-    );
-    if (el) return el;
-    // aria-label "Zaproś użytkownika X..." / "Invite X..." (link lub button).
-    el = root.querySelector(
+    // Zbierz kandydatów (preload-link / aria-label / widoczny tekst), potem
+    // ODRZUĆ te z sekcji sugestii (isSuggestionEl). Pierwszy "czysty" =
+    // przycisk właściciela profilu (top-card jest przed sugestiami w DOM).
+    const sel =
+      'a[href*="/preload/custom-invite/"], a[href*="/preload/search-custom-invite/"], ' +
       'a[aria-label^="Zaproś"], button[aria-label^="Zaproś"], ' +
       'a[aria-label^="Połącz"], button[aria-label^="Połącz"], ' +
       'a[aria-label^="Invite "], button[aria-label^="Invite "], ' +
-      'a[aria-label^="Connect"], button[aria-label^="Connect"]'
-    );
-    if (el) return el;
-    // Visible text "Połącz" / "Connect" w <a>/<button> (SDUI dump ma <span>Połącz</span>).
-    const cands = Array.from(root.querySelectorAll("a, button"));
-    el = cands.find((c) => {
+      'a[aria-label^="Connect"], button[aria-label^="Connect"]';
+    const cands = Array.from(root.querySelectorAll(sel));
+    for (const c of root.querySelectorAll("a, button")) {
       const t = (c.innerText || c.textContent || "").trim();
-      return /^(Połącz|Connect)$/i.test(t) &&
-        !/W toku|Pending|Anuluj|Withdraw|Cofnij/i.test(t);
-    });
-    return el || null;
+      if (/^(Połącz|Connect)$/i.test(t) && !/W toku|Pending|Anuluj|Withdraw|Cofnij/i.test(t)) {
+        cands.push(c);
+      }
+    }
+    const seen = new Set();
+    for (const el of cands) {
+      if (seen.has(el)) continue;
+      seen.add(el);
+      if (!isSuggestionEl(el)) return el;
+    }
+    return null;
   }
 
   function isAlreadyPendingProfile() {
@@ -1916,6 +1951,16 @@
   }
 
   async function connectFromProfile(slug) {
+    // #58-followup guard: czy realnie jesteśmy na stronie profilu? Konto z
+    // limitem LinkedIn bywa redirectowane z /in/<slug>/ na /mynetwork/ (same
+    // sugestie "Osoby, które możesz znać") — wtedy klik "Połącz" trafiłby w
+    // PRZYPADKOWĄ osobę. Bail z czytelnym powodem zamiast zaprosić nie tego.
+    let path;
+    try { path = decodeURIComponent(location.pathname).toLowerCase(); }
+    catch (_) { path = (location.pathname || "").toLowerCase(); }
+    if (!path.includes("/in/")) return { error: "redirected_off_profile" };
+    if (slug && !path.includes(String(slug).toLowerCase())) return { error: "wrong_profile_loaded" };
+
     // Poczekaj aż top-card się zrenderuje (SDUI/Ember hydration race).
     await waitFor(() => findConnectEl(document) || isAlreadyPendingProfile(), 8000);
 

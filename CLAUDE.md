@@ -165,12 +165,12 @@ Uruchom testy automatyczne (pytest backend + jsdom extension). Wykonaj kroki man
 # CURRENT STATE
 
 ```
-Sprint:        #11 — v1.24.0 (generic fallback) + v1.24.1 (#57 fix injekcji) + v1.25.0 (#58 bulk-prospect-base Octopus) DONE. Smoke v1.24.1 PASS (Marcin "udało się").
-Phase:         Commit DONE → PM. Pending smoke v1.25.0 (~7 min). Następne do wyboru: #56B (dump /messaging/), #22 reszta, #10.
-Active task:   (none — v1.25.0 czeka smoke).
-Repo state:    do commitu: background.js+popup.js+dashboard.html/js+manifest+test+INSTRUKCJA (v1.25.0).
-Last commit:   9eb0ac9 — fix: injekcja content scriptu na SDUI search-page (#57 v1.24.1)
-Updated:       2026-05-22 (#58: harvest do 1000/100-stron + harvest napełnia profileDb + dashboard "Dodaj do kolejki connect" + selectEnqueueCandidates. Drip wysyłki bez zmian — ban-safe.)
+Sprint:        #11 — v1.24.0/1.24.1/1.25.0/1.25.1 DONE. v1.25.1 = #59 fix: connectFromProfile NIE klika sugestii "możesz znać" (groźny bug — zaproszenia do losowych osób).
+Phase:         Commit DONE → PM. Pending smoke v1.25.x. UWAGA: konto Marcina hituje commercial-use limit LI (baner Premium, redirect /in/ → /mynetwork/) — część "źle dodaje" to limit konta, nie kod.
+Active task:   (none).
+Repo state:    do commitu: content.js+manifest+2 fixtures+test_connect_profile (v1.25.1).
+Last commit:   251b40a — feat: bulk jako baza prospektow - model Octopus (#58 v1.25.0)
+Updated:       2026-05-22 (#59: dump Marcina = /mynetwork/ z 32 sugestiami → findConnectEl brał pierwszy "Zaproś" = przypadkowa osoba. Guard /in/-only + isSuggestionEl.)
 ```
 
 **Pending operacyjne (Marcin):** (1) `git push` — lokalny `master` przed origin. (2) Smoke #52 (~10 min) i #54 (~5 min) wg "How to test" w DONE. (3) Smoke v1.19.0 wg `docs/SMOKE-TEST.md`, regen `extension 1.21.0.zip`, dystrybucja zespołowi OVB. (4) VPS: `API_KEYS=DreamComeTrue!` w prod `.env` → `cd deploy && docker compose up -d --build`. (5) Cleanup: usunąć `extension/tests/fixtures/linkedin_connections_export.csv.xlsx` + lock file `~$...` (Excel trzyma blokadę, sandbox nie ma uprawnień).
@@ -247,6 +247,15 @@ Updated:       2026-05-22 (#58: harvest do 1000/100-stron + harvest napełnia pr
 ## DONE
 
 > Format: 1 linia per release (sha, opis, bump). Pełne treści w `git show <sha>`.
+
+**v1.25.1 — fix: connectFromProfile nie klika sugestii „możesz znać" (#59, 2026-05-22):**
+- ✅ (do commitu) v1.25.1 — Zgłoszenie „ciągle źle dodaje" (worker pomija/failuje, na LI złe/żadne zaproszenia). Dump Marcina (`profile_broken_2026-05-22.html`) okazał się stroną **`/mynetwork/`** (32× „Zaproś użytkownika X" dla sugestii „Osoby, które możesz znać", brak `h1`/top-card) — bo konto **hituje commercial-use limit** (baner „Reaktywuj Premium") i `/in/<slug>/` bywa redirectowane na /mynetwork/. **GROŹNY bug:** `findConnectEl(document)` brało PIERWSZY „Zaproś" w całym dokumencie → klik w sugestię = zaproszenie do PRZYPADKOWEJ osoby (albo fail).
+  - **Fix `content.js`:** (1) guard w `connectFromProfile` — bail `{error:"redirected_off_profile"}` gdy `location.pathname` nie ma `/in/`, `{error:"wrong_profile_loaded"}` gdy nie zawiera sluga. (2) Nowy `isSuggestionEl(el)` — odrzuca przyciski z `aside`/sekcji o nagłówku „możesz znać/Sugestie/podobne profile"/karty z sąsiadem „Usuń: X jako sugestię" (climb przerwany gdy przodek ma >1 Connect = sekcja, nie karta). `findConnectEl` zbiera kandydatów i zwraca pierwszy NIE-sugestię (top-card jest przed sugestiami w DOM).
+  - **Modal:** w shadow DOM (`interop-outlet`) — `copy(outerHTML)` go nie zapisuje, ale kod czyta przez `shadowRoot`, więc nie ruszane.
+  - **Testy:** `test_connect_profile.js` NEW (9/0) — na realnym /mynetwork/ `findConnectEl===null` (NIE klika sugestii), na syntetycznym profilu wybiera właściciela. Fixtures `profile_broken_2026-05-22.html` (realny) + `profile_connect_synthetic.html`. Suite bez regresji, `node --check` 5/5. `manifest.json` 1.25.0→1.25.1.
+  - **WAŻNE dla Marcina:** część problemu to **limit konta LinkedIn**, nie kod — gdy LI redirectuje/dławi, worker teraz bezpiecznie zwraca `redirected_off_profile` zamiast zapraszać losowych. Realny fix tempa = zwolnić/poczekać/Premium. Reason widoczny w kolejce (tooltip statusu).
+  - **How to test (Marcin):** Reload 1.25.1. Jeśli worker dalej pomija — najedź na status w kolejce: `redirected_off_profile` = LI nie wpuszcza na profile (limit), `not_connectable` = brak Connecta na profilu. Zaproszenia do PRZYPADKOWYCH osób (sugestii) NIE powinny się już zdarzać.
+  → #59 DONE.
 
 **v1.25.0 — feat: bulk jako baza prospektów (model Octopus, #58, 2026-05-22):**
 - ✅ (do commitu) v1.25.0 — Zgłoszenie Marcina: bulk ma działać jak Octopus — zbierz dużą pulę (do 1000) do bazy, kuruj, kolejkuj. Decyzje: drip wysyłki 25-40/dzień (NIE podbijać — `dailyCap` bez zmian, ban-safe), flow baza→kuracja→zakolejkuj zaznaczone.

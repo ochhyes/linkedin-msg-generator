@@ -8,6 +8,33 @@
 
 ---
 
+## 2026-05-22 #4 (Claude Code, claude-opus-4-7) — fix: connectFromProfile nie klika sugestii (#59 v1.25.1)
+
+### Zrobione
+
+- Zgłoszenie „ciągle źle dodaje" (worker pomija/failuje + na LI złe/żadne zaproszenia). Marcin podesłał: screen (baner commercial-use limit LI), potem dwa dumpy. Dump „profilu" okazał się **stroną /mynetwork/** — 32× „Zaproś użytkownika X" dla sugestii „Osoby, które możesz znać", brak h1/top-card. Konto hituje miesięczny limit wyszukiwania → `/in/<slug>/` bywa redirectowany na /mynetwork/.
+- **GROŹNY bug znaleziony:** `findConnectEl(document)` brało PIERWSZY „Zaproś" w całym dokumencie → na /mynetwork/ (albo profilu z sekcją sugestii) klikało przycisk SUGESTII = zaproszenie do PRZYPADKOWEJ osoby.
+- **Fix content.js:** guard w `connectFromProfile` (bail `redirected_off_profile` gdy pathname bez `/in/`, `wrong_profile_loaded` gdy bez sluga) + nowy `isSuggestionEl` (odrzuca aside / sekcje „możesz znać" / karty z „Usuń jako sugestię"; climb przerwany gdy przodek ma >1 Connect). `findConnectEl` zwraca pierwszy NIE-sugestię.
+- **Testy:** test_connect_profile.js NEW 9/0 (realny /mynetwork/ → null; syntetyczny profil → właściciel). Fixtures: profile_broken_2026-05-22.html (realny) + profile_connect_synthetic.html. Suite bez regresji. manifest 1.25.0→1.25.1.
+
+### Decyzje
+
+- **Modal nie ruszany** — jest w shadow DOM (interop-outlet), `copy(outerHTML)` go nie zapisuje, ale kod czyta przez `shadowRoot` → nie tu problem.
+- **Część „źle dodaje" to LIMIT KONTA, nie kod** — baner Premium + redirect na /mynetwork/ = LinkedIn dławi konto. Fix kodu zapobiega zapraszaniu losowych (bezpieczeństwo), ale tempo i tak trzeba zwolnić. Reason `redirected_off_profile` w kolejce to sygnał dla Marcina.
+- **Lekcja (znów):** dump „profilu" trzeba zweryfikować że to profil — Marcin 3× podesłał nie-profil (2× search, 1× mynetwork). Ale tym razem zły dump UJAWNIŁ realny bug (rogue invites do sugestii).
+
+### BLOCKED / TODO
+
+- Smoke v1.25.1 (Marcin): reload → jeśli worker pomija, najechać na status w kolejce (redirected_off_profile = limit konta; not_connectable = brak Connecta). Rogue-invites do sugestii NIE powinny już być.
+- Limit konta LinkedIn — poza kodem: zwolnić tempo / poczekać / rozważyć Premium/Sales Nav. 1000-prospektów-flow ograniczone tym limitem (search cap ~100/mies.).
+- Otwarte: #53 (contact-info), #56B (dump /messaging/).
+
+### Status końcowy
+
+#59 DONE (v1.25.1). Czwarty release sesji. Worker bezpieczny — nie zaprosi przypadkowych osób. Commit po wpisie. Phase: PM.
+
+---
+
 ## 2026-05-22 #3 (Claude Code, claude-opus-4-7) — feat: bulk jako baza prospektów (model Octopus, #58 v1.25.0)
 
 ### Zrobione
