@@ -893,7 +893,23 @@
         bulkInfo.textContent = "Brak aktywnej karty";
         return;
       }
-      const response = await chrome.tabs.sendMessage(tab.id, { action: "extractSearchResults" });
+      // #57 v1.24.1: na świeżej stronie SDUI search content script bywa NIE
+      // wstrzyknięty (manifest content_scripts nie łapie po SPA-nav) → goły
+      // sendMessage rzucał i lista pokazywała "Nie udało się pobrać" / "—".
+      // Force-inject content.js + retry, analogicznie do ścieżki scrape profilu.
+      let response;
+      try {
+        response = await chrome.tabs.sendMessage(tab.id, { action: "extractSearchResults" });
+      } catch (_) {
+        try {
+          await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content.js"] });
+          await new Promise((r) => setTimeout(r, 250));
+          response = await chrome.tabs.sendMessage(tab.id, { action: "extractSearchResults" });
+        } catch (e2) {
+          bulkInfo.textContent = "Nie udało się pobrać listy — odśwież stronę LinkedIn (Ctrl+R)";
+          return;
+        }
+      }
       if (response?.success) {
         const profiles = response.profiles || [];
         // #45 v1.14.0: zapisz wyniki wyszukiwania do trwałej bazy

@@ -8,6 +8,33 @@
 
 ---
 
+## 2026-05-22 #2 (Claude Code, claude-opus-4-7) — fix: injekcja content scriptu na SDUI search (#57 v1.24.1) + env + decyzje #58
+
+### Zrobione
+
+- **Env (prośba Marcina):** `winget upgrade Anthropic.ClaudeCode` — już najnowszy ("No available upgrade"). `winget install Python.Python.3.13 --scope user` — 3.13.13 wgrany w `%LOCALAPPDATA%\Programs\Python\Python313`, **naprawia zepsuty venv** (wskazywał skasowany base). `python`/`py`/heredoc-stdin znów działają. PATH ma Python313. CLAUDE.md zaktualizowany (Python naprawiony, ale Node-splice nadal preferowany dla atomic-write).
+- **#57 — dump Marcina → DIAGNOZA ODWRÓCIŁA HIPOTEZĘ.** Dostałem `search_broken_2026-05-22.html` (145KB, SDUI `componentkey`/`data-rehydrated`). Uruchomiłem core SDUI parser na dumpie node+jsdom: **parsuje IDEALNIE** — 10 imion, Connect, degree 2, mutual "1 inny wspólny kontakt" odfiltrowany. Czyli parser NIE był zepsuty. Root cause: `loadProfilesList` (popup.js, klik "Odśwież") robił goły `chrome.tabs.sendMessage` BEZ `executeScript` fallbacku → świeża SDUI-strona po SPA-nav = content script nie wstrzyknięty → sendMessage rzuca → "—"/"Nie udało się pobrać". Inne ścieżki (scrape profilu, init detectPageType) miały inject — ta jedna nie.
+- **Fix v1.24.1:** `loadProfilesList` — `let response` + try sendMessage → catch → `executeScript` + 250ms + retry → catch → czytelny błąd. `test_search_extractor.js` 51→**59/0** (+8 real-dump). Suite bez regresji, `node --check` 6/6. manifest 1.24.0→1.24.1.
+- **#58 (bulk prospect-base, Octopus) — decyzje zebrane.** Marcin: (a) tempo wysyłki = bezpieczny drip 25-40/dzień (dailyCap konserwatywny, NIE podbijać — ban-safe); (b) flow = baza→kuracja→zakolejkuj zaznaczone z dashboardu. Zakres + miejsca w kodzie spisane w CLAUDE.md TODO. Info zebrane (bulkAutoFillByUrl, PAGINATION_MAX_PAGES=20, addCount cap 500, profileDb shape) — gotowe do Dev w następnej iteracji.
+
+### Decyzje
+
+- **NIE pisałem nowego parsera** mimo że to był "dump do naprawy" — bo dump dowiódł że parser działa. Naprawiłem prawdziwą przyczynę (injekcja). Lekcja: zawsze URUCHOM parser na dumpie ZANIM założysz że to bug parsowania — objaw "—" może być injekcją/SPA, nie DOM-em.
+- **v1.24.0 generic fallback i tak wartościowy** — to most na przyszłe rerolle; tu się nie odpalił (core OK), asercja wrapper==core to potwierdza.
+- **#58 dailyCap zostaje 25** (w paśmie 25-40 Marcina) — zbieranie ≠ wysyłka, harvest do 1000 ale drip powolny.
+
+### BLOCKED / TODO
+
+- **Smoke v1.24.0+v1.24.1** (Marcin, ~5 min): reload → 1.24.1 → search "elektromonter" → Odśwież → 10 imion + Połącz.
+- **#58 Dev** — capy 100 stron/1000 addCount + harvest do profileDb + dashboard "zakolejkuj zaznaczone" + `profileDbEnqueueForConnect`. Next iteracja.
+- **#56A/#56B** — smoke / dump `/messaging/` wciąż pending.
+
+### Status końcowy
+
+#57 RESOLVED (v1.24.1, fix injekcji nie parsera). Env naprawione. #58 z pełnym zakresem i decyzjami czeka na Dev. Commit po tym wpisie. Phase: Dev → #58.
+
+---
+
 ## 2026-05-22 (Claude Code, claude-opus-4-7) — fix: generyczny fallback parsera search-page (v1.24.0) + diagnoza zgłoszenia
 
 ### Kontekst zgłoszenia (Marcin)

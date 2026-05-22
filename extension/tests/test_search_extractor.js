@@ -642,6 +642,49 @@ console.log("\n▸ Wrapper = core gdy znany layout (brak regresji SDUI/Ember)");
   );
 }
 
+// ── REALNY dump zepsutego search (#57, 2026-05-22) ───────────────────
+//
+// Dump Marcina (search "elektromonter"?, layout SDUI z componentkey/
+// data-rehydrated, 10× div[role="listitem"]). DIAGNOZA: core SDUI parser
+// parsuje go POPRAWNIE — objaw "imiona —" u Marcina to była luka INJEKCJI
+// content scriptu (loadProfilesList bez executeScript fallback), nie parser.
+// Ten test FIKSUJE że layout się parsuje (proof + ochrona przed regresją).
+console.log("\n▸ search_broken_2026-05-22.html — REALNY dump SDUI (proof parser OK)");
+{
+  const { doc } = loadFixture("search_broken_2026-05-22.html");
+
+  // Core (bez fallbacku) MUSI sam ogarnąć ten layout — to znany SDUI wariant.
+  const core = extractSearchResultsCore(doc);
+  assertEqual(core.length, 10, "Real dump: core zwraca 10 wierszy (div[role=listitem])");
+
+  const named = core.filter((p) => p.name && p.name.length > 1).length;
+  assert(named >= 9, "Real dump: ≥9/10 ma niepuste imię (objaw '—' NIEobecny)", `got ${named}`);
+
+  const connect = core.filter((p) => p.buttonState === "Connect").length;
+  assert(connect >= 9, "Real dump: ≥9/10 buttonState=Connect", `got ${connect}`);
+
+  const kamil = core.find((p) => p.name === "Kamil Etryk");
+  assert(!!kamil, "Real dump: 'Kamil Etryk' wyekstrahowany");
+  if (kamil) {
+    assertEqual(kamil.buttonState, "Connect", "Real dump: Kamil = Connect");
+    assertEqual(kamil.degree, "2", "Real dump: Kamil degree = '2'");
+  }
+
+  // Mutual connections ("... i 1 inny wspólny kontakt") NIE mogą być wzięte
+  // jako imię profilu — isMutualText musi je odfiltrować.
+  const mutualAsName = core.filter(
+    (p) => p.name && /wspóln|mutual/i.test(p.name)
+  ).length;
+  assertEqual(mutualAsName, 0, "Real dump: zero mutual-connections wziętych jako imię");
+
+  // Wrapper (z fallbackiem) zwraca to samo co core — generic NIE odpalony.
+  assertEqual(
+    JSON.stringify(extractSearchResults(doc)),
+    JSON.stringify(core),
+    "Real dump: wrapper==core (generic nie potrzebny)"
+  );
+}
+
 // ── Summary ───────────────────────────────────────────────────────
 console.log("\n=== test_search_extractor.js ===");
 console.log(`Passed: ${passed}`);

@@ -118,6 +118,8 @@ Commity zmieniające tylko `backend/`, `deploy/` lub dokumentację — NIE bumpu
 
 **Generyczny fallback (3. piętro, od v1.24.0)** — `extractSearchResults` to teraz wrapper: `extractSearchResultsCore` (Ember→SDUI) → jeśli zwraca 0 "usable" (slug ORAZ niepuste name) → `extractSearchResultsGeneric`. Generic iteruje każdy `<a href*="/in/">` poza `nav/header/footer/aside/.scaffold-layout__aside/.entity-result__insights`, dedup po slug (ACoAA odfiltrowane), imię z `span[aria-hidden]`/tekstu linku, karta = najbliższy przodek z rozpoznanym przyciskiem (`classifySearchButtonState`), headline/location best-effort. Mniej dokładny niż dedykowane parsery — to LAST RESORT przeciw "imiona —"/"0 dostępnych" gdy LinkedIn przerolluje layout. Telemetria `search_extract_fallback_generic`/`search_extract_empty` sygnalizuje że trzeba dorobić dedykowany parser. Fixture `search_generic_layout.html` (syntetyczny). **NIE zastępuje** dedykowanego parsera — gdy wpadnie dump nowego layoutu, dopisać 3. wariant do `extractSearchResultsCore`.
 
+**SDUI variant z `componentkey`/`data-rehydrated` (dump 2026-05-22, `search_broken_2026-05-22.html`)** — `body[data-rehydrated="true"]`, 173× `componentkey`, hashowane klasy, ALE wiersze to nadal `div[role="listitem"]` (×10) z imieniem+stopniem w `<p>` ("Kamil Etryk • 2") i Connect = `a[href*="/preload/search-custom-invite/"]`. **Core SDUI parser parsuje go POPRAWNIE** — zgłoszenie Marcina "imiona —" miało root cause w INJEKCJI content scriptu (`loadProfilesList` robił goły `sendMessage` bez `executeScript` fallback → na świeżej SDUI-stronie po SPA-nav script nie wstrzyknięty → "Nie udało się pobrać"). Fix v1.24.1: inject+retry w `loadProfilesList` (jak ścieżka scrape profilu). Mutual-connections `<p>` "...i 1 inny wspólny kontakt" (singular!) odfiltrowane przez `isMutualText` (`wspóln[ay]+\s+kontakt`).
+
 Pagination URL-based (`?page=N` przez `searchParams.set`).
 
 **Pending invite detection** — `a[aria-label^="W toku"]` (PL) / `^="Pending"` (EN), NIE textContent "Oczekuje". Bulk connect MUSI filtrować takie profile.
@@ -163,12 +165,12 @@ Uruchom testy automatyczne (pytest backend + jsdom extension). Wykonaj kroki man
 # CURRENT STATE
 
 ```
-Sprint:        #11 — hotfix v1.24.0 (generyczny fallback search-page) DONE. #57 targetowany parser nowego layoutu BLOCKED na dump search-page od Marcina.
-Phase:         Commit DONE → po dumpie z powrotem Dev (targetowany parser). Pending smoke v1.24.0 (~5 min) + dump zepsutego search.
-Active task:   (none — #57 BLOCKED na dump, #56A/#56B czekają smoke/dump).
-Repo state:    content.js+manifest+test+fixture (commit hotfixa).
-Last commit:   70e44c8 — feat: auto accept-tracker w tle (#56A v1.23.0)
-Updated:       2026-05-22 (zgłoszenie Marcina: search-page sypie błędy/pominięcia → resilience generic-fallback v1.24.0; targetowany fix czeka na dump)
+Sprint:        #11 — v1.24.0 (generic fallback) + v1.24.1 (#57 fix injekcji search) DONE. NASTĘPNE: #58 bulk-jako-baza-prospektów (Octopus model, decyzje zebrane).
+Phase:         Dev → #58 (info zebrane, decyzje Marcina: drip 25-40/dzień + baza→kuracja→zakolejkuj zaznaczone). Pending smoke v1.24.1.
+Active task:   #58 (bulk prospect-base) — Dev, info zebrane przed commitem v1.24.1.
+Repo state:    do commitu: popup.js+manifest+test+fixture (v1.24.1).
+Last commit:   affb160 — fix: generyczny fallback parsera search-page (v1.24.0)
+Updated:       2026-05-22 (dump Marcina: core parsuje go OK → root cause = injekcja content scriptu, nie parser; v1.24.1 fix loadProfilesList. Python+ClaudeCode naprawione/upgrade)
 ```
 
 **Pending operacyjne (Marcin):** (1) `git push` — lokalny `master` przed origin. (2) Smoke #52 (~10 min) i #54 (~5 min) wg "How to test" w DONE. (3) Smoke v1.19.0 wg `docs/SMOKE-TEST.md`, regen `extension 1.21.0.zip`, dystrybucja zespołowi OVB. (4) VPS: `API_KEYS=DreamComeTrue!` w prod `.env` → `cd deploy && docker compose up -d --build`. (5) Cleanup: usunąć `extension/tests/fixtures/linkedin_connections_export.csv.xlsx` + lock file `~$...` (Excel trzyma blokadę, sandbox nie ma uprawnień).
@@ -181,7 +183,11 @@ Updated:       2026-05-22 (zgłoszenie Marcina: search-page sypie błędy/pomini
 
 **Sprint #10 — pozostało #53** (patrz IN PROGRESS).
 
-**Następny sprint — do wyboru:**
+**WYBRANE — #58 bulk jako baza prospektów (model Octopus CRM, decyzje Marcina 2026-05-22):**
+Octopus-flow: zbierz dużą pulę (do 1000 = 100 stron × 10) do bazy → kuracja w dashboardzie → drip-send w bezpiecznym tempie. **Decyzje Marcina:** (a) tempo WYSYŁKI = bezpieczny drip ~25-40/dzień (NIE podbijać — `dailyCap` zostaje konserwatywny, 1000 zaproszeń rozkłada się na tygodnie, chroni przed banem); (b) przepływ = baza→kuracja→zakolejkuj zaznaczone (dashboard-driven, NIE auto-queue z harvestu).
+- **Zakres (info zebrane przed Dev):** (1) capy zbierania: `PAGINATION_MAX_PAGES` 20→100 (background.js:1612), addCount UI cap 500→1000 (popup.js:1155,1961 + walidacja w config-setterze:1155), jitter między stronami (obecnie 2-5s @ bulkAutoFillByUrl:1676 — ew. 3-6s dla 100 stron); (2) harvest `bulkAutoFillByUrl` (background.js:1624) ma upsertować WSZYSTKIE `pageProfiles` do `profileDb` (nie tylko `buttonState==="Connect"`) — żeby baza dostała pełną pulę do kuracji; (3) NOWY handler `profileDbEnqueueForConnect({slugs})` — lookup w profileDb, filtr (NIE isConnection, degree 2nd/3rd, nie w queue), map→`{slug,name,headline}`, `addToQueue`, return counts; (4) dashboard "Baza profili": multi-select JUŻ jest (#54), dodać przycisk "➕ Dodaj zaznaczone do kolejki connect (N)" w bulk-barze + toast + filtr "tylko connectable". (4b) UWAGA: LinkedIn bez Sales Nav capuje wyniki ~100 (commercial use limit) — 1000 wymaga wielu wyszukiwań; UI powinno to komunikować. (5) testy + bump minor 1.25.0 + INSTRUKCJA rozdział "Baza prospektów".
+- Kształt rekordu profileDb: `mapLinkedInExportRow`/`upsertProfilesToDb` (background.js:2045-2099) — ma `slug,name,headline,degree,isConnection,inQueue`. `profileDbList(filter)` (2128) — filtr `{text,source,isConnection}` + paginacja.
+
 1. **#22 reszta** — master-select zrobiony (v1.14.6); zostaje: DOM dump paginacji od Marcina → fix selektorów `bulkAutoExtract` w content.js → checkboxy "2nd-only"/"unselect Pending" → "Stop after N pages" setting. Częściowo zablokowane (potrzeba dumpu).
 2. **#10** — `selectors.json` + auto-fallback chain + dedup Voyager parsera (test_e2e ↔ content.js). Dług techniczny. Duży refaktor.
 3. **#6** — self-test scraper widget w popup (settings → diagnostyka). Mały.
@@ -238,8 +244,6 @@ Updated:       2026-05-22 (zgłoszenie Marcina: search-page sypie błędy/pomini
 
 ## BLOCKED
 
-- **#57** (Sprint #11, P0 — BLOCKED na DOM dump search-page od Marcina) — Targetowany parser nowego layoutu `/search/results/people/`. Zgłoszenie 2026-05-22: parser zwraca "imiona —"/"0 dostępnych" → kolejka zatruta. v1.24.0 dodał generyczny fallback (most), ale dedykowany parser potrzebny dla pełnej dokładności (headline/location/degree). **Marcin TODO:** otwórz zepsuty search, poczekaj na load, F12 → konsola → `copy(document.body.outerHTML)` → zapisz `extension/tests/fixtures/search_broken_2026-05-22.html`. Po dumpie: 3. wariant w `extractSearchResultsCore` + asercje na realnym DOM.
-
 - **#56B** (Sprint #11, P0 — BLOCKED na DOM dump `/messaging/` od Marcina) — Auto reply-tracker w tle. Worker analogiczny do accept-trackera (1× co 8h, hidden tab, mutex, godziny), ale na `/messaging/`. Parse sidebar: slug, lastSender, lastMessageAt, unread marker. Match po slug → flip najnowszego nullowego `*ReplyAt` gdy `lastSender != me && lastMessageAt > *SentAt`. Decomposition po dumpie.
 
   **Marcin TODO:** otwórz `https://www.linkedin.com/messaging/` z paroma realnymi konwersacjami (mix: ostatni sender = ja vs kontakt, mix unread/read), w devtools console: `copy(document.body.outerHTML)`, save jako `extension/tests/fixtures/messaging_inbox.html`.
@@ -247,6 +251,13 @@ Updated:       2026-05-22 (zgłoszenie Marcina: search-page sypie błędy/pomini
 ## DONE
 
 > Format: 1 linia per release (sha, opis, bump). Pełne treści w `git show <sha>`.
+
+**v1.24.1 — fix: injekcja content scriptu na SDUI search (#57, 2026-05-22):**
+- ✅ (do commitu) v1.24.1 — Marcin podesłał dump zepsutego search (`search_broken_2026-05-22.html`, 145KB, SDUI `componentkey`/`data-rehydrated`). **Diagnoza odwróciła hipotezę:** core SDUI parser parsuje dump IDEALNIE (10 imion, Connect, degree 2) — to NIE był bug parsera. Root cause = `loadProfilesList` (popup.js, klik "Odśwież") robił goły `chrome.tabs.sendMessage` BEZ `executeScript` fallbacku → na świeżej SDUI-stronie po SPA-nav content script nie wstrzyknięty z manifestu → sendMessage rzuca → lista "—"/"Nie udało się pobrać". (Inne ścieżki — scrape profilu popup.js:467, init detectPageType:2042 — miały inject, ta jedna nie.)
+  - **Fix:** `loadProfilesList` — `let response` + try sendMessage → catch → `executeScript({files:["content.js"]})` + 250ms + retry → catch → czytelny błąd "odśwież stronę". Analogicznie do ścieżki scrape profilu.
+  - **Testy:** `tests/fixtures/search_broken_2026-05-22.html` NEW (realny dump). `test_search_extractor.js` 51→**59/0** (+8: real dump core parsuje 10, Kamil Etryk Connect/deg2, mutual "1 inny wspólny kontakt" odfiltrowany, wrapper==core). Suite bez regresji, `node --check` 6/6. `manifest.json` 1.24.0→1.24.1.
+  - **How to test manually (Marcin, ~3 min):** Reload → `1.24.1`. Wejdź na search "elektromonter" (ten z dumpu) → "Budowanie sieci" → Odśwież. Lista MUSI pokazać 10 imion + "Połącz". Jeśli przed reloadem było "—" — to potwierdza injekcję (nowy kod re-injectuje). Sprawdź też inny search po SPA-nav (klik w wynik → wstecz → Odśwież).
+  → #57 RESOLVED. PM rotuje na #58 (bulk prospect-base).
 
 **v1.24.0 — fix: generyczny fallback parsera search-page (resilience, 2026-05-22):**
 - ✅ (do commitu) v1.24.0 — Zgłoszenie Marcina: na search-page dużo błędów/pominięć przy dodawaniu + "wyszukiwanie wywala błędy". Diagnoza: korupcja kodu WYKLUCZONA (`node --check` 6/6, 0 NUL); "connect z profilu w tle" JUŻ istnieje od v1.14.5; root cause = LinkedIn znów przerollował layout `/search/results/people/` (wzorzec v1.22.1), parser zwraca wiersze bez imion → kolejka zatruta śmieciami → masowe `not_connectable`. Targetowany fix wymaga dumpu (BLOCKED #57). W międzyczasie (decyzja Marcina) resilience:
@@ -396,7 +407,7 @@ W jednej sesji `Edit` tool **4× pod rząd uszkodził pliki** przy długich blok
   with open("file.js", "w", encoding="utf-8") as f: f.write(t)
   PYEOF
   ```
-  ⚠ **AKTUALIZACJA 2026-05-22: Python CAŁKOWICIE zepsuty** — `python` to venv wskazujący nieistniejący `Python313\python.exe`, `py` launcher też (exit 103 "did not find executable"). Heredoc Python NIE działa. **Preferowana metoda atomic-write: Node splice** (`node` działa niezawodnie):
+  ⚠ **AKTUALIZACJA 2026-05-22:** Python był chwilowo zepsuty (venv wskazywał skasowany `Python313\python.exe`) — **NAPRAWIONE tego samego dnia** przez `winget install Python.Python.3.13 --scope user` (reinstall 3.13.13 w `%LOCALAPPDATA%\Programs\Python\Python313`, odbudowuje base interpretera venva). Teraz `python` + heredoc przez stdin działają. **Mimo to preferuj Node splice dla atomic-write** (mniej zależny od stanu Pythona, `node` zawsze stabilny):
   ```bash
   node -e 'const fs=require("fs");let t=fs.readFileSync("f.js","utf8");const inj=fs.readFileSync("_snippet.js","utf8");const pos=t.indexOf("ASCII_ANCHOR");if(pos<0){console.error("ANCHOR NOT FOUND");process.exit(1);}const ls=t.lastIndexOf("\n",pos)+1;t=t.slice(0,ls)+inj+t.slice(ls);fs.writeFileSync("f.js",t,"utf8");'
   ```
