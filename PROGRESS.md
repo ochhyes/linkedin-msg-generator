@@ -8,6 +8,34 @@
 
 ---
 
+## 2026-05-22 #3 (Claude Code, claude-opus-4-7) — feat: bulk jako baza prospektów (model Octopus, #58 v1.25.0)
+
+### Zrobione
+
+- Marcin potwierdził że v1.24.1 naprawiło search ("udało się") → "rób przerobienie" = build #58.
+- **Capy zbierania:** `PAGINATION_MAX_PAGES` 20→100 (1000 profili = 100 stron × 10), jitter stron 2-5s→3-7s, popup addCount cap 500→1000 (2 miejsca).
+- **Harvest napełnia bazę:** `bulkAutoFillByUrl` upsertuje WSZYSTKIE `pageProfiles` do `profileDb` (source "search"), nie tylko connectable→queue. Baza = pełna pula prospektów do kuracji.
+- **Kolejkowanie z dashboardu:** `selectEnqueueCandidates(profiles, slugs, queueSlugs)` (PURE, testowalny) — odrzuca brak-rekordu/isConnection/już-w-queue, dedup. `profileDbEnqueueForConnect(slugs)` (handler) → `addToQueue` + zwraca added/skipped/reasons. Router case. Dashboard "Baza profili" bulk-bar: przycisk "➕ Dodaj do kolejki connect (N)" + confirm + toast z reasons + clear selection.
+- **Testy:** test_profile_db 109→120/0 (+11, sekcja J). Suite bez regresji, node --check 5/5. manifest 1.24.1→1.25.0. INSTRUKCJA 3.10 ("Baza prospektów").
+
+### Decyzje
+
+- **Wysyłka (dailyCap) BEZ ZMIAN** — Marcin wybrał drip 25-40/dzień. Zbieranie ≠ wysyłka: harvest do 1000 do bazy, ale worker kapie wg dailyCap (ban-safe; 1000 = tygodnie). To celowo.
+- **"Wypełnij do limitu" zachowuje stare auto-queue** connectable, DODATKOWO napełnia bazę — nie usuwam działającej ścieżki. Flow Octopus (baza→kuracja→kolejka) to nowy przycisk w dashboardzie.
+- **Filtr enqueue po `isConnection`**, NIE degree — degree z search to "2", z Ember "2nd", z exportu "1st"; niespójne. isConnection jest spójny (true dla 1st/Message/connections_import).
+- **LI bez Sales Nav capuje wyniki ~100** — 1000 wymaga wielu wyszukiwań; zakomunikowane w INSTRUKCJA + komentarzu w kodzie. Scan i tak kończy się sam na pustej stronie.
+
+### BLOCKED / TODO
+
+- **Smoke v1.25.0** (Marcin, ~7 min): "Ile dodać"=300 → Wypełnij → baza rośnie (też nie-connectable) → zaznacz w dashboardzie → "Dodaj do kolejki connect" → toast → Start.
+- Otwarte: #53 (contact-info scraper, Sprint #10), #56B (dump /messaging/), #56A smoke.
+
+### Status końcowy
+
+#58 DONE (v1.25.0). Trzeci release tej sesji (v1.24.0 generic-fallback, v1.24.1 fix-injekcji, v1.25.0 prospect-base). Env naprawione (Python 3.13 + Claude Code current). Commit po wpisie. Phase: PM.
+
+---
+
 ## 2026-05-22 #2 (Claude Code, claude-opus-4-7) — fix: injekcja content scriptu na SDUI search (#57 v1.24.1) + env + decyzje #58
 
 ### Zrobione

@@ -162,6 +162,7 @@
 
         <div class="profiledb-bulkbar">
           <label class="profiledb-bulkbar__check"><input type="checkbox" id="profiledb-select-all"> Zaznacz wszystkie widoczne</label>
+          <button id="btn-enqueue-selected" class="btn btn--small btn--primary" disabled title="Dodaj zaznaczonych prospektów do kolejki connect. Już połączeni (1st) i będący w kolejce są pomijani. Worker wysyła zaproszenia kroplówką wg dziennego limitu.">➕ Dodaj do kolejki connect (<span id="profiledb-enqueue-count">0</span>)</button>
           <button id="btn-delete-selected" class="btn btn--small btn--danger" disabled>🗑 Usuń zaznaczone (<span id="profiledb-selected-count">0</span>)</button>
           <button id="btn-delete-filtered" class="btn btn--small btn--danger" disabled title="Usuń wszystkie rekordy pasujące do aktualnego filtru (tekst/źródło/kontakt) — niezależnie od strony">🗑 Usuń wszystkie pasujące do filtru (<span id="profiledb-filtered-count">0</span>)</button>
         </div>

@@ -165,12 +165,12 @@ Uruchom testy automatyczne (pytest backend + jsdom extension). Wykonaj kroki man
 # CURRENT STATE
 
 ```
-Sprint:        #11 — v1.24.0 (generic fallback) + v1.24.1 (#57 fix injekcji search) DONE. NASTĘPNE: #58 bulk-jako-baza-prospektów (Octopus model, decyzje zebrane).
-Phase:         Dev → #58 (info zebrane, decyzje Marcina: drip 25-40/dzień + baza→kuracja→zakolejkuj zaznaczone). Pending smoke v1.24.1.
-Active task:   #58 (bulk prospect-base) — Dev, info zebrane przed commitem v1.24.1.
-Repo state:    do commitu: popup.js+manifest+test+fixture (v1.24.1).
-Last commit:   affb160 — fix: generyczny fallback parsera search-page (v1.24.0)
-Updated:       2026-05-22 (dump Marcina: core parsuje go OK → root cause = injekcja content scriptu, nie parser; v1.24.1 fix loadProfilesList. Python+ClaudeCode naprawione/upgrade)
+Sprint:        #11 — v1.24.0 (generic fallback) + v1.24.1 (#57 fix injekcji) + v1.25.0 (#58 bulk-prospect-base Octopus) DONE. Smoke v1.24.1 PASS (Marcin "udało się").
+Phase:         Commit DONE → PM. Pending smoke v1.25.0 (~7 min). Następne do wyboru: #56B (dump /messaging/), #22 reszta, #10.
+Active task:   (none — v1.25.0 czeka smoke).
+Repo state:    do commitu: background.js+popup.js+dashboard.html/js+manifest+test+INSTRUKCJA (v1.25.0).
+Last commit:   9eb0ac9 — fix: injekcja content scriptu na SDUI search-page (#57 v1.24.1)
+Updated:       2026-05-22 (#58: harvest do 1000/100-stron + harvest napełnia profileDb + dashboard "Dodaj do kolejki connect" + selectEnqueueCandidates. Drip wysyłki bez zmian — ban-safe.)
 ```
 
 **Pending operacyjne (Marcin):** (1) `git push` — lokalny `master` przed origin. (2) Smoke #52 (~10 min) i #54 (~5 min) wg "How to test" w DONE. (3) Smoke v1.19.0 wg `docs/SMOKE-TEST.md`, regen `extension 1.21.0.zip`, dystrybucja zespołowi OVB. (4) VPS: `API_KEYS=DreamComeTrue!` w prod `.env` → `cd deploy && docker compose up -d --build`. (5) Cleanup: usunąć `extension/tests/fixtures/linkedin_connections_export.csv.xlsx` + lock file `~$...` (Excel trzyma blokadę, sandbox nie ma uprawnień).
@@ -183,11 +183,7 @@ Updated:       2026-05-22 (dump Marcina: core parsuje go OK → root cause = inj
 
 **Sprint #10 — pozostało #53** (patrz IN PROGRESS).
 
-**WYBRANE — #58 bulk jako baza prospektów (model Octopus CRM, decyzje Marcina 2026-05-22):**
-Octopus-flow: zbierz dużą pulę (do 1000 = 100 stron × 10) do bazy → kuracja w dashboardzie → drip-send w bezpiecznym tempie. **Decyzje Marcina:** (a) tempo WYSYŁKI = bezpieczny drip ~25-40/dzień (NIE podbijać — `dailyCap` zostaje konserwatywny, 1000 zaproszeń rozkłada się na tygodnie, chroni przed banem); (b) przepływ = baza→kuracja→zakolejkuj zaznaczone (dashboard-driven, NIE auto-queue z harvestu).
-- **Zakres (info zebrane przed Dev):** (1) capy zbierania: `PAGINATION_MAX_PAGES` 20→100 (background.js:1612), addCount UI cap 500→1000 (popup.js:1155,1961 + walidacja w config-setterze:1155), jitter między stronami (obecnie 2-5s @ bulkAutoFillByUrl:1676 — ew. 3-6s dla 100 stron); (2) harvest `bulkAutoFillByUrl` (background.js:1624) ma upsertować WSZYSTKIE `pageProfiles` do `profileDb` (nie tylko `buttonState==="Connect"`) — żeby baza dostała pełną pulę do kuracji; (3) NOWY handler `profileDbEnqueueForConnect({slugs})` — lookup w profileDb, filtr (NIE isConnection, degree 2nd/3rd, nie w queue), map→`{slug,name,headline}`, `addToQueue`, return counts; (4) dashboard "Baza profili": multi-select JUŻ jest (#54), dodać przycisk "➕ Dodaj zaznaczone do kolejki connect (N)" w bulk-barze + toast + filtr "tylko connectable". (4b) UWAGA: LinkedIn bez Sales Nav capuje wyniki ~100 (commercial use limit) — 1000 wymaga wielu wyszukiwań; UI powinno to komunikować. (5) testy + bump minor 1.25.0 + INSTRUKCJA rozdział "Baza prospektów".
-- Kształt rekordu profileDb: `mapLinkedInExportRow`/`upsertProfilesToDb` (background.js:2045-2099) — ma `slug,name,headline,degree,isConnection,inQueue`. `profileDbList(filter)` (2128) — filtr `{text,source,isConnection}` + paginacja.
-
+**Następny sprint — do wyboru:**
 1. **#22 reszta** — master-select zrobiony (v1.14.6); zostaje: DOM dump paginacji od Marcina → fix selektorów `bulkAutoExtract` w content.js → checkboxy "2nd-only"/"unselect Pending" → "Stop after N pages" setting. Częściowo zablokowane (potrzeba dumpu).
 2. **#10** — `selectors.json` + auto-fallback chain + dedup Voyager parsera (test_e2e ↔ content.js). Dług techniczny. Duży refaktor.
 3. **#6** — self-test scraper widget w popup (settings → diagnostyka). Mały.
@@ -251,6 +247,16 @@ Octopus-flow: zbierz dużą pulę (do 1000 = 100 stron × 10) do bazy → kuracj
 ## DONE
 
 > Format: 1 linia per release (sha, opis, bump). Pełne treści w `git show <sha>`.
+
+**v1.25.0 — feat: bulk jako baza prospektów (model Octopus, #58, 2026-05-22):**
+- ✅ (do commitu) v1.25.0 — Zgłoszenie Marcina: bulk ma działać jak Octopus — zbierz dużą pulę (do 1000) do bazy, kuruj, kolejkuj. Decyzje: drip wysyłki 25-40/dzień (NIE podbijać — `dailyCap` bez zmian, ban-safe), flow baza→kuracja→zakolejkuj zaznaczone.
+  - **`background.js`:** `PAGINATION_MAX_PAGES` 20→**100** (1000 profili), jitter stron 2-5s→**3-7s**, `bulkAutoFillByUrl` upsertuje **WSZYSTKIE** `pageProfiles` do `profileDb` (source "search", nie tylko connectable→queue) → baza dostaje pełną pulę. Nowy `selectEnqueueCandidates(profiles, slugs, queueSlugs)` (PURE, testowalny) + `profileDbEnqueueForConnect(slugs)` (lookup profileDb, odrzuca isConnection/już-w-queue/brak-rekordu, `addToQueue`, zwraca added/skipped/reasons). Router case `profileDbEnqueueForConnect`.
+  - **`popup.js`:** addCount UI cap 500→**1000** (2 miejsca).
+  - **`dashboard.html|js`:** w bulk-barze "Baza profili" nowy przycisk **"➕ Dodaj do kolejki connect (N)"** (primary, przy multi-select z #54), handler z confirm + toast (added + reasons: już-w-kontaktach/już-w-kolejce/bez-rekordu) + clear selection + refreshAll.
+  - **Testy:** `test_profile_db.js` 109→**120/0** (+11, sekcja J — selectEnqueueCandidates: filtry, dedup, Set/array queueSlugs, defaulty, null-safe). Suite bez regresji, `node --check` 5/5, test_syntax 12/0. `manifest.json` 1.24.1→1.25.0. INSTRUKCJA rozdział 3.10.
+  - **Decyzja:** "Wypełnij do limitu" zachowuje stare auto-queue connectable (nie usuwam — działa), DODATKOWO napełnia bazę. Flow Octopus = nowy przycisk w dashboardzie. Filtr enqueue po `isConnection` (nie degree — format niespójny "2" vs "2nd"). UWAGA w UI+INSTRUKCJA: LI bez Sales Nav capuje wyniki ~100 → 1000 wymaga wielu wyszukiwań.
+  - **How to test manually (Marcin, ~7 min):** Reload → `1.25.0`. (1) Search → "Budowanie sieci" → Ustawienia → "Ile dodać"=300 → "Wypełnij do limitu" → skanuje wiele stron (3-7s odstęp). (2) Dashboard → "Baza profili" — pula urosła (source "wyszukiwarka"), także profile NIE-connectable. (3) Zaznacz kilku → "➕ Dodaj do kolejki connect" → toast "Dodano N (pominięto: X już w kontaktach...)". (4) Popup → Start → worker wysyła kroplówką wg dailyCap. (5) Edge: zaznacz kogoś już w kontaktach (1st) → pominięty z reason.
+  → #58 DONE. Sprint #10 (#53 contact-info) i #56B nadal otwarte.
 
 **v1.24.1 — fix: injekcja content scriptu na SDUI search (#57, 2026-05-22):**
 - ✅ (do commitu) v1.24.1 — Marcin podesłał dump zepsutego search (`search_broken_2026-05-22.html`, 145KB, SDUI `componentkey`/`data-rehydrated`). **Diagnoza odwróciła hipotezę:** core SDUI parser parsuje dump IDEALNIE (10 imion, Connect, degree 2) — to NIE był bug parsera. Root cause = `loadProfilesList` (popup.js, klik "Odśwież") robił goły `chrome.tabs.sendMessage` BEZ `executeScript` fallbacku → na świeżej SDUI-stronie po SPA-nav content script nie wstrzyknięty z manifestu → sendMessage rzuca → lista "—"/"Nie udało się pobrać". (Inne ścieżki — scrape profilu popup.js:467, init detectPageType:2042 — miały inject, ta jedna nie.)

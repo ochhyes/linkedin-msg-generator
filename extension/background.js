@@ -1606,10 +1606,13 @@ async function waitForTabComplete(tabId, timeoutMs) {
 }
 
 const PAGINATION_RENDER_DELAY_MS = 1500; // SDUI lazy render po SPA nav
-// v1.14.4: bump 10 → 20 — "Wypełnij" z dużym addCount (np. 200 na zapas)
-// potrzebuje więcej stron. Sama nawigacja po stronach (bez Connect-klików)
-// jest low-risk dla anti-detection; LI patrzy na burst'y Connectów.
-const PAGINATION_MAX_PAGES = 20;
+// v1.14.4: bump 10 → 20. #58 v1.25.0: bump 20 → 100 — model Octopus (zbierz
+// dużą pulę prospektów do bazy, max 1000 = 100 stron × 10). Sama nawigacja po
+// stronach (bez Connect-klików) jest low-risk dla anti-detection; LI patrzy
+// na burst'y Connectów, NIE na czytanie wyników. Jitter między stronami
+// (3-7s, niżej) dodatkowo maskuje. UWAGA: LI bez Sales Nav capuje wyniki
+// ~100 (commercial use limit) → realnie scan kończy się na pustej stronie.
+const PAGINATION_MAX_PAGES = 100;
 
 /**
  * Auto-pagination przez kolejne strony LinkedIn search results.
@@ -1670,10 +1673,10 @@ async function bulkAutoFillByUrl(maxProfiles) {
     // waitForTabComplete timeout'owało 12s = root cause "czekam 2 minuty").
     const alreadyOnTargetPage = pagesScanned === 0 && pageNum === startPage;
     if (!alreadyOnTargetPage) {
-      // Anti-detection jitter 2-5s między pages. Krótszy niż 5-15s (#39)
-      // bo cap=25 mieści się typowo w 1-3 stronach, a worker tick'i przy
-      // faktycznym Connect mają osobny delay 45-120s.
-      const jitter = 2000 + Math.random() * 3000;
+      // Anti-detection jitter 3-7s między pages (#58: bump z 2-5s — przy
+      // scanie do 100 stron większy jitter wygląda mniej botowo). Worker
+      // tick'i przy faktycznym Connect mają osobny delay 45-120s.
+      const jitter = 3000 + Math.random() * 4000;
       await new Promise((r) => setTimeout(r, jitter));
       const targetUrl = setPageInUrl(baseUrl, pageNum);
       try {
@@ -1706,6 +1709,12 @@ async function bulkAutoFillByUrl(maxProfiles) {
       // Pusta strona — najprawdopodobniej page > max_pages dla tego search.
       break;
     }
+
+    // #58 v1.25.0: napełniaj bazę prospektów CAŁĄ pulą (nie tylko connectable
+    // → kolejka). Model Octopus: zbierasz wszystko do `profileDb`, kurujesz w
+    // dashboardzie, potem "Dodaj zaznaczone do kolejki connect". Fire-and-forget
+    // — nie blokuje pagination loop'a.
+    upsertProfilesToDb(pageProfiles, "search").catch(() => {});
 
     let addedThisPage = 0;
     for (const p of pageProfiles) {
@@ -2117,6 +2126,49 @@ async function upsertProfilesToDb(profiles, source) {
   }
   await writeProfileDb(db);
   return { added, updated, total: Object.keys(db.profiles).length };
+}
+
+// #58 v1.25.0: wybór prospektów z bazy do kolejki connect. PURE helper
+// (testowalny bez chrome — patrz test_profile_db.js). Odrzuca: brak rekordu,
+// 1st-degree (isConnection = już połączony, nie ma czego "connectować"),
+// już w kolejce. Dedup po slug. Reszta → kandydaci {slug,name,headline}.
+function selectEnqueueCandidates(profiles, slugs, queueSlugs) {
+  const reasons = { not_found: 0, is_connection: 0, already_in_queue: 0 };
+  const toAdd = [];
+  const qs = queueSlugs instanceof Set ? queueSlugs : new Set(queueSlugs || []);
+  const seen = new Set();
+  for (const slug of (slugs || [])) {
+    if (!slug || seen.has(slug)) continue;
+    seen.add(slug);
+    const r = profiles && profiles[slug];
+    if (!r) { reasons.not_found += 1; continue; }
+    if (r.isConnection) { reasons.is_connection += 1; continue; }
+    if (qs.has(slug)) { reasons.already_in_queue += 1; continue; }
+    toAdd.push({ slug: r.slug, name: r.name || "", headline: r.headline || "" });
+  }
+  return { toAdd, reasons };
+}
+
+// Dodaj zaznaczone prospekty z dashboardu do kolejki connect (#58 v1.25.0).
+// Worker bulkConnectTick odpali connectFromProfile per slug (drip dailyCap).
+async function profileDbEnqueueForConnect(slugs) {
+  const db = await getProfileDb();
+  const state = await getBulkState();
+  const queueSlugs = new Set((state.queue || []).map((q) => q.slug));
+  const { toAdd, reasons } = selectEnqueueCandidates(db.profiles, slugs, queueSlugs);
+  let added = 0;
+  if (toAdd.length) {
+    const resp = await addToQueue(toAdd);
+    added = resp.added != null ? resp.added : toAdd.length;
+  }
+  const after = await getBulkState();
+  return {
+    success: true,
+    added,
+    skipped: (Array.isArray(slugs) ? slugs.length : 0) - added,
+    reasons,
+    queueSize: (after.queue || []).length,
+  };
 }
 
 /**
@@ -2799,6 +2851,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return await profileDbImportLinkedInExport({ csvText: message.csvText, dryRun: !!message.dryRun });
         case "profileDbDelete":
           return await profileDbDelete({ slugs: message.slugs, deleteAllFiltered: !!message.deleteAllFiltered, filter: message.filter });
+        case "profileDbEnqueueForConnect":
+          return await profileDbEnqueueForConnect(message.slugs || []);
         case "importConnections":
           return await importConnectionsFlow(message.maxPages);
         case "backupNow":

@@ -536,6 +536,61 @@ function profileDbDeleteLogic(db, { slugs, deleteAllFiltered, filter }) {
   assertEqual(d7.deleted, 0, "I.12: brak slugs i brak deleteAllFiltered → noop");
 })();
 
+// ── #58 v1.25.0: selectEnqueueCandidates (port z background.js) ───────
+// Wybór prospektów z bazy do kolejki connect. Odrzuca: brak rekordu,
+// isConnection (1st), już w kolejce. Dedup po slug. Synchronizuj z bg.
+function selectEnqueueCandidates(profiles, slugs, queueSlugs) {
+  const reasons = { not_found: 0, is_connection: 0, already_in_queue: 0 };
+  const toAdd = [];
+  const qs = queueSlugs instanceof Set ? queueSlugs : new Set(queueSlugs || []);
+  const seen = new Set();
+  for (const slug of (slugs || [])) {
+    if (!slug || seen.has(slug)) continue;
+    seen.add(slug);
+    const r = profiles && profiles[slug];
+    if (!r) { reasons.not_found += 1; continue; }
+    if (r.isConnection) { reasons.is_connection += 1; continue; }
+    if (qs.has(slug)) { reasons.already_in_queue += 1; continue; }
+    toAdd.push({ slug: r.slug, name: r.name || "", headline: r.headline || "" });
+  }
+  return { toAdd, reasons };
+}
+
+console.log("\n--- Sekcja J: selectEnqueueCandidates (#58) ---");
+(function () {
+  const profiles = {
+    a: { slug: "a", name: "Anna", headline: "Doradca", isConnection: false },
+    b: { slug: "b", name: "Bartek", isConnection: true },          // 1st → skip
+    c: { slug: "c", name: "Cezary", isConnection: false },         // w kolejce → skip
+    d: { slug: "d", isConnection: false },                          // bez name/headline
+  };
+  const queue = ["c"];
+
+  const r1 = selectEnqueueCandidates(profiles, ["a", "b", "c", "x", "a"], queue);
+  assertEqual(r1.toAdd.length, 1, "J.1: tylko 'a' kwalifikuje się");
+  assertEqual(r1.toAdd[0].slug, "a", "J.1: kandydat = slug 'a'");
+  assertEqual(r1.toAdd[0].name, "Anna", "J.1: name przeniesione");
+  assertEqual(r1.reasons.is_connection, 1, "J.2: b odrzucony (is_connection)");
+  assertEqual(r1.reasons.already_in_queue, 1, "J.3: c odrzucony (already_in_queue)");
+  assertEqual(r1.reasons.not_found, 1, "J.4: x odrzucony (not_found), dup 'a' nie liczony");
+
+  const r2 = selectEnqueueCandidates(profiles, [], queue);
+  assertEqual(r2.toAdd.length, 0, "J.5: puste slugs → 0 kandydatów");
+
+  // queueSlugs jako Set też działa
+  const r3 = selectEnqueueCandidates(profiles, ["a", "c"], new Set(["c"]));
+  assertEqual(r3.toAdd.length, 1, "J.6: queueSlugs jako Set — c pominięty");
+
+  // rekord bez name/headline → defaulty ""
+  const r4 = selectEnqueueCandidates(profiles, ["d"], []);
+  assertEqual(r4.toAdd[0].name, "", "J.7: brak name → ''");
+  assertEqual(r4.toAdd[0].headline, "", "J.7: brak headline → ''");
+
+  // null/undefined wejścia nie wywalają
+  const r5 = selectEnqueueCandidates(null, null, null);
+  assertEqual(r5.toAdd.length, 0, "J.8: null inputs → 0, brak crashu");
+})();
+
 console.log("");
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);

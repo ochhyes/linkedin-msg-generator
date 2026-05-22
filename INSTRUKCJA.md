@@ -327,6 +327,23 @@ Funkcja **"⬇ Importuj kontakty z LinkedIn"** (z 1.14.0) scrolluje stronę `/my
 
 **Co z duplikatami:** jeśli wcześniej zrobiłeś `⬇ Importuj kontakty z LinkedIn` (1.14.0 scroll po /connections/), te slug'i są już w bazie. CSV-import je rozpozna i **doda Company/Position** (czego scroll nie miał) — istniejący scrape (jeśli był) i notatki **zostają**.
 
+### 3.10 Baza prospektów — zbieranie hurtem + kolejkowanie z dashboardu (NOWE w 1.25.0)
+
+Model jak w Octopus: **najpierw zbierasz dużą pulę prospektów do bazy, potem kurujesz i kolejkujesz**. Kluczowe rozróżnienie: **zbieranie ≠ wysyłka**. Zebranie 1000 osób jest bezpieczne (to tylko czytanie wyników). Wysyłka zaproszeń idzie **kroplówką** wg dziennego limitu (domyślnie 25/dzień) — bo LinkedIn ma twardy limit ~100-200 zaproszeń/tydzień i wysłanie 1000 naraz = ban.
+
+**Zbieranie do bazy (hurtem):**
+1. Search na LinkedIn (np. „doradca finansowy") → zakładka **„Budowanie sieci"**.
+2. W „Ustawienia bulk connect" ustaw **„Ile dodać"** wysoko (do **1000**) → klik **„Wypełnij do limitu"**.
+3. Rozszerzenie przeskakuje przez strony (do 100 = 1000 profili) z odstępem 3-7s i **zapisuje WSZYSTKICH widzianych do bazy profili** (nie tylko tych do połączenia). To Twoja pula prospektów.
+   - ⚠ LinkedIn bez Sales Navigatora często capuje wyniki do ~100 — żeby zebrać 1000, zrób kilka różnych wyszukiwań (różne frazy/filtry). Każde dorzuca do tej samej bazy.
+
+**Kuracja + kolejkowanie (z dashboardu):**
+4. Dashboard (📊) → **„🗄️ Baza profili"**. Filtruj/przeglądaj, zaznacz checkboxami prospektów których chcesz dodać (albo „Zaznacz wszystkie widoczne").
+5. Klik **„➕ Dodaj do kolejki connect (N)"**. Rozszerzenie pomija automatycznie: już połączonych (1st) i tych już w kolejce — pokaże ilu dodano i ilu pominięto.
+6. Wróć do popupu → **Start**. Worker wysyła zaproszenia kroplówką (otwiera profil w tle, klika „Połącz") wg dziennego limitu. 1000 prospektów rozłoży się na tygodnie — to celowo, dla bezpieczeństwa konta.
+
+> **TL;DR:** Wypełnij do limitu (zbiera do bazy) → dashboard zaznacz + „Dodaj do kolejki connect" → Start. Dzienny limit zostaw niski (25-40).
+
 ### 3.9 Dark mode (NOWE w 1.14.1)
 
 Rozszerzenie automatycznie dopasowuje się do trybu jasny/ciemny ustawionego w przeglądarce/systemie — nic nie musisz klikać. Jeśli masz w Windowsie/Edge włączony tryb ciemny, popup, dashboard i ustawienia będą ciemne; jasny → jasne.

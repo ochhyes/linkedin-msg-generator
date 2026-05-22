@@ -668,6 +668,8 @@
   const profileDbSourceFilter = $("#profiledb-source-filter");
   const profileDbConnFilter = $("#profiledb-conn-filter");
   const selectAllCb = $("#profiledb-select-all");
+  const btnEnqueueSelected = $("#btn-enqueue-selected");
+  const enqueueCountEl = $("#profiledb-enqueue-count");
   const btnDeleteSelected = $("#btn-delete-selected");
   const btnDeleteFiltered = $("#btn-delete-filtered");
   const selectedCountEl = $("#profiledb-selected-count");
@@ -734,7 +736,9 @@
 
   function updateSelectedUI() {
     if (selectedCountEl) selectedCountEl.textContent = String(profileDbSelectedSlugs.size);
+    if (enqueueCountEl) enqueueCountEl.textContent = String(profileDbSelectedSlugs.size);
     if (btnDeleteSelected) btnDeleteSelected.disabled = profileDbSelectedSlugs.size === 0;
+    if (btnEnqueueSelected) btnEnqueueSelected.disabled = profileDbSelectedSlugs.size === 0;
     if (selectAllCb) {
       const allChecked = profileDbCurrentPageSlugs.length > 0 &&
         profileDbCurrentPageSlugs.every((s) => profileDbSelectedSlugs.has(s));
@@ -1003,6 +1007,32 @@
         for (const s of profileDbCurrentPageSlugs) profileDbSelectedSlugs.delete(s);
       }
       loadProfileDb();
+    });
+
+    // #58 v1.25.0: model Octopus — kuracja w bazie → kolejka connect.
+    if (btnEnqueueSelected) btnEnqueueSelected.addEventListener("click", async () => {
+      if (profileDbSelectedSlugs.size === 0) return;
+      const n = profileDbSelectedSlugs.size;
+      if (!confirm(`Dodać ${n} ${n === 1 ? "prospekta" : "prospektów"} do kolejki connect?\n\nJuż połączeni (1st) i będący w kolejce zostaną pominięci. Worker wysyła zaproszenia kroplówką wg dziennego limitu (Start w popupie).`)) return;
+      btnEnqueueSelected.disabled = true;
+      try {
+        const slugs = Array.from(profileDbSelectedSlugs);
+        const resp = await chrome.runtime.sendMessage({ action: "profileDbEnqueueForConnect", slugs });
+        if (resp && resp.success) {
+          const r = resp.reasons || {};
+          const skipParts = [];
+          if (r.is_connection) skipParts.push(`${r.is_connection} już w kontaktach`);
+          if (r.already_in_queue) skipParts.push(`${r.already_in_queue} już w kolejce`);
+          if (r.not_found) skipParts.push(`${r.not_found} bez rekordu`);
+          const skipMsg = skipParts.length ? ` Pominięto: ${skipParts.join(", ")}.` : "";
+          setProfileDbStatus(`Dodano ${resp.added} do kolejki connect (razem w kolejce: ${resp.queueSize}).${skipMsg} Kliknij Start w popupie żeby ruszyć.`);
+          profileDbSelectedSlugs.clear();
+          refreshAll();
+        } else {
+          setProfileDbStatus("Dodawanie do kolejki nieudane: " + (resp && resp.error || "unknown"), true);
+        }
+      } catch (e) { setProfileDbStatus("Błąd: " + ((e && e.message) || e), true); }
+      finally { btnEnqueueSelected.disabled = false; }
     });
 
     if (btnDeleteSelected) btnDeleteSelected.addEventListener("click", async () => {

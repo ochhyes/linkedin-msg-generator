@@ -1168,7 +1168,7 @@
       delayMin: Math.max(10, parseInt(setBulkDelayMin.value) || 45),
       delayMax: Math.max(10, parseInt(setBulkDelayMax.value) || 120),
       dailyCap: Math.max(1, parseInt(setBulkCap.value) || 25),
-      addCount: Math.max(1, Math.min(500, parseInt(setBulkAddCount && setBulkAddCount.value) || 50)),
+      addCount: Math.max(1, Math.min(1000, parseInt(setBulkAddCount && setBulkAddCount.value) || 50)),
       workingHoursStart: Math.max(0, Math.min(23, parseInt(setBulkHStart.value) || 9)),
       workingHoursEnd: Math.max(0, Math.min(23, parseInt(setBulkHEnd.value) || 18)),
     };
@@ -1974,7 +1974,7 @@
       // v1.14.4: cel = `config.addCount` (ile profili dorzucić do kolejki za
       // jednym "Wypełnij" — np. 200 na zapas). To NIE dailyCap (ten limituje
       // ile worker WYSYŁA dziennie). Kolejka może rosnąć daleko ponad dailyCap.
-      const target = Math.max(1, Math.min(500, (state.config && state.config.addCount) || 50));
+      const target = Math.max(1, Math.min(1000, (state.config && state.config.addCount) || 50));
 
       // #22 v1.6.0: pagination orchestrowany przez background.js (URL-based,
       // zachowuje wszystkie query params LinkedIn'a). Background navigates
