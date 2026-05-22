@@ -1,0 +1,85 @@
+<!-- https://www.linkedin.com/search/results/people/?keywords=doradca -->
+<!--
+  SYNTETYCZNY fixture (NIE realny dump) — reprezentuje HIPOTETYCZNY nowy
+  layout search-page którego NIE łapie ani parser Ember (brak
+  data-chameleon-result-urn) ani SDUI (brak div[role="listitem"]).
+  Cel: wymusić generyczny fallback (extractSearchResultsGeneric) i sprawdzić
+  że degraduje łagodnie zamiast zwracać pustą listę / "imiona —".
+  Edge case'y: Connect (button+preload link), Pending, Message (1st),
+  Follow-only, wykluczony sidebar (aside), odfiltrowany mutual (ACoAA slug).
+-->
+<html lang="pl">
+<head><meta charset="utf-8"><title>Wyniki — doradca</title></head>
+<body>
+  <nav class="global-nav">
+    <a href="/in/my-own-profile/">Mój profil (nav — wykluczyć)</a>
+  </nav>
+
+  <main>
+    <div class="reusable-search-results-x9hashed">
+
+      <!-- 1. Connect via <button aria-label="Zaproś..."> + tekst "Połącz" -->
+      <div class="result-card-aB3xZ">
+        <a href="/in/jan-kowalski-doradca-123/"><span aria-hidden="true">Jan Kowalski</span></a>
+        <span aria-hidden="true">• 2.</span>
+        <span>Doradca finansowy w OVB Allfinanz</span>
+        <span>Warszawa, Woj. Mazowieckie</span>
+        <a href="/in/ACoAABmutual123/"><span>Marek Mostowiak i 5 innych wspólnych kontaktów</span></a>
+        <button aria-label="Zaproś użytkownika Jan Kowalski do grona kontaktów" type="button">Połącz</button>
+      </div>
+
+      <!-- 2. Connect via <a href="/preload/search-custom-invite/"> -->
+      <div class="result-card-aB3xZ">
+        <a href="/in/anna-nowak-456/"><span aria-hidden="true">Anna Nowak</span></a>
+        <span aria-hidden="true">• 2.</span>
+        <span>Specjalista ds. ubezpieczeń</span>
+        <span>Kraków</span>
+        <a href="/preload/search-custom-invite/?vanityName=anna-nowak-456"><span>Połącz</span></a>
+      </div>
+
+      <!-- 3. Pending — <a aria-label="W toku..."> MUSI być Pending nie Connect -->
+      <div class="result-card-aB3xZ">
+        <a href="/in/piotr-wisniewski-789/"><span aria-hidden="true">Piotr Wiśniewski</span></a>
+        <span aria-hidden="true">• 2.</span>
+        <span>Manager sprzedaży</span>
+        <span>Wrocław</span>
+        <a href="/in/piotr-wisniewski-789/overlay/" aria-label="W toku, kliknij aby anulować zaproszenie">W toku</a>
+      </div>
+
+      <!-- 4. Message — 1st degree, link do /messaging/ -->
+      <div class="result-card-aB3xZ">
+        <a href="/in/maria-lewandowska-321/"><span aria-hidden="true">Maria Lewandowska</span></a>
+        <span aria-hidden="true">• 1.</span>
+        <span>Dyrektor regionalny</span>
+        <span>Poznań</span>
+        <a href="/messaging/thread/2-abc/"><span>Wiadomość</span></a>
+      </div>
+
+      <!-- 5. Follow-only — brak Connect, tylko Obserwuj -->
+      <div class="result-card-aB3xZ">
+        <a href="/in/krzysztof-influencer-654/"><span aria-hidden="true">Krzysztof Kowalczyk</span></a>
+        <span aria-hidden="true">• 3.</span>
+        <span>Trener biznesu | mówca</span>
+        <span>Gdańsk</span>
+        <button aria-label="Obserwuj użytkownika Krzysztof Kowalczyk" type="button">Obserwuj</button>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Sidebar "Osoby, które możesz znać" — MUSI być wykluczony (aside) -->
+  <aside class="scaffold-layout__aside">
+    <section>
+      <div class="result-card-aB3xZ">
+        <a href="/in/sidebar-wykluczony-999/"><span aria-hidden="true">Wykluczony Sidebar</span></a>
+        <span>Osoba z sidebara</span>
+        <button aria-label="Zaproś użytkownika Wykluczony do grona kontaktów" type="button">Połącz</button>
+      </div>
+    </section>
+  </aside>
+
+  <footer>
+    <a href="/in/footer-link-000/">Link w stopce (wykluczyć)</a>
+  </footer>
+</body>
+</html>

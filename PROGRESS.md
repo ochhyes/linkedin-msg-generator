@@ -8,6 +8,43 @@
 
 ---
 
+## 2026-05-22 (Claude Code, claude-opus-4-7) — fix: generyczny fallback parsera search-page (v1.24.0) + diagnoza zgłoszenia
+
+### Kontekst zgłoszenia (Marcin)
+
+Dwa objawy: (1) przy dodawaniu do kontaktów dużo błędów/pominięć gdy bot na stronach wyszukiwania; (2) próba "przywrócenia wyszukiwania" nie działa — wywala błędy. Prośba: zrobić też dodawanie przez wejście na profil w tle.
+
+### Diagnoza
+
+- **Korupcja kodu WYKLUCZONA** — `node --check` 6/6 OK, 0 NUL bytes. Content script się ładuje. (Sprawdzone bo CLAUDE.md dokumentuje powtarzające się uszkodzenia content.js przy polskich znakach — `\` w outputcie Grepa okazał się artefaktem wyświetlania, nie realną korupcją.)
+- **"Dodawanie przez profil w tle" JUŻ ISTNIEJE od v1.14.5** — `bulkConnectTick` → `probeProfileTab(slug, "connectFromProfile")` otwiera `linkedin.com/in/<slug>/` w karcie w tle i tam klika "Połącz" → "Wyślij bez notatki". Marcin tego nie wiedział. Strona wyszukiwania pełni JEDNĄ rolę: zebranie listy slugów (`extractSearchResults`) do kolejki.
+- **Root cause** — LinkedIn znów przerollował layout `/search/results/people/` (dokładnie wzorzec z fixu v1.22.1 sprzed 4 dni). Parser zwraca wiersze bez imion ("—") / 0 Connect → kolejka napełnia się śmieciami → worker masowo pomija (`not_connectable`). To poziom DOM, nie kodu — **targetowany fix wymaga świeżego dumpu** (poproszony, czeka na Marcina).
+
+### Zrobione (resilience, którą da się zbudować bez dumpu — Marcin wybrał ten wariant)
+
+- **`content.js`** — orchestrator `extractSearchResults` rozbity na 3 piętra: `extractSearchResultsCore` (Ember→SDUI, bez zmian) + **nowy `extractSearchResultsGeneric`** (last-resort) + `classifySearchButtonState` (detekcja Connect/Pending/Message/Follow strukturalnie po aria-label/href/tekście) + `reportSearchExtractDiag` (telemetria gdy core padł). Generic: iteruje każdy `<a href*="/in/">` poza nav/aside/footer/insights, dedup po slug, imię z `span[aria-hidden]` lub tekstu linku, karta = najbliższy przodek z rozpoznanym przyciskiem, headline/location best-effort, ACoAA (mutual) odfiltrowane.
+- **Trigger fallbacku** — "usable" wymaga `slug ORAZ niepustego name`. To celuje w objaw "imiona —": gdy znany parser zwraca wiersze bez imion, wrapper przełącza na generic zamiast pokazać pustą/śmieciową listę. Telemetria `search_extract_fallback_generic` / `search_extract_empty` leci do backendu → zobaczymy że LinkedIn zmienił layout.
+- **Testy** — `tests/fixtures/search_generic_layout.html` NEW (syntetyczny "nieznany layout" z edge case'ami: Connect button+preload, Pending, Message 1st, Follow-only, wykluczony sidebar/nav/footer, odfiltrowany ACoAA). `test_search_extractor.js` 31→**51/0** (+20: 18 generic + 2 brak-regresji wrapper==core na SDUI/Ember).
+- **`manifest.json`** 1.23.0 → 1.24.0 (minor — nowa ścieżka/funkcja).
+
+### Decyzje
+
+- **Generic jako 3. piętro, NIE zamiana parserów** — odpala się tylko gdy core zwraca 0 usable. Zero ryzyka regresji (asercje wrapper==core na obu znanych fixture'ach). Mniej dokładny (headline/location heurystyczne), ale "lista degraduje się łagodnie" > "lista pada na zero".
+- **Atomowe zapisy przez Node, nie Edit/Python** — `python`/`py` na maszynie Marcina ZEPSUTE (venv wskazuje nieistniejący Python313, exit 103). Edit ma udokumentowane ryzyko korupcji przy polskich znakach. Node działa niezawodnie → splice przez `fs.readFileSync`/`writeFileSync` z asercją anchora. Zaktualizować regułę w CLAUDE.md (Python heredoc → Node splice).
+- **NIE dotykałem connectFromProfile** — działa, to nie była przyczyna. Objaw "dużo pominięć" to konsekwencja zatrutej kolejki ze zepsutego parsera search, nie samego dodawania.
+
+### BLOCKED / TODO
+
+- **Targetowany parser pod nowy layout** — czeka na dump Marcina: otwórz zepsuty search, F12 → konsola → `copy(document.body.outerHTML)` → zapisz jako `extension/tests/fixtures/search_broken_2026-05-22.html`. Wtedy dopiszę 3. wariant do `extractSearchResultsCore` + asercje na realnym DOM.
+- **Smoke (Marcin, ~5 min):** reload → `1.24.0` w `chrome://extensions/` → wejdź na zepsuty search → zakładka "Budowanie sieci" → Odśwież. Lista powinna teraz pokazać imiona (generic fallback) zamiast "—". Jeśli dalej "—" / 0 — generic też nie złapał, dump tym pilniejszy.
+- **#56A smoke** wciąż pending (v1.23.0).
+
+### Status końcowy
+
+Resilience-fix gotowy, testy 51/0 (suite bez regresji), v1.24.0 zbumpowane. Commit po tym wpisie. Prawdziwy fix layoutu czeka na dump — generic fallback jest mostem (jest szansa że już naprawia objaw Marcina, jeśli to "puste imiona"). Phase: Commit → po dumpie z powrotem Dev (targetowany parser).
+
+---
+
 ## 2026-05-20 (Claude Code, claude-opus-4-7) — feat: auto accept-tracker w tle (#56A v1.23.0)
 
 ### Zrobione

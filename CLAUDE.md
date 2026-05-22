@@ -116,6 +116,8 @@ Commity zmieniające tylko `backend/`, `deploy/` lub dokumentację — NIE bumpu
 - **SDUI** — wiersz `div[role="listitem"]`, dane w `<p>` (name+degree po `" • "`), Connect = `<a href*="/preload/search-custom-invite/">`, atrybuty `componentkey`/`data-sdui-screen`/`role="radio"`. Content script injection przez manifest `content_scripts` zawodzi na SDUI → fallback przez `chrome.scripting.executeScript` (od v1.8.2).
 - **classic Ember `entity-result`** (przywrócone wsparcie v1.22.1) — wiersz `div[data-chameleon-result-urn]`, imię w `span[aria-hidden="true"]` w name-linku, Connect = `<button aria-label="Zaproś...">` (NIE `<a>`), stopień `.entity-result__badge-text`, headline/location `div.t-14` (headline ma `t-black`). Mutual connections w `.entity-result__insights` (obfuskowane slugi `ACoAA...`) filtrowane. Extractor `extractSearchResultsEmber`, fixture `search_entity_result.html`.
 
+**Generyczny fallback (3. piętro, od v1.24.0)** — `extractSearchResults` to teraz wrapper: `extractSearchResultsCore` (Ember→SDUI) → jeśli zwraca 0 "usable" (slug ORAZ niepuste name) → `extractSearchResultsGeneric`. Generic iteruje każdy `<a href*="/in/">` poza `nav/header/footer/aside/.scaffold-layout__aside/.entity-result__insights`, dedup po slug (ACoAA odfiltrowane), imię z `span[aria-hidden]`/tekstu linku, karta = najbliższy przodek z rozpoznanym przyciskiem (`classifySearchButtonState`), headline/location best-effort. Mniej dokładny niż dedykowane parsery — to LAST RESORT przeciw "imiona —"/"0 dostępnych" gdy LinkedIn przerolluje layout. Telemetria `search_extract_fallback_generic`/`search_extract_empty` sygnalizuje że trzeba dorobić dedykowany parser. Fixture `search_generic_layout.html` (syntetyczny). **NIE zastępuje** dedykowanego parsera — gdy wpadnie dump nowego layoutu, dopisać 3. wariant do `extractSearchResultsCore`.
+
 Pagination URL-based (`?page=N` przez `searchParams.set`).
 
 **Pending invite detection** — `a[aria-label^="W toku"]` (PL) / `^="Pending"` (EN), NIE textContent "Oczekuje". Bulk connect MUSI filtrować takie profile.
@@ -161,12 +163,12 @@ Uruchom testy automatyczne (pytest backend + jsdom extension). Wykonaj kroki man
 # CURRENT STATE
 
 ```
-Sprint:        #11 — #56A DONE+COMMITTED (70e44c8 v1.23.0). #56B BLOCKED na DOM dump /messaging/.
-Phase:         PM → wybór następnego. Pending smoke Marcina #56A (~10 min). Po smoke: #56B czeka na dump albo wracamy do #53.
-Active task:   (none — #56A czeka smoke, #56B BLOCKED).
-Repo state:    CZYSTE (poza docs-commitem).
+Sprint:        #11 — hotfix v1.24.0 (generyczny fallback search-page) DONE. #57 targetowany parser nowego layoutu BLOCKED na dump search-page od Marcina.
+Phase:         Commit DONE → po dumpie z powrotem Dev (targetowany parser). Pending smoke v1.24.0 (~5 min) + dump zepsutego search.
+Active task:   (none — #57 BLOCKED na dump, #56A/#56B czekają smoke/dump).
+Repo state:    content.js+manifest+test+fixture (commit hotfixa).
 Last commit:   70e44c8 — feat: auto accept-tracker w tle (#56A v1.23.0)
-Updated:       2026-05-20 (sprint #56A: PM→Dev→Tester→Commit w jednej sesji; full loop autonomicznie po "jedziemy #56 teraz")
+Updated:       2026-05-22 (zgłoszenie Marcina: search-page sypie błędy/pominięcia → resilience generic-fallback v1.24.0; targetowany fix czeka na dump)
 ```
 
 **Pending operacyjne (Marcin):** (1) `git push` — lokalny `master` przed origin. (2) Smoke #52 (~10 min) i #54 (~5 min) wg "How to test" w DONE. (3) Smoke v1.19.0 wg `docs/SMOKE-TEST.md`, regen `extension 1.21.0.zip`, dystrybucja zespołowi OVB. (4) VPS: `API_KEYS=DreamComeTrue!` w prod `.env` → `cd deploy && docker compose up -d --build`. (5) Cleanup: usunąć `extension/tests/fixtures/linkedin_connections_export.csv.xlsx` + lock file `~$...` (Excel trzyma blokadę, sandbox nie ma uprawnień).
@@ -236,6 +238,8 @@ Updated:       2026-05-20 (sprint #56A: PM→Dev→Tester→Commit w jednej sesj
 
 ## BLOCKED
 
+- **#57** (Sprint #11, P0 — BLOCKED na DOM dump search-page od Marcina) — Targetowany parser nowego layoutu `/search/results/people/`. Zgłoszenie 2026-05-22: parser zwraca "imiona —"/"0 dostępnych" → kolejka zatruta. v1.24.0 dodał generyczny fallback (most), ale dedykowany parser potrzebny dla pełnej dokładności (headline/location/degree). **Marcin TODO:** otwórz zepsuty search, poczekaj na load, F12 → konsola → `copy(document.body.outerHTML)` → zapisz `extension/tests/fixtures/search_broken_2026-05-22.html`. Po dumpie: 3. wariant w `extractSearchResultsCore` + asercje na realnym DOM.
+
 - **#56B** (Sprint #11, P0 — BLOCKED na DOM dump `/messaging/` od Marcina) — Auto reply-tracker w tle. Worker analogiczny do accept-trackera (1× co 8h, hidden tab, mutex, godziny), ale na `/messaging/`. Parse sidebar: slug, lastSender, lastMessageAt, unread marker. Match po slug → flip najnowszego nullowego `*ReplyAt` gdy `lastSender != me && lastMessageAt > *SentAt`. Decomposition po dumpie.
 
   **Marcin TODO:** otwórz `https://www.linkedin.com/messaging/` z paroma realnymi konwersacjami (mix: ostatni sender = ja vs kontakt, mix unread/read), w devtools console: `copy(document.body.outerHTML)`, save jako `extension/tests/fixtures/messaging_inbox.html`.
@@ -243,6 +247,14 @@ Updated:       2026-05-20 (sprint #56A: PM→Dev→Tester→Commit w jednej sesj
 ## DONE
 
 > Format: 1 linia per release (sha, opis, bump). Pełne treści w `git show <sha>`.
+
+**v1.24.0 — fix: generyczny fallback parsera search-page (resilience, 2026-05-22):**
+- ✅ (do commitu) v1.24.0 — Zgłoszenie Marcina: na search-page dużo błędów/pominięć przy dodawaniu + "wyszukiwanie wywala błędy". Diagnoza: korupcja kodu WYKLUCZONA (`node --check` 6/6, 0 NUL); "connect z profilu w tle" JUŻ istnieje od v1.14.5; root cause = LinkedIn znów przerollował layout `/search/results/people/` (wzorzec v1.22.1), parser zwraca wiersze bez imion → kolejka zatruta śmieciami → masowe `not_connectable`. Targetowany fix wymaga dumpu (BLOCKED #57). W międzyczasie (decyzja Marcina) resilience:
+  - **`content.js`** — `extractSearchResults` rozbity na wrapper + `extractSearchResultsCore` (Ember→SDUI, bez zmian) + `extractSearchResultsGeneric` (last-resort) + `classifySearchButtonState` + `reportSearchExtractDiag`. "Usable" = slug ORAZ niepuste name → wyłapuje objaw "imiona —" i przełącza na generic. Generic: każdy `a[href*="/in/"]` poza nav/aside/footer/insights, dedup po slug, ACoAA odfiltrowane, karta = przodek z rozpoznanym przyciskiem.
+  - **Testy** — `tests/fixtures/search_generic_layout.html` NEW, `test_search_extractor.js` 31→**51/0** (+20). Suite bez regresji (test_bulk_connect 180/0, test_profile_db 109/0, test_reply 88/0 itd.), `node --check` 6/6, test_syntax 12/0, 0 NUL. `manifest.json` 1.23.0→1.24.0.
+  - **Decyzja:** generic NIE zastępuje parserów — odpala się tylko gdy core=0 usable (asercje wrapper==core na SDUI/Ember = zero regresji). Atomowe zapisy przez Node (Python na maszynie ZEPSUTY, Edit ryzykuje korupcję przy PL znakach).
+  - **How to test manually (Marcin, ~5 min):** Reload → `1.24.0` w `chrome://extensions/`. Wejdź na zepsuty search → "Budowanie sieci" → Odśwież. Lista MUSI pokazać imiona (generic) zamiast "—". Jeśli dalej "—"/0 — generic też nie złapał → dump pilny: F12 → `copy(document.body.outerHTML)` → `extension/tests/fixtures/search_broken_2026-05-22.html`.
+  → Po smoke + dumpie: Dev #57 (targetowany parser nowego layoutu).
 
 **v1.23.0 — feat: auto accept-tracker w tle (#56A, 2026-05-20):**
 - ✅ `70e44c8` v1.23.0 — Background worker odpalany przez `chrome.alarms` co 60min — tick wewnętrznie decyduje czy odpalić scan (period 24h + jitter ±30min, godziny 9-18, mutex z bulk-connect). Otwiera `/mynetwork/invite-connect/connections/` w hidden tab (`active:false`), parsuje pierwsze ~100 wpisów listy BEZ scrolla (świeże akcepty na górze), match po slug w queue items `status:"sent" && !acceptedAt` → flip `acceptedAt`. Auto-disable po 3 błędach.
@@ -384,7 +396,11 @@ W jednej sesji `Edit` tool **4× pod rząd uszkodził pliki** przy długich blok
   with open("file.js", "w", encoding="utf-8") as f: f.write(t)
   PYEOF
   ```
-  ⚠ Na maszynie Marcina komenda to **`python`**, NIE `python3` — `python3` w PATH to zepsuty stub Windows Store (ignoruje stdin, drukuje "nie znaleziono Python", zero zmian w pliku). Sprawdzone 2026-05-17. Też: literał `\n` w JS-stringu wewnątrz heredoc bywa zjadany przy zapisie → newline w pliku; gdy potrzebny `\n` w generowanym JS, buduj string przez `chr(92)+'n'` zamiast wpisywać `\n`.
+  ⚠ **AKTUALIZACJA 2026-05-22: Python CAŁKOWICIE zepsuty** — `python` to venv wskazujący nieistniejący `Python313\python.exe`, `py` launcher też (exit 103 "did not find executable"). Heredoc Python NIE działa. **Preferowana metoda atomic-write: Node splice** (`node` działa niezawodnie):
+  ```bash
+  node -e 'const fs=require("fs");let t=fs.readFileSync("f.js","utf8");const inj=fs.readFileSync("_snippet.js","utf8");const pos=t.indexOf("ASCII_ANCHOR");if(pos<0){console.error("ANCHOR NOT FOUND");process.exit(1);}const ls=t.lastIndexOf("\n",pos)+1;t=t.slice(0,ls)+inj+t.slice(ls);fs.writeFileSync("f.js",t,"utf8");'
+  ```
+  Snippet z polskimi znakami pisz **tool'em Write** (whole-file, niezawodny dla UTF-8), potem splice node'em po ASCII-anchorze (nie wpisuj `──`/PL w argumencie Bash). Po splice: `rm` snippet + `node --check`. (Stara metoda Python heredoc — gdyby Python naprawiony: komenda to `python`, NIE `python3`.) Też: literał `\n` w JS-stringu wewnątrz heredoc bywa zjadany przy zapisie → newline w pliku; gdy potrzebny `\n` w generowanym JS, buduj string przez `chr(92)+'n'` zamiast wpisywać `\n`.
 - **Po każdej edycji JS:** `node --check <file>` natychmiast. Fail → `git show HEAD:<file>` + replay przez Python.
 - **Cleanup NUL bytes:** `python -c "open('f.js','wb').write(open('f.js','rb').read().rstrip(b'\\x00'))"`
 

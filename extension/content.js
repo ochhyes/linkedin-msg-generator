@@ -1363,7 +1363,7 @@
     return results;
   }
 
-  function extractSearchResults() {
+  function extractSearchResultsCore() {
     // LinkedIn serwuje dwa warianty /search/results/people/ (A/B per konto):
     //  - classic Ember `entity-result` — wiersz div[data-chameleon-result-urn],
     //    Connect = <button aria-label="Zaproś...">, imię w span[aria-hidden].
@@ -1516,6 +1516,198 @@
     }
 
     return results;
+  }
+
+  // ── Generyczny fallback parsera search-page (resilience 2026-05-22) ──
+  //
+  // LinkedIn A/B-rerolluje layout /search/results/people/ co kilka tygodni
+  // (SDUI ↔ Ember ↔ nowe warianty). Gdy ani extractSearchResultsEmber, ani
+  // SDUI-parser (extractSearchResultsCore) nie złapią aktualnego layoutu, ta
+  // funkcja jest LAST RESORT: iteruje każdy <a href*="/in/"> poza
+  // nav/aside/insights, grupuje po slug'u, wyłuskuje imię + buttonState
+  // heurystycznie z najbliższego kontenera-karty. Mniej dokładna niż
+  // dedykowane parsery (headline/location best-effort), ale sprawia że lista
+  // NIE pada na zero — degraduje się łagodnie zamiast crashu/"—"/"0 dostępnych".
+
+  function classifySearchButtonState(root) {
+    const has = (sel) => !!root.querySelector(sel);
+    if (
+      has(
+        'a[aria-label^="W toku"], button[aria-label^="W toku"], ' +
+        'a[aria-label^="Oczekuje"], button[aria-label^="Oczekuje"], ' +
+        'a[aria-label^="Pending"], button[aria-label^="Pending"], ' +
+        'a[href*="/preload/withdraw-invite/"]'
+      )
+    ) return "Pending";
+    if (
+      has(
+        'a[href*="search-custom-invite"], a[href*="/preload/custom-invite/"], ' +
+        'a[aria-label^="Zaproś"], button[aria-label^="Zaproś"], ' +
+        'a[aria-label^="Invite "], button[aria-label^="Invite "], ' +
+        'a[aria-label^="Connect"], button[aria-label^="Connect"]'
+      )
+    ) return "Connect";
+    const textConnect = Array.from(root.querySelectorAll("button, a")).some((b) => {
+      const t = (b.innerText || b.textContent || "").trim();
+      return /^(Połącz|Connect)$/i.test(t) && !/W toku|Pending|Anuluj|Withdraw|Cofnij/i.test(t);
+    });
+    if (textConnect) return "Connect";
+    if (
+      has(
+        'a[href*="/messaging/"], ' +
+        'a[aria-label^="Wiadomość"], button[aria-label^="Wiadomość"], ' +
+        'a[aria-label^="Message"], button[aria-label^="Message"]'
+      )
+    ) return "Message";
+    if (
+      has(
+        'a[aria-label^="Obserwuj"], button[aria-label^="Obserwuj"], ' +
+        'a[aria-label^="Follow"], button[aria-label^="Follow"]'
+      )
+    ) return "Follow";
+    const txt = (root.textContent || "").toLowerCase();
+    if (/\bobserwuj\b|\bfollow\b/.test(txt) && !/połącz|connect/i.test(txt)) return "Follow";
+    return "Unknown";
+  }
+
+  function extractSearchResultsGeneric(rootEl) {
+    const doc = rootEl || document;
+    const results = [];
+    const seen = new Set();
+    const EXCLUDE =
+      'nav, header, footer, aside, .global-nav, .scaffold-layout__aside, ' +
+      '.entity-result__insights, [class*="insights"]';
+    const isMutualText = (s) =>
+      /wspóln[ay]+\s+kontakt|mutual\s+connection|innych\s+wspólnych/i.test(s);
+    const BTN_TXT =
+      /^(Połącz|Connect|Wiadomość|Message|Obserwuj|Follow|W toku|Pending|Zaproś|Invite)\b/i;
+
+    const links = Array.from(doc.querySelectorAll('a[href*="/in/"]'));
+    for (const link of links) {
+      try {
+        if (link.closest(EXCLUDE)) continue;
+        const href = link.getAttribute("href") || "";
+        const m = href.match(/\/in\/([^/?#]+)/);
+        if (!m) continue;
+        let slug;
+        try { slug = decodeURIComponent(m[1]).toLowerCase(); }
+        catch (_) { slug = m[1].toLowerCase(); }
+        if (!slug || seen.has(slug) || /^acoaa/i.test(slug)) continue;
+
+        // Imię: span[aria-hidden] (SDUI/Ember), inaczej tekst linku (1. linia,
+        // bez doklejonego "• 2" stopnia).
+        let name = null;
+        const ah = link.querySelector('span[aria-hidden="true"]');
+        if (ah) name = (ah.innerText || ah.textContent || "").trim();
+        if (!name) {
+          const raw = (link.innerText || link.textContent || "").trim();
+          const firstLine =
+            raw.split("\n").map((s) => s.trim()).filter(Boolean)[0] || "";
+          name = firstLine.replace(/\s*•\s*\d.*$/, "").trim();
+        }
+        if (!name || name.length < 2 || name.length > 120) continue;
+        if (BTN_TXT.test(name) || isMutualText(name)) continue;
+
+        // Karta = najbliższy przodek z rozpoznanym przyciskiem; stop gdy
+        // przodek obejmuje >1 link /in/ (przekroczyliśmy granicę karty).
+        let cur = link.parentElement;
+        let card = null;
+        for (let depth = 0; cur && depth < 8; depth++) {
+          if (classifySearchButtonState(cur) !== "Unknown") { card = cur; break; }
+          if (cur.querySelectorAll('a[href*="/in/"]').length > 1) {
+            card = card || cur;
+            break;
+          }
+          cur = cur.parentElement;
+        }
+        card = card || link.parentElement || link;
+        const buttonState = classifySearchButtonState(card);
+
+        // Stopień — heurystyka z tekstu karty.
+        let degree = null;
+        const dm = (card.textContent || "").match(
+          /•\s*([123])\b|\b([123])\.\s*stopni|\b([123])(?:st|nd|rd)\b/i
+        );
+        if (dm) degree = normalizeDegree(dm[0]);
+
+        // Headline/location — best-effort: leaf-text spans/divs poza imieniem,
+        // przyciskami i frazami mutual-connections.
+        const texts = [];
+        const leafEls = card.querySelectorAll("p, span, div");
+        for (const el of leafEls) {
+          if (el.childElementCount !== 0) continue;
+          const t = (el.innerText || el.textContent || "").trim();
+          if (!t || t === name) continue;
+          if (BTN_TXT.test(t) || isMutualText(t) || /^•\s*\d/.test(t)) continue;
+          if (!texts.includes(t)) texts.push(t);
+        }
+        const headline = texts[0] || null;
+        const location = texts[1] || null;
+
+        seen.add(slug);
+        results.push({ name, headline, location, degree, slug, buttonState });
+      } catch (err) {
+        results.push({ slug: null, error: String((err && err.message) || err) });
+      }
+    }
+    return results;
+  }
+
+  // Wyślij diagnostykę gdy znane parsery padły i odpaliliśmy fallback —
+  // żeby widzieć w logu backendu, że LinkedIn przerollował layout search-page.
+  function reportSearchExtractDiag(diag, errorMessage) {
+    try {
+      if (!isContextValid()) return;
+      const p = chrome.runtime.sendMessage({
+        action: "reportScrapeFailure",
+        payload: {
+          url: window.location.href,
+          event_type:
+            diag.genericUsable > 0
+              ? "search_extract_fallback_generic"
+              : "search_extract_empty",
+          error_message: errorMessage || null,
+          diagnostics: diag,
+        },
+      });
+      if (p && typeof p.catch === "function") p.catch(() => {});
+    } catch (_) { /* telemetria nigdy nie blokuje user-flow */ }
+  }
+
+  // Orchestrator publiczny: Ember → SDUI (core) → generic last-resort.
+  // Kontrakt niezmieniony — zwraca Array<{name,headline,location,degree,slug,
+  // buttonState,error?}>. "Usable" wymaga slug ORAZ niepustego name: to
+  // wyłapuje objaw "imiona —" (parser zwraca wiersze, ale bez imion) i
+  // przełącza na generic zamiast pokazać pustą/śmieciową listę.
+  function extractSearchResults() {
+    let primary = [];
+    try { primary = extractSearchResultsCore(); }
+    catch (_) { primary = []; }
+    const usable = primary.filter(
+      (p) => p && p.slug && p.name && String(p.name).trim()
+    ).length;
+    if (usable > 0) return primary;
+
+    // Znane parsery nic sensownego nie złapały — generyczny fallback.
+    const emberCount = document.querySelectorAll(
+      'div[data-chameleon-result-urn]'
+    ).length;
+    const listItemCount = document.querySelectorAll('div[role="listitem"]').length;
+    let generic = [];
+    try { generic = extractSearchResultsGeneric(document); }
+    catch (_) { generic = []; }
+    const genericUsable = generic.filter(
+      (p) => p && p.slug && p.name && String(p.name).trim()
+    ).length;
+    reportSearchExtractDiag({
+      variant: emberCount > 0 ? "ember" : "sdui",
+      primaryUsable: usable,
+      genericUsable,
+      emberRows: emberCount,
+      listItems: listItemCount,
+      profileLinks: document.querySelectorAll('a[href*="/in/"]').length,
+    });
+    return genericUsable > 0 ? generic : primary;
   }
 
   // ── Bulk Connect: auto-click w Shadow DOM modal'u (#19, Faza 1B) ──

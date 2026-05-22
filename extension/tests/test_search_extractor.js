@@ -155,7 +155,7 @@ function extractSearchResultsEmber(rows) {
   return results;
 }
 
-function extractSearchResults(doc) {
+function extractSearchResultsCore(doc) {
   // Wykryj wariant Ember po data-chameleon-result-urn.
   const emberRows = doc.querySelectorAll(
     'div[data-chameleon-result-urn], ' +
@@ -240,6 +240,145 @@ function extractSearchResults(doc) {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
+
+// ── Generyczny fallback (port z content.js, resilience 2026-05-22) ──
+// Last-resort gdy ani Ember ani SDUI nie złapią layoutu. Synchronizuj
+// z extension/content.js: classifySearchButtonState + extractSearchResultsGeneric.
+
+function classifySearchButtonState(root) {
+  const has = (sel) => !!root.querySelector(sel);
+  if (
+    has(
+      'a[aria-label^="W toku"], button[aria-label^="W toku"], ' +
+      'a[aria-label^="Oczekuje"], button[aria-label^="Oczekuje"], ' +
+      'a[aria-label^="Pending"], button[aria-label^="Pending"], ' +
+      'a[href*="/preload/withdraw-invite/"]'
+    )
+  ) return "Pending";
+  if (
+    has(
+      'a[href*="search-custom-invite"], a[href*="/preload/custom-invite/"], ' +
+      'a[aria-label^="Zaproś"], button[aria-label^="Zaproś"], ' +
+      'a[aria-label^="Invite "], button[aria-label^="Invite "], ' +
+      'a[aria-label^="Connect"], button[aria-label^="Connect"]'
+    )
+  ) return "Connect";
+  const textConnect = Array.from(root.querySelectorAll("button, a")).some((b) => {
+    const t = (b.textContent || "").trim();
+    return /^(Połącz|Connect)$/i.test(t) && !/W toku|Pending|Anuluj|Withdraw|Cofnij/i.test(t);
+  });
+  if (textConnect) return "Connect";
+  if (
+    has(
+      'a[href*="/messaging/"], ' +
+      'a[aria-label^="Wiadomość"], button[aria-label^="Wiadomość"], ' +
+      'a[aria-label^="Message"], button[aria-label^="Message"]'
+    )
+  ) return "Message";
+  if (
+    has(
+      'a[aria-label^="Obserwuj"], button[aria-label^="Obserwuj"], ' +
+      'a[aria-label^="Follow"], button[aria-label^="Follow"]'
+    )
+  ) return "Follow";
+  const txt = (root.textContent || "").toLowerCase();
+  if (/\bobserwuj\b|\bfollow\b/.test(txt) && !/połącz|connect/i.test(txt)) return "Follow";
+  return "Unknown";
+}
+
+function extractSearchResultsGeneric(doc) {
+  const results = [];
+  const seen = new Set();
+  const EXCLUDE =
+    'nav, header, footer, aside, .global-nav, .scaffold-layout__aside, ' +
+    '.entity-result__insights, [class*="insights"]';
+  const isMutualText = (s) =>
+    /wspóln[ay]+\s+kontakt|mutual\s+connection|innych\s+wspólnych/i.test(s);
+  const BTN_TXT =
+    /^(Połącz|Connect|Wiadomość|Message|Obserwuj|Follow|W toku|Pending|Zaproś|Invite)\b/i;
+
+  const links = Array.from(doc.querySelectorAll('a[href*="/in/"]'));
+  for (const link of links) {
+    try {
+      if (link.closest(EXCLUDE)) continue;
+      const href = link.getAttribute("href") || "";
+      const m = href.match(/\/in\/([^/?#]+)/);
+      if (!m) continue;
+      let slug;
+      try { slug = decodeURIComponent(m[1]).toLowerCase(); }
+      catch (_) { slug = m[1].toLowerCase(); }
+      if (!slug || seen.has(slug) || /^acoaa/i.test(slug)) continue;
+
+      let name = null;
+      const ah = link.querySelector('span[aria-hidden="true"]');
+      if (ah) name = (ah.textContent || "").trim();
+      if (!name) {
+        const raw = (link.textContent || "").trim();
+        const firstLine =
+          raw.split("\n").map((s) => s.trim()).filter(Boolean)[0] || "";
+        name = firstLine.replace(/\s*•\s*\d.*$/, "").trim();
+      }
+      if (!name || name.length < 2 || name.length > 120) continue;
+      if (BTN_TXT.test(name) || isMutualText(name)) continue;
+
+      let cur = link.parentElement;
+      let card = null;
+      for (let depth = 0; cur && depth < 8; depth++) {
+        if (classifySearchButtonState(cur) !== "Unknown") { card = cur; break; }
+        if (cur.querySelectorAll('a[href*="/in/"]').length > 1) {
+          card = card || cur;
+          break;
+        }
+        cur = cur.parentElement;
+      }
+      card = card || link.parentElement || link;
+      const buttonState = classifySearchButtonState(card);
+
+      let degree = null;
+      const dm = (card.textContent || "").match(
+        /•\s*([123])\b|\b([123])\.\s*stopni|\b([123])(?:st|nd|rd)\b/i
+      );
+      if (dm) degree = normalizeDegree(dm[0]);
+
+      const texts = [];
+      const leafEls = card.querySelectorAll("p, span, div");
+      for (const el of leafEls) {
+        if (el.childElementCount !== 0) continue;
+        const t = (el.textContent || "").trim();
+        if (!t || t === name) continue;
+        if (BTN_TXT.test(t) || isMutualText(t) || /^•\s*\d/.test(t)) continue;
+        if (!texts.includes(t)) texts.push(t);
+      }
+      const headline = texts[0] || null;
+      const location = texts[1] || null;
+
+      seen.add(slug);
+      results.push({ name, headline, location, degree, slug, buttonState });
+    } catch (err) {
+      results.push({ slug: null, error: String((err && err.message) || err) });
+    }
+  }
+  return results;
+}
+
+// Orchestrator publiczny — Ember → SDUI (core) → generic last-resort.
+// "Usable" wymaga slug ORAZ niepustego name (wyłapuje objaw "imiona —").
+function extractSearchResults(doc) {
+  let primary = [];
+  try { primary = extractSearchResultsCore(doc); }
+  catch (_) { primary = []; }
+  const usable = primary.filter(
+    (p) => p && p.slug && p.name && String(p.name).trim()
+  ).length;
+  if (usable > 0) return primary;
+  let generic = [];
+  try { generic = extractSearchResultsGeneric(doc); }
+  catch (_) { generic = []; }
+  const gu = generic.filter(
+    (p) => p && p.slug && p.name && String(p.name).trim()
+  ).length;
+  return gu > 0 ? generic : primary;
+}
 
 function loadFixture(name) {
   const filepath = path.join(__dirname, "fixtures", name);
@@ -420,6 +559,86 @@ console.log("\n▸ Ember per-row try/catch — corrupt one row, expect length st
   assert(
     profiles[0].name && profiles[9].name,
     "Ember: rows [0] and [9] still intact after corrupting [4]"
+  );
+}
+
+// ── Generyczny fallback — nowy/nieznany layout (resilience 2026-05-22) ──
+//
+// Fixture search_generic_layout.html NIE jest ani Ember (data-chameleon-result-urn)
+// ani SDUI (div[role="listitem"]) → core zwraca []. Wrapper MUSI przełączyć
+// na extractSearchResultsGeneric i odzyskać profile z gołych <a href="/in/">.
+console.log("\n▸ search_generic_layout.html — generyczny fallback (nieznany layout)");
+{
+  const { doc } = loadFixture("search_generic_layout.html");
+
+  // Sanity: core (Ember+SDUI) faktycznie nic nie łapie na tym layoucie.
+  assertEqual(extractSearchResultsCore(doc).length, 0, "Generic: core zwraca 0 (nieznany layout)");
+
+  const profiles = extractSearchResults(doc);
+
+  // AC: 5 kart z <main>; sidebar (aside) + nav + footer wykluczone.
+  assertEqual(profiles.length, 5, "Generic: 5 profili (sidebar/nav/footer wykluczone)");
+
+  // AC: objaw bugu "imiona —" naprawiony — wszystkie mają niepuste imię.
+  const named = profiles.filter((p) => p.name && p.name.length > 1).length;
+  assertEqual(named, 5, "Generic: wszystkie 5 mają niepuste imię");
+
+  const bySlug = (s) => profiles.find((p) => p.slug === s);
+  const jan = bySlug("jan-kowalski-doradca-123");
+  const anna = bySlug("anna-nowak-456");
+  const piotr = bySlug("piotr-wisniewski-789");
+  const maria = bySlug("maria-lewandowska-321");
+  const krzys = bySlug("krzysztof-influencer-654");
+
+  assert(!!jan && jan.name === "Jan Kowalski", "Generic: Jan Kowalski wyekstrahowany");
+  // AC: Connect rozpoznany oboma drogami (button aria-label + preload <a>).
+  assertEqual(jan && jan.buttonState, "Connect", "Generic: Jan = Connect (button aria-label)");
+  assertEqual(anna && anna.buttonState, "Connect", "Generic: Anna = Connect (preload link)");
+  // AC: Pending NIE mylony z Connect (klik na 'W toku' = withdraw flow).
+  assertEqual(piotr && piotr.buttonState, "Pending", "Generic: Piotr = Pending (nie Connect)");
+  // AC: Message (1st) i Follow (only) rozpoznane.
+  assertEqual(maria && maria.buttonState, "Message", "Generic: Maria = Message (1st)");
+  assertEqual(krzys && krzys.buttonState, "Follow", "Generic: Krzysztof = Follow (only)");
+
+  // AC: degree heurystyka z tekstu karty.
+  assertEqual(jan && jan.degree, "2nd", "Generic: Jan degree = 2nd");
+  assertEqual(maria && maria.degree, "1st", "Generic: Maria degree = 1st");
+
+  // AC: headline + location best-effort.
+  assert(jan && jan.headline && jan.headline.includes("Doradca"), "Generic: Jan headline = Doradca...", `got "${jan && jan.headline}"`);
+  assert(jan && jan.location && jan.location.includes("Warszawa"), "Generic: Jan location = Warszawa", `got "${jan && jan.location}"`);
+
+  // AC: mutual connection (ACoAA slug) odfiltrowany — nie jest osobnym profilem.
+  const acoaa = profiles.filter((p) => p.slug && /^acoaa/i.test(p.slug)).length;
+  assertEqual(acoaa, 0, "Generic: zero slugów ACoAA (mutual odfiltrowany)");
+
+  // AC: sidebar/nav/footer NIE w wynikach.
+  assert(!bySlug("sidebar-wykluczony-999"), "Generic: sidebar (aside) wykluczony");
+  assert(!bySlug("my-own-profile"), "Generic: nav link wykluczony");
+  assert(!bySlug("footer-link-000"), "Generic: footer link wykluczony");
+
+  // AC: zero Unknown (każdy ma rozpoznany stan przycisku).
+  const unk = profiles.filter((p) => p.buttonState === "Unknown").length;
+  assertEqual(unk, 0, "Generic: zero buttonState=Unknown");
+}
+
+// ── Brak regresji: wrapper nie odpala generic gdy core ma wyniki ──────
+// Na fixture'ach SDUI/Ember (powyżej, przez extractSearchResults) generic
+// NIE może się odpalić — primary usable > 0. Sprawdzamy że wrapper zwraca
+// dokładnie to co core dla obu znanych wariantów.
+console.log("\n▸ Wrapper = core gdy znany layout (brak regresji SDUI/Ember)");
+{
+  const sdui = loadFixture("search_results_people.html").doc;
+  const ember = loadFixture("search_entity_result.html").doc;
+  assertEqual(
+    JSON.stringify(extractSearchResults(sdui)),
+    JSON.stringify(extractSearchResultsCore(sdui)),
+    "Wrapper==core na SDUI (generic nie odpalony)"
+  );
+  assertEqual(
+    JSON.stringify(extractSearchResults(ember)),
+    JSON.stringify(extractSearchResultsCore(ember)),
+    "Wrapper==core na Ember (generic nie odpalony)"
   );
 }
 
