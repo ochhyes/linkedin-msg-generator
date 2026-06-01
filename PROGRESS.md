@@ -8,6 +8,38 @@
 
 ---
 
+## 2026-06-01 (Claude Code, claude-opus-4-8) — commit #60 + odchudzenie CLAUDE.md + anty-halucynacja sales
+
+### Zrobione
+
+- **Commit #60 (9e68dc1, v1.25.2)** — zaległe „stare rzeczy" z drzewa (import LinkedIn-CSV jako prospekty, `opts.asProspects`). Diffy zweryfikowane, test_profile_db 141/0. CLAUDE.md celowo wyłączony z tego commitu (przepisywany osobno).
+- **Odchudzenie CLAUDE.md (471 → 332 linii)** — nowa sekcja „Zasady zapisu do tego pliku": DONE = 1 linia/release, „How to test"/decompozycje/decyzje/lessons → PROGRESS.md, IN PROGRESS = tylko aktywny task + AC. Zwinięte całe DONE do 1-linerów (sha), skompresowane #53/#56A/#56B, zostawione reference (DOM facts, workflow, reguły) bez zmian.
+- **Anty-halucynacja sales (363c09d)** — Marcin zgłosił, że generator pod sprzedaż zmyśla ofertę pod branżę klienta (przykład: „buduje Pan BEBURAS Capital… oferuję sourcing LP/co-inwestorów DACH"). Root cause: `sender_offer` opcjonalne, `build_prompt` pomijał blok oferty gdy puste → model improwizował ofertę-lustro + dopisywał odbiorcy zmyślone firmy/obszary. Fix: (1) endpoint `/api/generate-message` odrzuca `goal=sales` bez oferty (422, czytelny komunikat PL), (2) system prompt reguła 7 „TWOJA OFERTA stała, nie naginaj pod branżę" + „pisz wyłącznie z faktów profilu, nie dopisuj firm/funduszy", (3) `build_prompt` — cytat dosłowny oferty albo jawny `TWOJA OFERTA: BRAK`. +4 testy, backend 52→56/0.
+
+### Decyzje
+
+- **Wymóg oferty TYLKO dla sales** (decyzja Marcina przez AskUserQuestion: „Wymóg oferty dla sales") — networking/recruitment/followup bez oferty nadal przechodzą (BRAK-branch → wiadomość relacyjna). Sprzedaż bez tego, co sprzedajesz, nie ma sensu, więc twardy 422.
+- **Backend-only, bez bumpu manifestu** — błąd 422 z `detail` propaguje się przez `generateMessage` (background.js:1952) do popupu jako czytelny komunikat. Nie trzeba ruszać extension'a.
+- **CLAUDE.md: collapse + reguły** (decyzja Marcina: „Collapse DONE + reguły zapisu") zamiast osobnego CHANGELOG.md — historia release'ów zostaje w jednym pliku, ale 1-liniowa; pełne treści w `git show`.
+- **#60 commit bez CLAUDE.md** — żeby od razu nie wepchnąć bloatu, który zaraz zwijam. CLAUDE.md leci w osobnym docs-commicie.
+
+### Lessons learned
+
+- „BEBURAS Capital / Roots Funding" to był klasyczny LUSTRO-fail uruchamiany pustą ofertą — reguły MOST-nie-LUSTRO zakładały, że oferta JEST. Pusta oferta = brak kotwicy = improwizacja pod odbiorcę. Guard na poziomie endpointu zamyka to u źródła.
+- Bash tool ≠ PowerShell: here-string `@'...'@` wepchnął literalny `@` do commit message (#60), poprawione `--amend -F -` z bash-heredoc. Na przyszłość: commit message przez `-F -` <<'EOF'.
+
+### BLOCKED / TODO
+
+- Smoke sales (Marcin, ~3 min): w ustawieniach wyczyść „Co oferujesz" → goal=sales → Generuj → powinien być czytelny błąd „musisz podać, co oferujesz". Uzupełnij ofertę → Generuj → wiadomość trzyma się oferty, NIE zmienia branży na branżę odbiorcy.
+- Deploy backendu na VPS wymagany, żeby fix zadziałał na produkcji (`cd deploy && docker compose up -d --build`).
+- Otwarte: #53 (contact-info), #56B (dump /messaging/).
+
+### Status końcowy
+
+3 commity (9e68dc1 #60, 363c09d sales fix, + docs CLAUDE.md/PROGRESS). Backend 56/0, extension suite bez zmian. Phase: PM. Pending: smoke sales + deploy backendu.
+
+---
+
 ## 2026-05-22 #4 (Claude Code, claude-opus-4-7) — fix: connectFromProfile nie klika sugestii (#59 v1.25.1)
 
 ### Zrobione
