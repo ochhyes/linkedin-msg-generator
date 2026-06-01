@@ -100,7 +100,12 @@ DEFAULT_SYSTEM_PROMPT = (
     "   Jeśli odbiorca pracuje w X albo interesuje się X, a Ty oferujesz Y, pokaż\n"
     "   dlaczego X jest dobrym punktem startu do Y. Nie proponuj odbiorcy X.\n"
     "   Nigdy nie sugeruj mu roli zbieżnej z jego obecnym profilem, chyba że to\n"
-    "   jest dokładnie to, co jest w TWOJA OFERTA.\n\n"
+    "   jest dokładnie to, co jest w TWOJA OFERTA.\n"
+    "7. TWOJA OFERTA jest STAŁA i niezależna od branży odbiorcy. NIE przeformułowuj\n"
+    "   jej tak, by brzmiała jak działalność odbiorcy (np. do inwestora NIE pisz, że\n"
+    "   oferujesz 'dealflow' czy 'sourcing LP', jeśli tego nie ma w TWOJA OFERTA).\n"
+    "   Jeśli TWOJA OFERTA jest oznaczona BRAK — nie wymyślaj żadnej propozycji\n"
+    "   handlowej, pisz czysto relacyjnie/networkingowo.\n\n"
     "REJESTR JĘZYKOWY (polski rynek - krytyczne):\n"
     "- ZAWSZE Pan/Pani, we WSZYSTKICH goals (recruitment, networking, sales, followup).\n"
     "  Forma 'ty' zabroniona całkowicie.\n"
@@ -121,7 +126,10 @@ DEFAULT_SYSTEM_PROMPT = (
     "- Nie wspominaj 'wspólnych znajomych' / 'wspólnych kontaktów' jeśli pole\n"
     "  'Wspólne kontakty' w profilu jest oznaczone BRAK.\n"
     "- Nie twierdź że 'widzisz' coś w profilu, czego w profilu nie ma.\n"
-    "- Nie wymyślaj nazw firm, projektów, certyfikacji, szkół.\n\n"
+    "- Nie wymyślaj nazw firm, projektów, certyfikacji, szkół.\n"
+    "- Pisz WYŁĄCZNIE z faktów w PROFIL ODBIORCY. Nie dopisuj odbiorcy ról, firm,\n"
+    "  funduszy ani obszarów działania, których w profilu NIE MA. Jeśli profil podaje\n"
+    "  tylko firmę i stanowisko, nie zgaduj czym ta firma się zajmuje.\n\n"
     "Odpowiadasz TYLKO treścią wiadomości."
 )
 
@@ -457,11 +465,16 @@ def build_prompt(req: GenerateMessageRequest) -> str:
 
     profile_block = _build_profile_block(req.profile)
 
-    offer_block = ""
-    if req.sender_offer:
+    if req.sender_offer and req.sender_offer.strip():
         offer_block = (
-            "\nTWOJA OFERTA (to proponujesz odbiorcy — cytat dosłowny):\n"
-            f"{req.sender_offer}\n"
+            "\nTWOJA OFERTA (to i TYLKO to proponujesz odbiorcy — cytat dosłowny, "
+            "NIE przeformułowuj pod branżę odbiorcy):\n"
+            f"{req.sender_offer.strip()}\n"
+        )
+    else:
+        offer_block = (
+            "\nTWOJA OFERTA: BRAK — NIE wymyślaj żadnej oferty handlowej ani usługi "
+            "dopasowanej do odbiorcy. Napisz wiadomość czysto relacyjną/networkingową.\n"
         )
 
     sender_block = ""

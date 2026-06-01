@@ -201,6 +201,56 @@ class TestGenerateMessage:
         assert resp.status_code == 422
         assert "imię" in resp.json()["detail"].lower() or "name" in resp.json()["detail"].lower()
 
+    def test_sales_without_offer_rejected(self):
+        """goal=sales bez sender_offer → 422 (inaczej AI zmyśla ofertę pod branżę)."""
+        resp = client.post(
+            "/api/generate-message",
+            headers=HEADERS,
+            json={"profile": PROFILE_FULL_PL, "goal": "sales", "language": "pl"},
+        )
+        assert resp.status_code == 422
+        assert "oferuj" in resp.json()["detail"].lower()
+
+    def test_sales_with_blank_offer_rejected(self):
+        """Sama spacja/pusty string w ofercie też nie przechodzi dla sales."""
+        resp = client.post(
+            "/api/generate-message",
+            headers=HEADERS,
+            json={
+                "profile": PROFILE_FULL_PL,
+                "goal": "sales",
+                "sender_offer": "   ",
+            },
+        )
+        assert resp.status_code == 422
+
+    @patch("main.generate_message", new_callable=AsyncMock)
+    def test_sales_with_offer_ok(self, mock_gen):
+        """goal=sales z wypełnioną ofertą → 200."""
+        mock_gen.return_value = "Widzę, że prowadzi Pani zespół ML. Proponuję 30 minut."
+        resp = client.post(
+            "/api/generate-message",
+            headers=HEADERS,
+            json={
+                "profile": PROFILE_FULL_PL,
+                "goal": "sales",
+                "sender_offer": "Doradztwo finansowe i plany emerytalne dla kadry IT.",
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["goal"] == "sales"
+
+    @patch("main.generate_message", new_callable=AsyncMock)
+    def test_networking_without_offer_ok(self, mock_gen):
+        """Wymóg oferty dotyczy TYLKO sales — networking bez oferty przechodzi."""
+        mock_gen.return_value = "Pani ścieżka z banków do ML zaciekawiła mnie."
+        resp = client.post(
+            "/api/generate-message",
+            headers=HEADERS,
+            json={"profile": PROFILE_FULL_PL, "goal": "networking"},
+        )
+        assert resp.status_code == 200
+
     def test_no_auth_rejected(self):
         resp = client.post(
             "/api/generate-message",

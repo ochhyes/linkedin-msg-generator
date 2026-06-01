@@ -134,6 +134,19 @@ async def generate(
             detail="Profil musi zawierać co najmniej imię (name) i nagłówek (headline).",
         )
 
+    # goal=sales wymaga oferty. Bez niej model nie ma kotwicy i wymyśla ofertę
+    # pod branżę odbiorcy (LUSTRO + halucynacja nazw firm/funduszy). Patrz
+    # ai_service.DEFAULT_SYSTEM_PROMPT reguła "MOST nie LUSTRO".
+    if req.goal == "sales" and not (req.sender_offer and req.sender_offer.strip()):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Dla celu „sprzedaż” musisz podać, co oferujesz (pole „Co oferujesz” "
+                "w ustawieniach). Bez tego AI zmyśla ofertę pod branżę odbiorcy. "
+                "Uzupełnij ofertę i spróbuj ponownie."
+            ),
+        )
+
     start = time.time()
     try:
         message = await generate_message(req)
