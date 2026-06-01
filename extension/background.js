@@ -2459,8 +2459,9 @@ function extractLinkedInExportRows(text) {
   return { rows: parseCsv(clean.slice(idx)), error: null };
 }
 
-function mapLinkedInExportRow(row) {
+function mapLinkedInExportRow(row, opts) {
   if (!row || typeof row !== "object") return null;
+  const asProspects = !!(opts && opts.asProspects);
   const get = (k) => {
     if (row[k] != null) return String(row[k]).trim();
     const target = k.toLowerCase();
@@ -2483,19 +2484,23 @@ function mapLinkedInExportRow(row) {
   }
   if (!slug) return null;
 
+  // #60 v1.25.2: asProspects=true → traktuj jako 2nd/3rd (prospekty do connectu).
+  // Domyślnie (asProspects=false) — backwards compat: zachowanie sprzed v1.25.2.
+  // connectedOn pomijamy dla prospektów — z definicji nie jesteśmy z nimi
+  // w sieci, więc data połączenia nie ma sensu.
   return {
     slug,
     name: `${first} ${last}`.trim() || null,
     headline: position || null,
     company: company || null,
     profile_url: `https://www.linkedin.com/in/${slug}/`,
-    isConnection: true,
-    connectedOn: parseLinkedInDate(connectedRaw),
+    isConnection: !asProspects,
+    connectedOn: asProspects ? null : parseLinkedInDate(connectedRaw),
     contactInfo: isValidEmailFromCsv(emailRaw) ? { email: emailRaw.trim() } : null,
   };
 }
 
-async function profileDbImportLinkedInExport({ csvText, dryRun }) {
+async function profileDbImportLinkedInExport({ csvText, dryRun, asProspects }) {
   if (typeof csvText !== "string" || !csvText.trim()) {
     return { success: false, error: "empty_input" };
   }
@@ -2503,13 +2508,14 @@ async function profileDbImportLinkedInExport({ csvText, dryRun }) {
   if (error) return { success: false, error };
   if (!rows.length) return { success: false, error: "no_data_rows" };
 
+  const asProspectsFlag = !!asProspects;
   let skippedNoSlug = 0, parseErrors = 0, urnEmailsBlocked = 0;
   const mapped = [];
   for (const row of rows) {
     try {
       const rawEmail = (row && (row["Email Address"] || row["email address"] || "")) || "";
       if (rawEmail && rawEmail.trim().toLowerCase().startsWith("urn:")) urnEmailsBlocked += 1;
-      const rec = mapLinkedInExportRow(row);
+      const rec = mapLinkedInExportRow(row, { asProspects: asProspectsFlag });
       if (!rec) { skippedNoSlug += 1; continue; }
       mapped.push(rec);
     } catch (_) { parseErrors += 1; }
@@ -2848,7 +2854,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case "profileDbImport":
           return await profileDbImport({ json: message.json, csv: message.csv, restoreQueue: !!message.restoreQueue });
         case "profileDbImportLinkedInExport":
-          return await profileDbImportLinkedInExport({ csvText: message.csvText, dryRun: !!message.dryRun });
+          return await profileDbImportLinkedInExport({ csvText: message.csvText, dryRun: !!message.dryRun, asProspects: !!message.asProspects });
         case "profileDbDelete":
           return await profileDbDelete({ slugs: message.slugs, deleteAllFiltered: !!message.deleteAllFiltered, filter: message.filter });
         case "profileDbEnqueueForConnect":

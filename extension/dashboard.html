@@ -139,6 +139,7 @@
           <label class="profiledb-restore-queue"><input type="checkbox" id="import-restore-queue"> przy imporcie pełnego backupu — przywróć też kolejkę zaproszeń</label>
           <button id="btn-import-connections" class="btn btn--small btn--primary">⬇ Importuj kontakty z LinkedIn</button>
           <label class="btn btn--small btn--primary file-btn" title="Zaimportuj oficjalny LinkedIn-export (Settings → Data Privacy → Get a copy of your data → Connections only). Plik to Connections.csv z paczki.">📥 Importuj CSV (LinkedIn-export)<input type="file" id="import-linkedin-export-file" accept=".csv,text/csv" hidden></label>
+          <label class="profiledb-restore-queue" title="Zaznacz gdy CSV zawiera prospektów (nie Twoich 1st kontaktów) — np. wygenerowany z Google scrape. Profile zostaną zapisane z isConnection=false, gotowe do dodania do kolejki connect."><input type="checkbox" id="import-linkedin-export-as-prospects"> importuj jako prospekty (nie 1st-degree)</label>
           <span id="profiledb-status" class="profiledb-status"></span>
         </div>
 

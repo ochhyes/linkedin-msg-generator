@@ -935,12 +935,17 @@
     if (importLinkedInExportFile) importLinkedInExportFile.addEventListener("change", async () => {
       const file = importLinkedInExportFile.files && importLinkedInExportFile.files[0];
       if (!file) return;
-      setProfileDbStatus(`Wczytuję ${file.name}…`);
+      // #60 v1.25.2: checkbox decyduje czy traktować profile jako 1st-degree (default)
+      // czy jako prospektów do connectu (asProspects=true).
+      const asProspectsEl = $("#import-linkedin-export-as-prospects");
+      const asProspects = !!(asProspectsEl && asProspectsEl.checked);
+      const modeLabel = asProspects ? "prospekty (nie 1st)" : "1st-degree kontakty";
+      setProfileDbStatus(`Wczytuję ${file.name} jako ${modeLabel}…`);
       try {
         const text = await file.text();
         // Krok 1: dry-run → counters bez zapisu.
         setProfileDbStatus("Analizuję CSV (dry-run)…");
-        const preview = await chrome.runtime.sendMessage({ action: "profileDbImportLinkedInExport", csvText: text, dryRun: true });
+        const preview = await chrome.runtime.sendMessage({ action: "profileDbImportLinkedInExport", csvText: text, dryRun: true, asProspects });
         if (!preview || !preview.success) {
           const errMap = {
             empty_input: "Plik pusty.",
@@ -952,9 +957,10 @@
         }
         // Krok 2: confirm.
         const msg = [
-          `LinkedIn-export: ${preview.total} kontaktów.`,
+          `LinkedIn-export (${modeLabel}): ${preview.total} profili.`,
           `• ${preview.newSlugs} nowych do dodania`,
           `• ${preview.mergedSlugs} istniejących do scalenia (Company/Position/Email dorzucone, scrape zachowany)`,
+          asProspects ? "• isConnection=false → profile można dodać do kolejki connect (Dashboard → ➕ Dodaj do kolejki connect)" : null,
           `• ${preview.skippedNoSlug} pominiętych (brak URL/slug)`,
           preview.urnEmailsBlocked ? `• ${preview.urnEmailsBlocked} maili odrzucono (LinkedIn URN zamiast literal email)` : null,
           preview.parseErrors ? `• ${preview.parseErrors} błędów parsowania (pominięte)` : null,
@@ -967,9 +973,10 @@
         }
         // Krok 3: real upsert.
         setProfileDbStatus("Importuję do bazy…");
-        const resp = await chrome.runtime.sendMessage({ action: "profileDbImportLinkedInExport", csvText: text, dryRun: false });
+        const resp = await chrome.runtime.sendMessage({ action: "profileDbImportLinkedInExport", csvText: text, dryRun: false, asProspects });
         if (resp && resp.success) {
-          setProfileDbStatus(`Import OK: ${resp.newSlugs} nowych, ${resp.mergedSlugs} zaktualizowanych. Filtruj po źródle „LinkedIn-export" żeby zobaczyć.`);
+          const tail = asProspects ? " Gotowe do dodania do kolejki connect." : " Filtruj po źródle „LinkedIn-export\" żeby zobaczyć.";
+          setProfileDbStatus(`Import OK: ${resp.newSlugs} nowych, ${resp.mergedSlugs} zaktualizowanych.${tail}`);
           refreshAll();
         } else {
           setProfileDbStatus("Zapis nieudany: " + (resp && resp.error || "unknown"), true);

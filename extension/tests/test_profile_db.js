@@ -276,8 +276,9 @@ function extractLinkedInExportRows(text) {
   if (idx === -1) return { rows: [], error: "header_not_found" };
   return { rows: parseCsv(clean.slice(idx)), error: null };
 }
-function mapLinkedInExportRow(row) {
+function mapLinkedInExportRow(row, opts) {
   if (!row || typeof row !== "object") return null;
+  const asProspects = !!(opts && opts.asProspects);
   const get = (k) => row[k] != null ? String(row[k]).trim() : "";
   const first = get("First Name"), last = get("Last Name"), url = get("URL");
   const emailRaw = get("Email Address"), company = get("Company");
@@ -290,8 +291,8 @@ function mapLinkedInExportRow(row) {
     headline: position || null,
     company: company || null,
     profile_url: `https://www.linkedin.com/in/${slug}/`,
-    isConnection: true,
-    connectedOn: parseLinkedInDate(connectedRaw),
+    isConnection: !asProspects,
+    connectedOn: asProspects ? null : parseLinkedInDate(connectedRaw),
     contactInfo: isValidEmailFromCsv(emailRaw) ? { email: emailRaw.trim() } : null,
   };
 }
@@ -589,6 +590,67 @@ console.log("\n--- Sekcja J: selectEnqueueCandidates (#58) ---");
   // null/undefined wejścia nie wywalają
   const r5 = selectEnqueueCandidates(null, null, null);
   assertEqual(r5.toAdd.length, 0, "J.8: null inputs → 0, brak crashu");
+})();
+
+(function testK() {
+  console.log("\n— K: LinkedIn export import asProspects (v1.25.2) —");
+  const baseRow = {
+    "First Name": "Krzysztof", "Last Name": "Nowak",
+    "URL": "https://www.linkedin.com/in/krzysztof-nowak-prospekt",
+    "Email Address": "", "Company": "Acme Sp. z o.o.",
+    "Position": "Przedstawiciel handlowy", "Connected On": "16 Mar 2024",
+  };
+
+  // K.1: default (brak opts) — backwards compat z v1.25.1 i wcześniej
+  const def = mapLinkedInExportRow(baseRow);
+  assertEqual(def.isConnection, true, "K.1: default (no opts) → isConnection=true");
+  assertEqual(def.connectedOn, "2024-03-16", "K.1: default → connectedOn sparsowany");
+
+  // K.2: opts.asProspects=false — explicit default
+  const def2 = mapLinkedInExportRow(baseRow, { asProspects: false });
+  assertEqual(def2.isConnection, true, "K.2: asProspects=false → isConnection=true");
+  assertEqual(def2.connectedOn, "2024-03-16", "K.2: asProspects=false → connectedOn sparsowany");
+
+  // K.3: opts.asProspects=true → flag flipped, date cleared
+  const prosp = mapLinkedInExportRow(baseRow, { asProspects: true });
+  assertEqual(prosp.isConnection, false, "K.3: asProspects=true → isConnection=false (połknie kolejkę connect)");
+  assertEqual(prosp.connectedOn, null, "K.3: asProspects=true → connectedOn=null (prospekt nie ma daty połączenia)");
+
+  // K.4: name/company/position/slug niezależne od flagi
+  assertEqual(prosp.slug, def.slug, "K.4: slug identyczny dla obu trybów");
+  assertEqual(prosp.name, def.name, "K.4: name identyczny");
+  assertEqual(prosp.company, def.company, "K.4: company identyczny");
+  assertEqual(prosp.headline, def.headline, "K.4: headline identyczny");
+
+  // K.5: contactInfo (email) zachowany w trybie prospects
+  const withEmail = mapLinkedInExportRow({ ...baseRow, "Email Address": "k.nowak@acme.pl" }, { asProspects: true });
+  assertEqual(withEmail.contactInfo && withEmail.contactInfo.email, "k.nowak@acme.pl", "K.5: asProspects + email → contactInfo zachowany");
+  assertEqual(withEmail.isConnection, false, "K.5: asProspects + email → isConnection=false");
+
+  // K.6: contactInfo URN nadal blokowany w trybie prospects
+  const urnProsp = mapLinkedInExportRow({ ...baseRow, "Email Address": "urn:li:member:9999" }, { asProspects: true });
+  assertEqual(urnProsp.contactInfo, null, "K.6: asProspects + urn email → null (blokada zachowana)");
+
+  // K.7: rekord prospect → selectEnqueueCandidates GO (nie blokowany przez isConnection)
+  const profiles = { [prosp.slug]: prosp };
+  const enq = selectEnqueueCandidates(profiles, [prosp.slug], []);
+  assertEqual(enq.toAdd.length, 1, "K.7: prospect z importu → wpada do toAdd");
+  assertEqual(enq.toAdd[0].slug, prosp.slug, "K.7: właściwy slug");
+  assertEqual(enq.reasons.is_connection, 0, "K.7: reason 'is_connection' NIE wystrzelił");
+
+  // K.8: ten sam rekord ale jako 1st (default) → blokowany jako is_connection
+  const profilesDef = { [def.slug]: def };
+  const enqDef = selectEnqueueCandidates(profilesDef, [def.slug], []);
+  assertEqual(enqDef.toAdd.length, 0, "K.8: import jako 1st → blokowany przez selectEnqueueCandidates");
+  assertEqual(enqDef.reasons.is_connection, 1, "K.8: reason is_connection=1");
+
+  // K.9: opts={} (object bez .asProspects) → default false (backwards compat)
+  const empty = mapLinkedInExportRow(baseRow, {});
+  assertEqual(empty.isConnection, true, "K.9: opts={} → isConnection=true (default)");
+
+  // K.10: invalid row nadal zwraca null (nie crash) niezależnie od opts
+  assertEqual(mapLinkedInExportRow({ "First Name":"X", "URL":"" }, { asProspects: true }), null, "K.10: brak URL + asProspects → null");
+  assertEqual(mapLinkedInExportRow(null, { asProspects: true }), null, "K.10: null row + asProspects → null");
 })();
 
 console.log("");
