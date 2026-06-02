@@ -40,3 +40,5 @@ extension/dom_sample.txt
 
 # Build artifact — wersja publikacyjna generowana przez `node build.js`
 /outreach/
+# Paczki dystrybucyjne (build artifact, generowane per release — patrz BUILD.md)
+Outreach-*.zip

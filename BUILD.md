@@ -36,8 +36,16 @@ Klucz prywatny pary leży w `.keys/outreach.pem` (gitignored — `*.pem`). Nie j
 
 ## Dystrybucja zespołowi
 
-1. `node build.js`
-2. Spakuj folder `outreach/` do zip (Explorer: prawy klik na `outreach` → Wyślij do → Folder skompresowany).
-3. Prześlij zip + `INSTRUKCJA.md`. Odbiorca: rozpakuj → `chrome://extensions/` → tryb dewelopera → „Wczytaj rozpakowane" → wskaż folder `outreach`.
+**To jest ostatni krok KAŻDEGO release'u dotykającego `extension/`** (zob. DEFINITION OF DONE w `CLAUDE.md`) — dopóki nie ma paczki, zespół wciąż siedzi na starej wersji z bugiem.
 
-Wersja (`version` w manifeście) jest dziedziczona z `extension/manifest.json` — bumpuj tam, jak dotąd.
+1. `node build.js`
+2. Spakuj **zawartość** `outreach/` (żeby `manifest.json` był w korzeniu zipa, nie zagnieżdżony) do `Outreach-<wersja>.zip` w korzeniu repo. Najprościej skryptem — nazwa brana automatycznie z wersji manifestu (Win PowerShell):
+   ```powershell
+   $v=(Get-Content extension\manifest.json -Raw|ConvertFrom-Json).version; Compress-Archive -Path outreach\* -DestinationPath "Outreach-$v.zip" -Force
+   ```
+   (Ręcznie: zaznacz pliki *wewnątrz* `outreach/` → prawy klik → Wyślij do → Folder skompresowany → zmień nazwę na `Outreach-<wersja>.zip`.)
+3. Prześlij zip + `INSTRUKCJA.md`. Odbiorca: rozpakuj → `chrome://extensions/` → tryb dewelopera → „Wczytaj rozpakowane" → wskaż rozpakowany folder (np. `Outreach-1.25.3`).
+
+**Upgrade u odbiorcy, który ma już dane:** nadpisz pliki w jego dotychczasowym folderze „Outreach" → **Reload** (↻). **NIGDY „Usuń" + dodaj** — Remove kasuje `chrome.storage.local` (bazę/kolejkę), `key` chroni tylko ID. Pierwsza instalacja: po prostu „Wczytaj rozpakowane".
+
+Konwencja nazwy: `Outreach-<wersja>.zip` (np. `Outreach-1.25.3.zip`); zipy są gitignored (`Outreach-*.zip`). Wersja (`version` w manifeście) dziedziczona z `extension/manifest.json` — bumpuj tam, jak dotąd.
