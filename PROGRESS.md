@@ -8,6 +8,43 @@
 
 ---
 
+## 2026-06-02 (Claude Code, claude-opus-4-8) — fix: import kontaktów (+ accept-tracker) na SDUI strony /connections/ (#61, v1.25.3)
+
+### Zrobione
+
+- **Zgłoszenie Marcina:** „nie działa znowu pobieranie kontaktów". Dump (`body data-rehydrated=true`, 96 KB) = **wariant SDUI** strony `/mynetwork/invite-connect/connections/` (componentkey, hashowane klasy, zero `li`/`mn-connection-card`/`role=listitem`). LinkedIn przerolował connections-page na SDUI (jak wcześniej search-page).
+- **Root cause (potwierdzony na realnym dumpie, nie na oko):** SDUI renderuje **2 linki `/in/` na kontakt** — link-zdjęcie (`<figure>`+`<svg aria-label="…użytkownika IMIĘ">`, pusty tekst) i link-nazwa (`<p>IMIĘ</p>` + `<p><span>headline</span></p>`). `extractConnectionsList` dedupował po PIERWSZYM slugu (`seen.has`) → łapał link-zdjęcie → **imię „"**. Stary parser zwracał 10 kontaktów, wszystkie z pustymi imionami (objaw „import zepsuty", choć count > 0).
+- **Fix (`content.js` `extractConnectionsList`, v1.25.3):** grupowanie po slug w `Map` z **uzupełnianiem** (zdjęcie daje imię z aria, nazwa daje headline) zamiast dedup-first-wins; `cleanName()` zdejmuje badge #OpenToWork z imienia (sufiks „, otwarty(-a) na oferty pracy" w aria); card-fallback bramkowany `hasFigure`/`ownPs` (link-zdjęcie nie sięga do współdzielonego rodzica → nie kradnie imienia sąsiada na headline); wykluczenie `nav/header/footer/aside/.global-nav/.scaffold-layout__aside`.
+- **Jeden fix → dwie ścieżki:** ten sam `extractConnectionsList` woła RĘCZNY import („Importuj kontakty z LinkedIn") ORAZ auto accept-tracker (#56A: `fetchRecentConnections` → `extractRecentConnections`). Oba były cicho zepsute na SDUI, oba naprawione.
+- **Weryfikacja na realnym dumpie:** 10/10 kontaktów z imionami + headline (było 0/10). Open-to-work (Sławomir): `name="Sławomir Gruchala Więsierski"`, `headline="Wykładowca"` (badge zdjęty, headline nie podmieniony imieniem). „Hanna Do. i. n"/„D. m.." zostawione — realny render.
+- **Test (`test_connections_extractor.js` przepisany):** ładuje REALNY kod z `content.js` (anchor-extract + `new Function`, koniec stale-portu), 3 fixture'y (`connections_page` classic #45, `connections_sdui` nowy, `connections_classic` nowy), **35/0**. Pełny suite zielony: bulk 180, profile_db 141, reply 88, accept 37, search 59, syntax 12, connections 35.
+
+### Decyzje
+
+- **patch 1.25.3, nie minor** — to fix przywracający zepsutą funkcję; user-facing behaviour = „import znów działa", brak nowej funkcji.
+- **Fixture syntetyczny anonimizowany, NIE realny dump** — dump to 10 realnych nazwisk kontaktów Marcina (PII). Struktura odwzorowana 1:1 (link-zdjęcie+link-nazwa, aria, `<p>`/`<p><span>`, %-encoded slug, open-to-work, odwrócona kolejność, nav/aside do wykluczenia). Realny dump zweryfikowany lokalnie (scratch `_connections_raw.html` + `_verify_extract.js`) i **skasowany** (nie w repo).
+- **Test ładuje realny kod (anchor-extract) zamiast portu** — częściowa spłata długu #10 dla tego parsera. Stary stale-port `test_connections_extractor` + interim `test_connections_import` scalone w jeden plik.
+- **Edycja przez Write-snippet + Node-splice po ASCII-anchorze** (reguła z incydentu 2026-05-17) — blok >50 linii z polskimi znakami, nie tknąłem `Edit`. Po splice `node --check` OK.
+
+### Lessons learned
+
+- **„Nie pobiera" ≠ „parser zwraca 0".** Tu zwracał 10 — z pustymi imionami. Tylko odpalenie realnego parsera na dumpie to ujawniło (potwierdza notatkę „weryfikuj dump przed fixem parsera").
+- **SDUI = N linków `/in/` na encję.** Dedup-first-wins jest kruchy z natury. Grupowanie+merge jest odporne na kolejność DOM i wiele linków na encję — wzorzec do reużycia przy następnym SDUI-roloutcie.
+- **aria-label avatara niesie sufiks #OpenToWork** („…użytkownika X, otwarty(-a) na oferty pracy"). Fallback imienia z aria MUSI go zdejmować, a `cleanName` wymaga przecinka, żeby nie obciąć legalnego nazwiska (test: „Maria Otwarta" przeżywa).
+- **Fixture name-collision:** nadałem testowemu kontaktowi nazwisko „Otwarta" → false-positive asercji `/otwart/`. Dobry fixture, zła asercja — celuj we frazę badge („na oferty pracy"), nie substring.
+
+### BLOCKED / TODO
+
+- **Smoke Marcina (~2 min):** reload extension (sprawdź **1.25.3** w `chrome://extensions/`) → dashboard → „Importuj kontakty z LinkedIn" na żywej stronie SDUI → kontakty wpadają **z imionami**. Snippet weryfikacyjny do konsoli podany w czacie.
+- **Brak telemetrii na tym parserze** — gdy LinkedIn znów przerolluje connections-layout, nie dowiemy się z eventu (jak przy search `search_extract_*`). Ew. TODO: dorzucić `connections_extract_empty`.
+- **git push** — lokalny `master` przed origin (pending sprzed sesji).
+
+### Status końcowy
+
+1 commit (fix v1.25.3, #61). `content.js` `extractConnectionsList` przepisany (dedup→grupowanie+merge, cleanName, anty-kontaminacja, exclude nav/aside), `test_connections_extractor.js` na realnym kodzie 35/0, pełny suite zielony. 2 nowe fixture'y (sdui+classic). Phase: Commit→PM. Pending: smoke Marcina na żywej stronie + ew. live-check przez Chrome MCP.
+
+---
+
 ## 2026-06-01 (Claude Code, claude-opus-4-8) — commit #60 + odchudzenie CLAUDE.md + anty-halucynacja sales
 
 ### Zrobione
