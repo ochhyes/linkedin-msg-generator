@@ -2109,71 +2109,140 @@
   // karty; importAllConnections() scrolluje aż lista przestanie rosnąć.
 
   function extractConnectionsList() {
-    const results = [];
-    const seen = new Set();
-    // Karty kontaktów: kontener z linkiem do /in/. LinkedIn używał różnych
-    // klas (mn-connection-card, .reusable-search__result-container) — chwytamy
-    // strukturalnie: każdy <a href*="/in/"> i wspinamy do najbliższego
-    // sensownego kontenera (li / [componentkey] / .artdeco-* card).
+    // Każdy kontakt to <a href="/in/slug">. Dwa warianty LinkedIn:
+    //   • classic Ember — karta li.mn-connection-card, imię w <span>/<p> OBOK
+    //     linku, JEDEN link na kontakt.
+    //   • SDUI (od 2026-06, componentkey + hashowane klasy) — DWA linki na
+    //     kontakt: link-zdjęcie (<figure>+<svg aria-label="…użytkownika IMIĘ">,
+    //     pusty tekst) ORAZ link-nazwa (<p>IMIĘ</p> + <p><span>headline</span></p>).
+    //     Stary parser dedupował po PIERWSZYM slugu = łapał link-zdjęcie → imię "".
+    // Strategia: grupuj po slug w Map i UZUPEŁNIAJ rekord lepszą wartością z
+    // któregokolwiek z linków (zdjęcie da imię z aria, nazwa da headline).
+    const looksLikeName = (s) => s && s.length > 1 && s.length < 60 &&
+      !/obserwuj|wiadomo|connect|follow|message|stopni|·/i.test(s) && /\p{L}/u.test(s);
+
+    // Zdejmij badge #OpenToWork z imienia. W aria avatara przychodzi jako
+    // sufiks po przecinku: "Imię Nazwisko, otwarty(-a) na oferty pracy".
+    // Wymagamy przecinka, żeby nie obciąć prawdziwego nazwiska.
+    const cleanName = (s) => {
+      if (!s) return "";
+      let out = String(s).trim();
+      out = out.replace(/,\s*otwart[ya]\b.*$/i, "");          // PL: ", otwarty(-a) na oferty pracy"
+      out = out.replace(/,\s*(jest\s+)?open\s+to\s+work\b.*$/i, ""); // EN
+      out = out.replace(/\s+is\s+open\s+to\s+work\b.*$/i, "");
+      return out.replace(/[\s,]+$/, "").trim();
+    };
+
+    // SDUI: <p>IMIĘ</p> w linku ma sam tekst (bez child <span>/<div>); headline
+    // siedzi w <p><span>…</span></p>. Bierzemy pierwsze <p> bez dzieci-elementów.
+    const sduiName = (link) => {
+      for (const p of link.querySelectorAll("p")) {
+        if (p.querySelector("span, a, div, button")) continue;
+        const t = (p.textContent || "").trim();
+        if (looksLikeName(t)) return t;
+      }
+      return "";
+    };
+    // Headline: <p> owijające <span> (SDUI), różne od imienia; potem dowolne <p>.
+    const sduiHeadline = (link, name) => {
+      const ps = Array.from(link.querySelectorAll("p"));
+      for (const p of ps) {
+        const t = (p.textContent || "").trim();
+        if (t && t !== name && p.querySelector("span")) return t;
+      }
+      for (const p of ps) {
+        const t = (p.textContent || "").trim();
+        if (t && t !== name && t.length > 2) return t;
+      }
+      return "";
+    };
+    // Fallback imienia z aria-label avatara: PL "Zdjęcie profilowe użytkownika X",
+    // EN "X's profile photo" / "Photo of X".
+    const ariaName = (link) => {
+      const el = link.querySelector("[aria-label]");
+      const raw = el ? (el.getAttribute("aria-label") || "") : "";
+      if (!raw) return "";
+      let m;
+      if ((m = raw.match(/użytkownika\s+(.+)$/i))) return m[1].trim();
+      if ((m = raw.match(/^(.+?)['’]s\s+profile\s+photo$/i))) return m[1].trim();
+      if ((m = raw.match(/^photo of\s+(.+)$/i))) return m[1].trim();
+      return "";
+    };
+
+    const bySlug = new Map();
     const links = Array.from(document.querySelectorAll('a[href*="/in/"]'));
     for (const link of links) {
       try {
+        // Pomijamy nawigację i prawy sidebar ("Osoby, które możesz znać",
+        // własny avatar w global-nav) — to nie są kontakty z listy.
+        if (link.closest("nav, header, footer, aside, .global-nav, .scaffold-layout__aside")) continue;
+
         const href = link.getAttribute("href") || "";
         const m = href.match(/\/in\/([^/?#]+)/);
         if (!m) continue;
         let slug;
         try { slug = decodeURIComponent(m[1]).toLowerCase(); } catch (_) { slug = m[1].toLowerCase(); }
-        if (!slug || seen.has(slug)) continue;
+        if (!slug) continue;
 
-        const card = link.closest('li, [componentkey], .mn-connection-card, .artdeco-list__item, [data-view-name]') || link.parentElement;
-        if (!card) continue;
-        // Filtruj false-positives: sidebar "People you may know", reklamy itp.
-        // Sygnał: karta kontaktu ma datę połączenia ("Połączono") lub przycisk
-        // "Wiadomość". Ale nie wymuszamy tego twardo — jeśli karta ma imię
-        // i slug, bierzemy. Pomijamy tylko gdy link jest pusty.
-        const linkText = (link.innerText || link.textContent || "").trim();
-        // Imię — preferuj tekst linku jeśli wygląda na imię (litery, spacja,
-        // < 60 znaków, brak "obserwuj"/"wiadomość"), inaczej pierwszy <span>/<p>.
-        let name = "";
-        const looksLikeName = (s) => s && s.length > 1 && s.length < 60 &&
-          !/obserwuj|wiadomo|connect|follow|message|stopni|·/i.test(s) && /\p{L}/u.test(s);
-        if (looksLikeName(linkText)) {
-          name = linkText.split("\n").map((x) => x.trim()).find(looksLikeName) || linkText.trim();
-        }
+        // Link-zdjęcie SDUI ma <figure>/<svg>; link-nazwa ma <p>. Rozróżnienie
+        // bramkuje fallbacki kartowe (inaczej link-zdjęcie sięga do rodzica
+        // współdzielonego z link-nazwą i łapie imię/headline sąsiada).
+        const hasFigure = !!link.querySelector("figure, svg[aria-label], img");
+        const ownPs = link.querySelectorAll("p").length;
+        const card = link.closest('li, .mn-connection-card, .artdeco-list__item, [data-view-name]')
+          || link.parentElement || link;
+
+        // Imię: <p> w linku → tekst linku → aria avatara → (stary layout) span/p karty.
+        let name = cleanName(sduiName(link));
         if (!name) {
+          const linkText = (link.innerText || link.textContent || "").trim();
+          if (looksLikeName(linkText)) {
+            name = cleanName(linkText.split("\n").map((x) => x.trim()).find(looksLikeName) || "");
+          }
+        }
+        if (!name) name = cleanName(ariaName(link));
+        if (!name && !hasFigure && card !== link) {
           const cand = Array.from(card.querySelectorAll("span, p"))
             .map((el) => (el.innerText || el.textContent || "").trim())
             .find(looksLikeName);
-          if (cand) name = cand;
-        }
-        // Headline / occupation — pierwszy <p>/<span> po imieniu z tekstem
-        // dłuższym niż imię i niewyglądający na datę połączenia.
-        let headline = null;
-        const texts = Array.from(card.querySelectorAll("p, span"))
-          .map((el) => (el.innerText || el.textContent || "").trim())
-          .filter(Boolean);
-        for (const t of texts) {
-          if (!t || t === name) continue;
-          if (/^połączono|^connected|^zaproszenie|^stopień|·\s*\d/i.test(t)) continue;
-          if (t.length < 3) continue;
-          headline = t;
-          break;
+          if (cand) name = cleanName(cand);
         }
 
-        seen.add(slug);
-        results.push({
-          slug,
-          name: name || "",
-          headline: headline || "",
-          location: null,
-          degree: "1st",
-          profileUrl: `https://www.linkedin.com/in/${slug}/`,
-          mutual_connections: null,
-          pageNumber: null,
-        });
+        // Headline: <p><span> w linku. Card-fallback TYLKO dla starego layoutu
+        // (link bez <p> i bez figure).
+        let headline = sduiHeadline(link, name);
+        if (!headline && !hasFigure && ownPs === 0 && card !== link) {
+          const texts = Array.from(card.querySelectorAll("p, span"))
+            .map((el) => (el.innerText || el.textContent || "").trim())
+            .filter(Boolean);
+          for (const t of texts) {
+            if (!t || t === name) continue;
+            if (/^połączono|^connected|^zaproszenie|^stopień|·\s*\d/i.test(t)) continue;
+            if (t.length < 3) continue;
+            headline = t;
+            break;
+          }
+        }
+
+        const prev = bySlug.get(slug);
+        if (!prev) {
+          bySlug.set(slug, {
+            slug,
+            name: name || "",
+            headline: headline || "",
+            location: null,
+            degree: "1st",
+            profileUrl: `https://www.linkedin.com/in/${slug}/`,
+            mutual_connections: null,
+            pageNumber: null,
+          });
+        } else {
+          if (!prev.name && name) prev.name = name;
+          if (!prev.headline && headline) prev.headline = headline;
+        }
       } catch (_) { /* jedna zepsuta karta nie zabija listy */ }
     }
-    return results;
+    return Array.from(bySlug.values());
   }
 
   async function importAllConnections(maxPages) {

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<!--
+  SYNTETYCZNY fixture wariantu classic Ember strony kontaktów (sprzed SDUI).
+  JEDEN link /in/ na kontakt, imię w <span> wewnątrz linku, occupation w
+  rodzeństwie wewnątrz li.mn-connection-card. Dane fikcyjne. Chroni przed
+  regresją na kontach bez SDUI A/B.
+-->
+<html lang="pl">
+<head><title>Moja sieć | LinkedIn</title></head>
+<body>
+  <main>
+    <ul class="mn-connection-card__list">
+      <li class="mn-connection-card artdeco-list__item">
+        <a href="https://www.linkedin.com/in/old-jan-kowalski/" class="mn-connection-card__link">
+          <span class="mn-connection-card__name t-16 t-black t-bold">Jan Kowalski</span>
+        </a>
+        <span class="mn-connection-card__occupation t-14 t-black--light">Kierownik sprzedaży w ACME</span>
+      </li>
+      <li class="mn-connection-card artdeco-list__item">
+        <a href="https://www.linkedin.com/in/old-ewa-nowak-77/" class="mn-connection-card__link">
+          <span class="mn-connection-card__name t-16 t-black t-bold">Ewa Nowak</span>
+        </a>
+        <span class="mn-connection-card__occupation t-14 t-black--light">Specjalista ds. marketingu</span>
+      </li>
+    </ul>
+  </main>
+</body>
+</html>

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<!--
+  SYNTETYCZNY fixture wariantu SDUI strony /mynetwork/invite-connect/connections/
+  (LinkedIn A/B od 2026-06). Struktura odwzorowuje REALNY dump Marcina
+  (2026-06-02), ale dane są fikcyjne (bez PII kontaktów). Klucz struktury:
+   • każdy kontakt = DWA <a href="/in/slug">: link-zdjęcie (<figure>+<svg
+     aria-label="…użytkownika IMIĘ">) + link-nazwa (<p>IMIĘ</p> + <p><span>headline</span></p>)
+   • brak <li>/.mn-connection-card/role=listitem; kontenery mają componentkey
+  Edge case'y: open-to-work (sufiks w aria), slug %-encoded, odwrócona kolejność
+  linków, oraz nav/aside z /in/ które MUSZĄ być pominięte.
+-->
+<html lang="pl">
+<head><title>(38) Moja sieć kontaktów | LinkedIn</title></head>
+<body data-rehydrated="true">
+  <div id="root">
+    <header class="global-nav">
+      <!-- własny profil w nawigacji — NIE jest kontaktem, MUSI być pominięty -->
+      <a href="https://www.linkedin.com/in/self-nav-99/" aria-label="Wyświetl profil">Ja</a>
+    </header>
+
+    <main>
+      <section componentkey="ConnectionsPage_ConnectionsList">
+        <h2 componentkey="ConnectionsPage_ConnectionsListHeader">Kontakty</h2>
+
+        <!-- c1: zwykły kontakt -->
+        <div componentkey="contact-1" class="_12618c5e ab67221c">
+          <a tabindex="0" class="_30918224 _5c527a07" href="https://www.linkedin.com/in/jan-testowy-1/" componentkey="c1-photo" style="height: 7.2rem; width: 7.2rem;">
+            <figure class="bf752739" componentkey="c1-photo">
+              <svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Zdjęcie profilowe użytkownika Jan Testowy" viewBox="0 0 128 128"></svg>
+            </figure>
+          </a>
+          <a tabindex="0" class="_5c527a07 d0a6b3d9" href="https://www.linkedin.com/in/jan-testowy-1/" componentkey="c1-name">
+            <div class="_12618c5e" componentkey="c1-name">
+              <p class="c79dc0dc _76d617df">Jan Testowy</p>
+              <div class="_7cf9ca04">
+                <p class="c79dc0dc d3d37ba8"><span>Doradca finansowy w OVB</span></p>
+              </div>
+            </div>
+          </a>
+        </div>
+
+        <!-- c2: open-to-work — aria z sufiksem, <p> czyste, headline obecny -->
+        <div componentkey="contact-2" class="_12618c5e ab67221c">
+          <a tabindex="0" class="_30918224" href="https://www.linkedin.com/in/maria-otwarta-2/" componentkey="c2-photo" style="height: 7.2rem; width: 7.2rem;">
+            <figure class="bf752739" componentkey="c2-photo">
+              <svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Zdjęcie profilowe użytkownika Maria Otwarta, otwarty(-a) na oferty pracy" viewBox="0 0 128 128"></svg>
+            </figure>
+          </a>
+          <a tabindex="0" class="_5c527a07" href="https://www.linkedin.com/in/maria-otwarta-2/" componentkey="c2-name">
+            <div class="_12618c5e" componentkey="c2-name">
+              <p class="c79dc0dc">Maria Otwarta</p>
+              <div class="_7cf9ca04">
+                <p class="c79dc0dc"><span>Konsultant ds. ubezpieczeń</span></p>
+              </div>
+            </div>
+          </a>
+        </div>
+
+        <!-- c3: slug %-encoded (ś = %C5%9B) — musi się zdekodować -->
+        <div componentkey="contact-3" class="_12618c5e ab67221c">
+          <a tabindex="0" class="_30918224" href="https://www.linkedin.com/in/zofia-%C5%9Bredni-123/" componentkey="c3-photo" style="height: 7.2rem; width: 7.2rem;">
+            <figure class="bf752739" componentkey="c3-photo">
+              <svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Zdjęcie profilowe użytkownika Zofia Średni" viewBox="0 0 128 128"></svg>
+            </figure>
+          </a>
+          <a tabindex="0" class="_5c527a07" href="https://www.linkedin.com/in/zofia-%C5%9Bredni-123/" componentkey="c3-name">
+            <div class="_12618c5e" componentkey="c3-name">
+              <p class="c79dc0dc">Zofia Średni</p>
+              <div class="_7cf9ca04">
+                <p class="c79dc0dc"><span>Radca prawny</span></p>
+              </div>
+            </div>
+          </a>
+        </div>
+
+        <!-- c4: ODWRÓCONA kolejność (link-nazwa przed link-zdjęcie) — test order-independence -->
+        <div componentkey="contact-4" class="_12618c5e ab67221c">
+          <a tabindex="0" class="_5c527a07" href="https://www.linkedin.com/in/adam-pierwszy-4/" componentkey="c4-name">
+            <div class="_12618c5e" componentkey="c4-name">
+              <p class="c79dc0dc">Adam Pierwszy</p>
+              <div class="_7cf9ca04">
+                <p class="c79dc0dc"><span>Inżynier oprogramowania</span></p>
+              </div>
+            </div>
+          </a>
+          <a tabindex="0" class="_30918224" href="https://www.linkedin.com/in/adam-pierwszy-4/" componentkey="c4-photo" style="height: 7.2rem; width: 7.2rem;">
+            <figure class="bf752739" componentkey="c4-photo">
+              <svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Zdjęcie profilowe użytkownika Adam Pierwszy" viewBox="0 0 128 128"></svg>
+            </figure>
+          </a>
+        </div>
+      </section>
+
+      <aside class="scaffold-layout__aside">
+        <h2>Osoby, które możesz znać</h2>
+        <!-- propozycja PYMK — NIE kontakt, MUSI być pominięta -->
+        <a href="https://www.linkedin.com/in/pymk-suggest-1/" componentkey="pymk">
+          <p>Robert Sugestia</p>
+        </a>
+      </aside>
+    </main>
+  </div>
+</body>
+</html>

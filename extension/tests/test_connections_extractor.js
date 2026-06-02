@@ -1,18 +1,22 @@
 /**
- * test_connections_extractor.js (#45 v1.14.0)
+ * test_connections_extractor.js — parser strony kontaktów
+ * /mynetwork/invite-connect/connections/ (extractConnectionsList).
  *
- * Testuje extractConnectionsList() — parser strony
- * /mynetwork/invite-connect/connections/ używany przy imporcie kontaktów
- * 1st-degree do trwałej bazy profili.
+ * Używany przez: RĘCZNY import ("Importuj kontakty z LinkedIn") ORAZ auto
+ * accept-tracker (#56A: fetchRecentConnections → extractRecentConnections →
+ * extractConnectionsList). Jeden fix → dwie ścieżki.
  *
  * Run: node tests/test_connections_extractor.js
  *
- * UWAGA: re-implementacja logiki z extension/content.js (tak jak
- * test_search_extractor.js / test_bulk_connect.js / test_e2e.js — vanilla
- * JS bez modułów, import niemożliwy bez bundlera). Synchronizuj ręcznie
- * po zmianach w content.js extractConnectionsList(). Debt: #10 BACKLOG.
+ * UWAGA (#10 spłacony częściowo): ten test NIE re-implementuje parsera —
+ * wyciąga ŹRÓDŁO extractConnectionsList z extension/content.js po ASCII-
+ * anchorach i odpala je w jsdom. Testujemy realny shipowany kod. Funkcja
+ * musi pozostać self-contained (jedyna zależność: globalny `document`).
  *
- * Fixture: tests/fixtures/connections_page.html
+ * Fixtures (syntetyczne, dane fikcyjne — bez PII):
+ *  - connections_page.html    — classic Ember mn-connection-card (#45), 4 kontakty
+ *  - connections_sdui.html    — wariant SDUI (2026-06), 4 kontakty + edge case'y
+ *  - connections_classic.html — classic Ember (imię w <span> w linku), 2 kontakty
  */
 
 const fs = require("fs");
@@ -34,90 +38,78 @@ function assert(cond, name, detail) {
 }
 function assertEqual(actual, expected, name) { assert(actual === expected, name, `got "${actual}", expected "${expected}"`); }
 
-// ── Port extractConnectionsList z extension/content.js ────────────
-function extractConnectionsList(document) {
-  const results = [];
-  const seen = new Set();
-  const links = Array.from(document.querySelectorAll('a[href*="/in/"]'));
-  for (const link of links) {
-    try {
-      const href = link.getAttribute("href") || "";
-      const m = href.match(/\/in\/([^/?#]+)/);
-      if (!m) continue;
-      let slug;
-      try { slug = decodeURIComponent(m[1]).toLowerCase(); } catch (_) { slug = m[1].toLowerCase(); }
-      if (!slug || seen.has(slug)) continue;
-
-      const card = link.closest('li, [componentkey], .mn-connection-card, .artdeco-list__item, [data-view-name]') || link.parentElement;
-      if (!card) continue;
-      const linkText = (link.textContent || "").trim();
-      let name = "";
-      const looksLikeName = (s) => s && s.length > 1 && s.length < 60 &&
-        !/obserwuj|wiadomo|connect|follow|message|stopni|·/i.test(s) && /\p{L}/u.test(s);
-      if (looksLikeName(linkText)) {
-        name = linkText.split("\n").map((x) => x.trim()).find(looksLikeName) || linkText.trim();
-      }
-      if (!name) {
-        const cand = Array.from(card.querySelectorAll("span, p"))
-          .map((el) => (el.textContent || "").trim())
-          .find(looksLikeName);
-        if (cand) name = cand;
-      }
-      let headline = null;
-      const texts = Array.from(card.querySelectorAll("p, span"))
-        .map((el) => (el.textContent || "").trim())
-        .filter(Boolean);
-      for (const t of texts) {
-        if (!t || t === name) continue;
-        if (/^połączono|^connected|^zaproszenie|^stopień|·\s*\d/i.test(t)) continue;
-        if (t.length < 3) continue;
-        headline = t;
-        break;
-      }
-      seen.add(slug);
-      results.push({
-        slug, name: name || "", headline: headline || "",
-        location: null, degree: "1st",
-        profileUrl: `https://www.linkedin.com/in/${slug}/`,
-        mutual_connections: null, pageNumber: null,
-      });
-    } catch (_) { /* skip broken card */ }
-  }
-  return results;
+// ── Załaduj REALNY extractConnectionsList z content.js ─────────────────
+const contentSrc = fs.readFileSync(path.resolve(__dirname, "..", "content.js"), "utf8");
+const START = "  function extractConnectionsList() {";
+const END = "  async function importAllConnections(maxPages) {";
+const s = contentSrc.indexOf(START);
+const e = contentSrc.indexOf(END);
+if (s < 0 || e < 0 || e < s) {
+  console.error("FATAL: nie znaleziono extractConnectionsList w content.js (anchory się zmieniły?)");
+  process.exit(1);
 }
+const fnSource = contentSrc.slice(s, e).trim();
+function runFixture(file) {
+  const html = fs.readFileSync(path.resolve(__dirname, "fixtures", file), "utf8");
+  const doc = new JSDOM(html).window.document;
+  return new Function("document", fnSource + "\n return extractConnectionsList();")(doc);
+}
+const bySlug = (rows, slug) => rows.find((r) => r.slug === slug);
 
-// ── Tests ─────────────────────────────────────────────────────────
-console.log("=== test_connections_extractor.js ===");
+console.log("=== test_connections_extractor.js (real code z content.js) ===");
 
-const html = fs.readFileSync(path.resolve(__dirname, "fixtures", "connections_page.html"), "utf8");
-const dom = new JSDOM(html);
-const doc = dom.window.document;
-const list = extractConnectionsList(doc);
+// ── classic Ember #45 (connections_page.html) ──────────────────────────
+console.log("\n[1] connections_page.html — classic Ember mn-connection-card:");
+const page = runFixture("connections_page.html");
+assert(page.length === 4, "wyciąga 4 kontakty (śmieciowe linki bez /in/ pominięte)", `dostał ${page.length}`);
+const jan = bySlug(page, "jan-kowalski-12345") || {};
+assert(!!bySlug(page, "jan-kowalski-12345"), "ma jan-kowalski-12345");
+assertEqual(jan.name, "Jan Kowalski", "name Jana poprawne");
+assertEqual(jan.headline, "Sales Director w OVB Allfinanz", "headline Jana (nie 'Połączono 3 dni temu')");
+assertEqual(jan.degree, "1st", "degree = 1st");
+assert(/linkedin\.com\/in\/jan-kowalski-12345\//.test(jan.profileUrl), "profileUrl zbudowany");
+assert(!!bySlug(page, "radosław-paczyński-72307a"), "encoded slug zdekodowany do radosław-paczyński-72307a", "klucze: " + page.map((r) => r.slug).join(", "));
+assert(!!bySlug(page, "marek-bez-headline"), "ma marek-bez-headline");
+assertEqual((bySlug(page, "marek-bez-headline") || {}).headline, "", "headline pusty gdy brak occupation");
+assertEqual(new Set(page.map((r) => r.slug)).size, page.length, "brak duplikatów slug");
+assert(page.every((r) => r.slug), "każdy rekord ma slug");
 
-assert(list.length === 4, "wyciąga 4 kontakty (śmieciowe linki bez /in/ pominięte)", `dostał ${list.length}`);
+// ── SDUI variant (connections_sdui.html) ───────────────────────────────
+console.log("\n[2] connections_sdui.html — wariant SDUI 2026-06:");
+const sdui = runFixture("connections_sdui.html");
+assertEqual(sdui.length, 4, "SDUI: 4 kontakty (nav + aside wykluczone)");
+assert(!!bySlug(sdui, "jan-testowy-1"), "SDUI: slug jan-testowy-1 obecny");
+assert(!!bySlug(sdui, "maria-otwarta-2"), "SDUI: slug maria-otwarta-2 obecny");
+assert(!!bySlug(sdui, "zofia-średni-123"), "SDUI: slug %-encoded zdekodowany (zofia-średni-123)");
+assert(!!bySlug(sdui, "adam-pierwszy-4"), "SDUI: slug adam-pierwszy-4 obecny");
+assert(!bySlug(sdui, "self-nav-99"), "SDUI: własny profil z <header.global-nav> POMINIĘTY");
+assert(!bySlug(sdui, "pymk-suggest-1"), "SDUI: PYMK z <aside.scaffold-layout__aside> POMINIĘTY");
+assertEqual((bySlug(sdui, "jan-testowy-1") || {}).name, "Jan Testowy", "SDUI: imię zwykłego kontaktu (z link-zdjęcie + link-nazwa)");
+assertEqual((bySlug(sdui, "jan-testowy-1") || {}).headline, "Doradca finansowy w OVB", "SDUI: headline zwykłego kontaktu");
+const maria = bySlug(sdui, "maria-otwarta-2") || {};
+assertEqual(maria.name, "Maria Otwarta", "SDUI: open-to-work — badge zdjęty, legalne nazwisko 'Otwarta' przetrwało");
+assert(!/na oferty pracy|open to work/i.test(maria.name), "SDUI: imię NIE zawiera frazy badge open-to-work", `name="${maria.name}"`);
+assertEqual(maria.headline, "Konsultant ds. ubezpieczeń", "SDUI: open-to-work — headline poprawny (nie imię sąsiada z rodzica)");
+assertEqual((bySlug(sdui, "zofia-średni-123") || {}).name, "Zofia Średni", "SDUI: imię przy slugu %-encoded");
+const adam = bySlug(sdui, "adam-pierwszy-4") || {};
+assertEqual(adam.name, "Adam Pierwszy", "SDUI: order-independence — imię gdy link-nazwa pierwszy");
+assertEqual(adam.headline, "Inżynier oprogramowania", "SDUI: order-independence — headline gdy link-nazwa pierwszy");
+assertEqual(sdui.filter((r) => !r.name).length, 0, "SDUI: 0 kontaktów z pustym imieniem");
+assert(sdui.every((r) => r.slug === r.slug.toLowerCase()), "SDUI: wszystkie slugi lowercase");
+assert(sdui.every((r) => r.degree === "1st"), "SDUI: degree = '1st' dla wszystkich");
+assertEqual((bySlug(sdui, "jan-testowy-1") || {}).profileUrl, "https://www.linkedin.com/in/jan-testowy-1/", "SDUI: profileUrl zbudowany ze slugu");
 
-const bySlug = Object.fromEntries(list.map((r) => [r.slug, r]));
-assert(!!bySlug["jan-kowalski-12345"], "ma jan-kowalski-12345");
-assertEqual(bySlug["jan-kowalski-12345"] && bySlug["jan-kowalski-12345"].name, "Jan Kowalski", "name Jana poprawne");
-assertEqual(bySlug["jan-kowalski-12345"] && bySlug["jan-kowalski-12345"].headline, "Sales Director w OVB Allfinanz", "headline Jana poprawny (nie 'Połączono 3 dni temu')");
-assertEqual(bySlug["jan-kowalski-12345"] && bySlug["jan-kowalski-12345"].degree, "1st", "degree = 1st");
-assert(/linkedin\.com\/in\/jan-kowalski-12345\//.test(bySlug["jan-kowalski-12345"].profileUrl), "profileUrl zbudowany");
+// ── classic Ember 2 (connections_classic.html) ─────────────────────────
+console.log("\n[3] connections_classic.html — classic Ember (imię w <span> w linku):");
+const classic = runFixture("connections_classic.html");
+assertEqual(classic.length, 2, "classic: 2 kontakty");
+assertEqual((bySlug(classic, "old-jan-kowalski") || {}).name, "Jan Kowalski", "classic: imię z <span> w linku");
+assertEqual((bySlug(classic, "old-jan-kowalski") || {}).headline, "Kierownik sprzedaży w ACME", "classic: headline z rodzeństwa w karcie");
+assertEqual((bySlug(classic, "old-ewa-nowak-77") || {}).name, "Ewa Nowak", "classic: imię drugiego kontaktu");
+assertEqual((bySlug(classic, "old-ewa-nowak-77") || {}).headline, "Specjalista ds. marketingu", "classic: headline drugiego kontaktu");
 
-// Encoded slug → decoded lowercase.
-assert(!!bySlug["radosław-paczyński-72307a"], "encoded slug zdekodowany do radosław-paczyński-72307a", "klucze: " + Object.keys(bySlug).join(", "));
-
-// Karta bez occupation — name jest, headline pusty (nie crash).
-assert(!!bySlug["marek-bez-headline"], "ma marek-bez-headline");
-assertEqual(bySlug["marek-bez-headline"] && bySlug["marek-bez-headline"].headline, "", "headline pusty gdy brak occupation");
-
-// Dedup — żaden slug nie powtórzony.
-const uniq = new Set(list.map((r) => r.slug));
-assertEqual(uniq.size, list.length, "brak duplikatów slug");
-
-// Brak rekordu dla feedu/invitation-manager (linki bez /in/).
-assert(!list.some((r) => !r.slug), "każdy rekord ma slug");
-
-console.log("");
+// ── Podsumowanie ───────────────────────────────────────────────────────
+console.log(`\n${"=".repeat(50)}`);
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
 if (failed > 0) {
@@ -125,3 +117,4 @@ if (failed > 0) {
   for (const f of failures) console.log(`  - ${f}`);
   process.exit(1);
 }
+console.log("ALL PASS");
