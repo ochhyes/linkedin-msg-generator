@@ -2652,6 +2652,19 @@ async function profileDbImport({ json, csv, restoreQueue }) {
 const CONNECTIONS_TAB_URL = "https://www.linkedin.com/mynetwork/invite-connect/connections/";
 const IMPORT_CONNECTIONS_TIMEOUT_MS = 6 * 60 * 1000; // generous — scroll może trwać
 
+// Pure: klasyfikuje wynik importu kontaktow pod early-warning (#62 reliability).
+// scraped=0 -> "extract_empty"; >50% rekordow bez imienia -> "extract_degraded";
+// inaczej null. Wyodrebnione zeby bylo testowalne bez chrome.* (test_import_warning).
+function classifyImportResult(profiles) {
+  const list = Array.isArray(profiles) ? profiles : [];
+  const scraped = list.length;
+  const named = list.filter((p) => p && p.name && String(p.name).trim()).length;
+  let warning = null;
+  if (scraped === 0) warning = "extract_empty";
+  else if ((scraped - named) / scraped > 0.5) warning = "extract_degraded";
+  return { scraped, named, warning };
+}
+
 async function importConnectionsFlow(maxPages) {
   let tab = null;
   let createdTab = false;
@@ -2686,7 +2699,19 @@ async function importConnectionsFlow(maxPages) {
 
     const profiles = (resp.profiles || []).map((p) => ({ ...p, degree: "1st", isConnection: true }));
     const up = await upsertProfilesToDb(profiles, "connections_import");
-    return { success: true, ...up, pagesProcessed: resp.pagesProcessed || 0, hitCap: !!resp.hitCap, scraped: profiles.length };
+    // Early-warning (#62): 0 kontaktow albo >50% bez imienia = prawdopodobnie
+    // LinkedIn przerollowal layout /connections/. Telemetria na backend +
+    // flaga `warning` dla UI (glosny komunikat zamiast cichego "Zaimportowano 0").
+    const { scraped, named, warning } = classifyImportResult(profiles);
+    if (warning) {
+      reportScrapeFailure({
+        url: CONNECTIONS_TAB_URL,
+        event_type: warning === "extract_empty" ? "connections_extract_empty" : "connections_extract_degraded",
+        error_message: "scraped=" + scraped + " named=" + named,
+        diagnostics: { scraped, named, pagesProcessed: resp.pagesProcessed || 0 },
+      }).catch(() => {});
+    }
+    return { success: true, ...up, pagesProcessed: resp.pagesProcessed || 0, hitCap: !!resp.hitCap, scraped, named, warning };
   } catch (err) {
     return { success: false, error: err && err.message ? err.message : String(err) };
   } finally {

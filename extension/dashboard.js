@@ -922,7 +922,13 @@
       setProfileDbStatus("Importuję kontakty z LinkedIn — nie zamykaj otwartej karty…");
       try {
         const resp = await chrome.runtime.sendMessage({ action: "importConnections", maxPages: 80 });
-        if (resp && resp.success) {
+        if (resp && resp.success && resp.warning === "extract_empty") {
+          setProfileDbStatus("⚠ Wykryto 0 kontaktów na stronie. Prawdopodobnie LinkedIn zmienił układ strony kontaktów (albo limit konta przekierował stronę). Odśwież stronę kontaktów (F5) i spróbuj ponownie. Jeśli się powtarza — zrób dump strony i zgłoś.", true);
+          loadProfileDb();
+        } else if (resp && resp.success && resp.warning === "extract_degraded") {
+          setProfileDbStatus("⚠ Zaimportowano " + resp.scraped + " kontaktów, ale " + (resp.scraped - resp.named) + " bez imienia — parser może być częściowo niezgodny z nowym układem LinkedIna. Dane częściowe; jeśli dużo pustych, zrób dump strony i zgłoś.", true);
+          loadProfileDb();
+        } else if (resp && resp.success) {
           setProfileDbStatus(`Zaimportowano ${resp.scraped || 0} kontaktów (${resp.added || 0} nowych, ${resp.updated || 0} zaktualizowanych${resp.hitCap ? ", osiągnięto limit stron — uruchom ponownie po doscrollowaniu" : ""}).`);
           loadProfileDb();
         } else {
