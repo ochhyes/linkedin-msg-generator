@@ -14,7 +14,7 @@
 "use strict";
 const fs = require("fs");
 const path = require("path");
-const { execFileSync } = require("child_process");
+const { execFileSync, spawnSync } = require("child_process");
 
 const root = __dirname;
 const src = path.join(root, "extension");
@@ -122,6 +122,14 @@ if (fs.existsSync(publishCfg)) {
       const parent = path.dirname(target);
       if (!fs.existsSync(parent)) {
         publishErr = "cel niezamontowany (" + parent + ")";
+      } else if (process.platform === "win32") {
+        // robocopy radzi sobie z wirtualnym FS Google Drive (fs.cpSync rzuca
+        // tam ESRCH na \\?\ extended-path). /E = z podfolderami, BEZ /PURGE
+        // (nie kasuje cudzych plikow w celu). Exit < 8 = sukces (0/1/2/3...).
+        const r = spawnSync("robocopy", [dst, target, "/E", "/NJH", "/NJS", "/NFL", "/NDL", "/R:2", "/W:2"], { stdio: "ignore" });
+        if (r.error) throw r.error;
+        if (typeof r.status === "number" && r.status >= 8) throw new Error("robocopy exit " + r.status);
+        published = target;
       } else {
         fs.mkdirSync(target, { recursive: true });
         fs.cpSync(dst, target, { recursive: true, force: true });
