@@ -15,6 +15,7 @@
 - **Live-verify fixu #61 na żywym koncie Marcina** — pre-flight snippet na realnej `/connections/`: **20/20 kontaktów z imionami, bez: 0** (polskie znaki, slugi zdekodowane). Root-cause i fix potwierdzone na żywej stronie, nie tylko na dumpie.
 - **`build.js` auto-zip (e4e5ae7)** — krok 4 builda sam tworzy `Outreach-<wersja>.zip` (Windows `Compress-Archive`, Unix `zip`, fallback gdy padnie). Reguła „release kończy się paczką" (DoD + docs 80c4bfc) wymusza się sama. `Outreach-1.25.3.zip` wygenerowany dla Marcina (dystrybucja do kolegi z bugiem).
 - **#62 early-warning importu (5cfd22c, v1.25.4)** — `classifyImportResult(profiles)→{scraped,named,warning}` (0→`extract_empty`, >50% pustych→`extract_degraded`). `importConnectionsFlow` strzela telemetrią `connections_extract_empty/_degraded` na backend + flaga `warning` → dashboard pokazuje **głośny komunikat** zamiast cichego „Zaimportowano 0". `test_import_warning` 15/0, pełny suite zielony.
+- **Auto-publikacja na wspólny Dysk (#63, `build.js`)** — po spakowaniu nadpisuje pliki w `G:\Mój dysk\OVB Pomorze\Dla wszystkich\Outreach` (ścieżka w gitignorowanym `.outreach-publish`, NIE hardcode — build nie pada na maszynie bez Dysku). Zespół OVB ładuje unpacked z tego folderu → dystrybucja = „zbuduj → Dysk syncuje → zespół Reload (dane zostają, ten sam `key`)". Pierwsza publikacja: Dysk 1.25.3 → **1.25.4**.
 
 ### Decyzje
 

@@ -341,4 +341,4 @@ W jednej sesji `Edit` tool **4× pod rząd uszkodził pliki** przy długich blok
 
 **Telemetria / infra:** działa end-to-end (event wystrzelony → widoczny w logu/DB) + dokumentacja jak czytać dane (1 akapit).
 
-**Release dystrybucyjny — ZAWSZE ostatni krok każdej nowej wersji dotykającej `extension/`:** po bumpie + commitcie odpal **`node build.js`** — generuje `outreach/` i **sam pakuje `Outreach-<wersja>.zip`** w korzeniu repo (gotowe do wysłania, gitignored). Bez tego release nie jest „done" — zespół dostaje fix dopiero z paczki. Procedura: `BUILD.md`.
+**Release dystrybucyjny — ZAWSZE ostatni krok każdej nowej wersji dotykającej `extension/`:** po bumpie + commitcie odpal **`node build.js`** — generuje `outreach/`, **sam pakuje `Outreach-<wersja>.zip`** w korzeniu repo (gitignored) ORAZ — jeśli jest gitignorowany `.outreach-publish` (ścieżka do wspólnego Dysku OVB: `G:\Mój dysk\OVB Pomorze\Dla wszystkich\Outreach`) — **nadpisuje pliki w tym folderze** (zespół tylko Reload, dane zostają). Bez tego release nie jest „done". Procedura: `BUILD.md`.

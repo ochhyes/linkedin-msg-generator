@@ -42,3 +42,5 @@ extension/dom_sample.txt
 /outreach/
 # Paczki dystrybucyjne (build artifact, generowane per release — patrz BUILD.md)
 Outreach-*.zip
+# Lokalna konfiguracja auto-publikacji (ścieżka do wspólnego Dysku — personalna, per maszyna)
+.outreach-publish

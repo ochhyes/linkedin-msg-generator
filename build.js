@@ -108,6 +108,31 @@ try {
   zipped = false;
 }
 
+// 5. Publikacja na wspolny dysk (opcjonalna). Sciezka w gitignored
+//    .outreach-publish (jedna linia, np. G:\...\Outreach). Jesli plik istnieje
+//    i cel jest zamontowany, nadpisujemy pliki w docelowym folderze (zespol
+//    tylko reloaduje extension). Build NIE pada gdy publikacja sie nie uda.
+const publishCfg = path.join(root, ".outreach-publish");
+let published = null;
+let publishErr = null;
+if (fs.existsSync(publishCfg)) {
+  try {
+    const target = fs.readFileSync(publishCfg, "utf8").trim();
+    if (target) {
+      const parent = path.dirname(target);
+      if (!fs.existsSync(parent)) {
+        publishErr = "cel niezamontowany (" + parent + ")";
+      } else {
+        fs.mkdirSync(target, { recursive: true });
+        fs.cpSync(dst, target, { recursive: true, force: true });
+        published = target;
+      }
+    }
+  } catch (err) {
+    publishErr = err && err.message ? err.message : String(err);
+  }
+}
+
 console.log("");
 console.log("  Build OK — Outreach v" + version);
 console.log("  outreach/  (" + fileCount + " plikow, name='Outreach', osobny key)");
@@ -118,6 +143,8 @@ if (zipped) {
   console.log("  UWAGA: auto-pakowanie zip sie nie powiodlo. Spakuj recznie:");
   console.log("    Compress-Archive -Path outreach\\* -DestinationPath " + zipName + " -Force");
 }
+if (published) console.log("  Opublikowano na wspolny dysk: " + published);
+else if (publishErr) console.log("  Publikacja pominieta: " + publishErr);
 console.log("");
 console.log("  Load Unpacked: chrome://extensions/ -> Wczytaj rozpakowane -> folder outreach/");
 console.log("");

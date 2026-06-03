@@ -20,8 +20,21 @@ Skrypt:
 2. Wycina pliki dev: `tests/`, `node_modules/`, `dom_sample.txt`, `package*.json`, `README.md`.
 3. W `outreach/manifest.json` podmienia `name` → **`Outreach`** oraz `key` na **osobny klucz publikacyjny**.
 4. **Pakuje wynik do `Outreach-<wersja>.zip`** w korzeniu repo (zawartość `outreach/`, `manifest.json` w korzeniu zipa) — gotowe do wysłania. Na Windows woła systemowy `Compress-Archive`, na Unixie `zip`; gdyby się nie udało, wypisuje komendę do ręcznego spakowania (build nie pada).
+5. **(Opcjonalnie) publikuje na wspólny Dysk** — jeśli w korzeniu repo jest gitignorowany plik `.outreach-publish` (jedna linia = ścieżka docelowa) i cel jest zamontowany, nadpisuje tam pliki świeżym buildem. Gdy Dysk niezamontowany / pliku brak — krok pomijany (build nie pada). Szczegóły niżej.
 
 `build.js` nie ma zależności npm (czysty Node + systemowe narzędzie do zipa). Po **każdej** zmianie w `extension/` uruchom go ponownie — `outreach/` i `Outreach-*.zip` to artefakty builda (gitignored), **nigdy nie edytuj ich ręcznie**.
+
+## Auto-publikacja na wspólny Dysk (zespół OVB)
+
+Zespół ładuje rozszerzenie **Load Unpacked z folderu na współdzielonym Dysku Google** (`G:\Mój dysk\OVB Pomorze\Dla wszystkich\Outreach`). `build.js` po spakowaniu **nadpisuje pliki w tym folderze** świeżym buildem, więc dystrybucja = „zbuduj, a Dysk zsynchronizuje".
+
+- **Konfiguracja (raz, per maszyna):** utwórz w korzeniu repo plik `.outreach-publish` z **jedną linią** = ścieżką docelową, np.:
+  ```
+  G:\Mój dysk\OVB Pomorze\Dla wszystkich\Outreach
+  ```
+  Plik jest **gitignorowany** (ścieżka personalna, nie trafia do repo; na innej maszynie bez tego pliku publikacja się po prostu pomija).
+- **Upgrade u zespołu:** ponieważ nadpisujemy pliki w folderze, z którego ładują (ten sam `key` = to samo ID), każdy robi tylko **Reload** (↻) w `chrome://extensions/` — **dane (baza/kolejka) zostają**. NIGDY „Usuń".
+- Build nadpisuje pliki (nie kasuje folderu) — brak okna, w którym folder jest pusty. Gdy ktoś ma akurat otwarty plik / trwa sync, krok może się nie udać → `build.js` wypisze `Publikacja pominieta: …` i tak NIE przerwie builda; uruchom ponownie.
 
 ## Dlaczego osobny `key`
 
