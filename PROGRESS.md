@@ -8,6 +8,40 @@
 
 ---
 
+## 2026-06-03 (Claude Code, claude-opus-4-8) — live-verify #61 + build.js auto-zip + decyzja „niezawodność > speed" + early-warning importu (#62, v1.25.4)
+
+### Zrobione
+
+- **Live-verify fixu #61 na żywym koncie Marcina** — pre-flight snippet na realnej `/connections/`: **20/20 kontaktów z imionami, bez: 0** (polskie znaki, slugi zdekodowane). Root-cause i fix potwierdzone na żywej stronie, nie tylko na dumpie.
+- **`build.js` auto-zip (e4e5ae7)** — krok 4 builda sam tworzy `Outreach-<wersja>.zip` (Windows `Compress-Archive`, Unix `zip`, fallback gdy padnie). Reguła „release kończy się paczką" (DoD + docs 80c4bfc) wymusza się sama. `Outreach-1.25.3.zip` wygenerowany dla Marcina (dystrybucja do kolegi z bugiem).
+- **#62 early-warning importu (5cfd22c, v1.25.4)** — `classifyImportResult(profiles)→{scraped,named,warning}` (0→`extract_empty`, >50% pustych→`extract_degraded`). `importConnectionsFlow` strzela telemetrią `connections_extract_empty/_degraded` na backend + flaga `warning` → dashboard pokazuje **głośny komunikat** zamiast cichego „Zaimportowano 0". `test_import_warning` 15/0, pełny suite zielony.
+
+### Decyzje
+
+- **„Niezawodność > speed" (Marcin, AskUserQuestion)** — NIE replikujemy Voyager-API-speed Octopusa. Powód: szybkość = sygnał banu (velocity monitoring), konto Marcina już ma limity, a LinkedIn i tak limituje zaproszenia niezależnie od narzędzia (~100-200/tydz) → „szybciej" = szybciej w ścianę, nie więcej koneksji. Zamiast tego early-warning + telemetria. Mechanizm Octopusa rozkminiony (Voyager `/voyager/api/...`, `csrf-token`=JSESSIONID, member URN), ale ToS/ban — świadomie odrzucony.
+- **Worktree → FF-merge do master jako kanał dostawy** — Chrome Marcina ładuje unpacked z GŁÓWNEGO `extension/`, nie z worktree. Stąd „mam 1.25.2" mimo moich commitów. Każdy worktree-release domyka FF-merge do master.
+- **Early-warning tylko na ręcznym imporcie**, nie na accept-trackerze — tam `0` to legalny stan (brak nowych akceptacji), warning byłby fałszywką.
+- **patch 1.25.4** — reliability additive, nie headline-feature.
+
+### Lessons learned
+
+- **Worktree gotcha:** commity w worktree NIE docierają do unpacked-extension w głównym folderze — bez FF-merge user widzi starą wersję. Pamiętać na starcie każdej worktree-sesji.
+- **CRLF w checkoutcie:** multi-line ASCII anchory w Node-splice nie trafiają (`\n` vs `\r\n`). Anchorować na POJEDYNCZYCH liniach (CRLF-agnostic) albo EOL-aware (`toEol`). Pojedyncza linia `return {...}` zadziałała tam gdzie 3-linijkowy blok nie.
+- **`chrome-extension://invalid/` flood = orphan context po reloadzie** (F5 czyści). Część „982 błędów" Marcina to to — benign, nie parser.
+- **„Nie pobiera" miało 3 możliwe przyczyny** (limit konta / injekcja / parser); tym razem parser, ale dopiero realny snippet na żywej stronie to rozstrzygnął.
+
+### BLOCKED / TODO
+
+- **Smoke v1.25.4 (Marcin):** reload → Import kontaktów; przy realnym 0/pustych imionach powinien wyskoczyć głośny warning (trudne do sztucznego wywołania na zdrowej stronie — głównie regression-safety + telemetria w logu backendu).
+- Nowe `event_type` lecą na istniejący `/api/diagnostics/scrape-failure` (free-form `str`, bez zmian backendu) — podejrzeć w logu gdy się odpali.
+- `git push` (lokalny master przed origin) — nadal pending, czeka na zgodę Marcina.
+
+### Status końcowy
+
+#61 (SDUI fix) zweryfikowany na żywo (20/20). #62 (early-warning) + build.js auto-zip domknięte. Suite zielony (+15 `test_import_warning`). `Outreach-1.25.3.zip` u Marcina, `Outreach-1.25.4.zip` do wygenerowania w main. Wszystko na master (FF). Phase: PM.
+
+---
+
 ## 2026-06-02 (Claude Code, claude-opus-4-8) — fix: import kontaktów (+ accept-tracker) na SDUI strony /connections/ (#61, v1.25.3)
 
 ### Zrobione

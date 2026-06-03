@@ -148,7 +148,7 @@ Commity zmieniające tylko `backend/`, `deploy/` lub dokumentację — NIE bumpu
 
 Pagination URL-based (`?page=N` przez `searchParams.set`).
 
-**Connections page (`/mynetwork/invite-connect/connections/`) — SDUI variant (dump 2026-06-02, `connections_sdui.html`)** — `body[data-rehydrated="true"]`, `componentkey`, hashowane klasy, ZERO `li`/`.mn-connection-card`/`role=listitem`. Każdy kontakt = **DWA** `<a href="/in/slug">`: link-zdjęcie (`<figure>`+`<svg aria-label="…użytkownika IMIĘ">`, pusty tekst) + link-nazwa (`<p>IMIĘ</p>` + `<p><span>headline</span></p>`). `extractConnectionsList` (content.js) **grupuje po slug w Map z uzupełnianiem** (NIE dedup-first-wins — łapałby link-zdjęcie → puste imię): zdjęcie daje imię z aria, nazwa daje headline. `cleanName()` zdejmuje #OpenToWork (sufiks „, otwarty(-a) na oferty pracy" w aria, wymaga przecinka by nie obciąć nazwiska). Card-fallback bramkowany `hasFigure`/`ownPs` (link-zdjęcie nie sięga do współdzielonego rodzica). Exclude `nav/header/footer/aside/.global-nav/.scaffold-layout__aside`. Classic Ember (`li.mn-connection-card`, 1 link/kontakt, imię w `<span>` w linku) NADAL wspierany. **Używany przez ręczny import ("Importuj kontakty") ORAZ auto accept-tracker (#56A, `extractRecentConnections`)** — jeden fix, dwie ścieżki. Fixtures: `connections_page.html` (classic #45), `connections_sdui.html`, `connections_classic.html`; test `test_connections_extractor.js` ładuje realny kod z content.js (anchor-extract, nie port). **Brak telemetrii** — gdy LinkedIn znów przerolluje layout, objaw = puste imiona / 0 kontaktów (nie błąd).
+**Connections page (`/mynetwork/invite-connect/connections/`) — SDUI variant (dump 2026-06-02, `connections_sdui.html`)** — `body[data-rehydrated="true"]`, `componentkey`, hashowane klasy, ZERO `li`/`.mn-connection-card`/`role=listitem`. Każdy kontakt = **DWA** `<a href="/in/slug">`: link-zdjęcie (`<figure>`+`<svg aria-label="…użytkownika IMIĘ">`, pusty tekst) + link-nazwa (`<p>IMIĘ</p>` + `<p><span>headline</span></p>`). `extractConnectionsList` (content.js) **grupuje po slug w Map z uzupełnianiem** (NIE dedup-first-wins — łapałby link-zdjęcie → puste imię): zdjęcie daje imię z aria, nazwa daje headline. `cleanName()` zdejmuje #OpenToWork (sufiks „, otwarty(-a) na oferty pracy" w aria, wymaga przecinka by nie obciąć nazwiska). Card-fallback bramkowany `hasFigure`/`ownPs` (link-zdjęcie nie sięga do współdzielonego rodzica). Exclude `nav/header/footer/aside/.global-nav/.scaffold-layout__aside`. Classic Ember (`li.mn-connection-card`, 1 link/kontakt, imię w `<span>` w linku) NADAL wspierany. **Używany przez ręczny import ("Importuj kontakty") ORAZ auto accept-tracker (#56A, `extractRecentConnections`)** — jeden fix, dwie ścieżki. Fixtures: `connections_page.html` (classic #45), `connections_sdui.html`, `connections_classic.html`; test `test_connections_extractor.js` ładuje realny kod z content.js (anchor-extract, nie port). **Early-warning (#62, v1.25.4):** ręczny import (`importConnectionsFlow`→`classifyImportResult`) przy 0 kontaktach / >50% pustych imion → telemetria `connections_extract_empty`/`connections_extract_degraded` (na `/api/diagnostics/scrape-failure`) + głośny warning w dashboardzie zamiast cichego „Zaimportowano 0". Accept-tracker (#56A) bez ostrzeżenia (0 to u niego stan legalny — brak nowych akceptacji).
 
 **Pending invite detection** — `a[aria-label^="W toku"]` (PL) / `^="Pending"` (EN), NIE textContent "Oczekuje". Bulk connect MUSI filtrować takie profile.
 
@@ -193,12 +193,12 @@ Uruchom testy automatyczne (pytest backend + jsdom extension). Wykonaj kroki man
 # CURRENT STATE
 
 ```
-Sprint:        #11 — …/1.25.2/1.25.3 DONE. Otwarte: #53 (contact-info), #56B (reply-tracker, BLOCKED na dump /messaging/).
-Phase:         PM. Pending smoke v1.25.3 (Marcin: reload + Import kontaktów na żywej SDUI). UWAGA: konto Marcina hituje commercial-use limit LI (baner Premium, redirect /in/ → /mynetwork/) — część "źle dodaje" to limit konta, nie kod.
+Sprint:        #11 — …/1.25.3/1.25.4 DONE. Otwarte: #53 (contact-info), #56B (reply-tracker, BLOCKED na dump /messaging/).
+Phase:         PM. Smoke v1.25.4 (Marcin): reload → Import kontaktów na żywej SDUI = kontakty z imionami; przy 0/pustych → głośny warning w dashboardzie. UWAGA: konto Marcina hituje commercial-use limit LI (baner Premium, redirect /in/ → /mynetwork/) — część "źle dodaje" to limit konta, nie kod.
 Active task:   (none).
-Repo state:    czysto (#61 = 8c5b04e + docs). Połączono fix SDUI connections-page.
-Last commit:   8c5b04e — fix: parser kontaktów na SDUI /connections/ (#61 v1.25.3)
-Updated:       2026-06-02
+Repo state:    czysto. #61 (SDUI fix) + #62 (early-warning importu) na master.
+Last commit:   5cfd22c — feat: early-warning importu kontaktów (#62 v1.25.4)
+Updated:       2026-06-03
 ```
 
 **Pending operacyjne (Marcin):** (1) `git push` — lokalny `master` przed origin. (2) Smoke v1.25.0/1.25.1/1.25.2 (~15 min łącznie, kroki w PROGRESS.md). (3) Smoke v1.19.0 wg `docs/SMOKE-TEST.md`, regen zipa, dystrybucja zespołowi OVB. (4) VPS: `API_KEYS=DreamComeTrue!` w prod `.env` → `cd deploy && docker compose up -d --build`.
@@ -245,6 +245,7 @@ Updated:       2026-06-02
 
 > 1 linia per release (sha, opis, bump). Pełne treści: `git show <sha>` + `PROGRESS.md`.
 
+- **v1.25.4** (5cfd22c) — feat: early-warning importu kontaktów — telemetria `connections_extract_empty/_degraded` + głośny warning w UI gdy 0/puste imiona (#62)
 - **v1.25.3** (8c5b04e) — fix: parser kontaktów na SDUI /connections/ (dedup→grupowanie+merge, cleanName #OpenToWork), naprawia import + accept-tracker (#61)
 - **v1.25.2** (9e68dc1) — feat: import LinkedIn-CSV jako prospekty, opts.asProspects → isConnection:false (#60)
 - **v1.25.1** (1c4774d) — fix: connectFromProfile nie klika sugestii "możesz znać" (#59)
