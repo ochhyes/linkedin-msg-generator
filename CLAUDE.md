@@ -78,7 +78,7 @@ node build.js          # generuje outreach/ z extension/ (name "Outreach", osobn
 
 `outreach/` = wersja do dystrybucji zespołowi (Load Unpacked / zip). Osobne ID = osobny storage. Pełna procedura + przenoszenie danych: `BUILD.md`.
 
-**Każdy release domyka paczka** (Win PowerShell, nazwa brana z wersji manifestu) — patrz DEFINITION OF DONE:
+`node build.js` **sam pakuje** `Outreach-<wersja>.zip` w korzeniu repo (ostatni krok release'u — patrz DEFINITION OF DONE). Fallback ręczny, gdyby auto-zip zawiódł (Win PowerShell):
 
 ```powershell
 $v=(Get-Content extension\manifest.json -Raw|ConvertFrom-Json).version; Compress-Archive -Path outreach\* -DestinationPath "Outreach-$v.zip" -Force
@@ -340,4 +340,4 @@ W jednej sesji `Edit` tool **4× pod rząd uszkodził pliki** przy długich blok
 
 **Telemetria / infra:** działa end-to-end (event wystrzelony → widoczny w logu/DB) + dokumentacja jak czytać dane (1 akapit).
 
-**Release dystrybucyjny — ZAWSZE ostatni krok każdej nowej wersji dotykającej `extension/`:** po bumpie + commitcie domknij paczką do rozdania zespołowi — `node build.js` + spakuj `outreach/` → **`Outreach-<wersja>.zip`** w korzeniu repo (gotowe do wysłania, gitignored). Bez tego release nie jest „done" — zespół dostaje fix dopiero z paczki. Komenda + procedura: `BUILD.md`.
+**Release dystrybucyjny — ZAWSZE ostatni krok każdej nowej wersji dotykającej `extension/`:** po bumpie + commitcie odpal **`node build.js`** — generuje `outreach/` i **sam pakuje `Outreach-<wersja>.zip`** w korzeniu repo (gotowe do wysłania, gitignored). Bez tego release nie jest „done" — zespół dostaje fix dopiero z paczki. Procedura: `BUILD.md`.

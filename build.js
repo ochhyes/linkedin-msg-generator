@@ -4,7 +4,8 @@
  *
  * Kopiuje extension/ -> outreach/, wycina pliki dev (tests, node_modules,
  * itp.), podmienia w manifescie name -> "Outreach" oraz key na osobny klucz
- * publikacyjny (stabilne ID, odrebne od folderu dev).
+ * publikacyjny (stabilne ID, odrebne od folderu dev), po czym PAKUJE wynik do
+ * Outreach-<wersja>.zip w korzeniu repo (gotowe do wyslania zespolowi).
  *
  * extension/ to JEDYNE zrodlo prawdy. outreach/ to artefakt builda
  * (gitignored) — NIGDY nie edytuj go recznie. Po kazdej zmianie w
@@ -13,6 +14,7 @@
 "use strict";
 const fs = require("fs");
 const path = require("path");
+const { execFileSync } = require("child_process");
 
 const root = __dirname;
 const src = path.join(root, "extension");
@@ -81,11 +83,41 @@ fs.writeFileSync(manifestPath, txt);
 const version = (txt.match(/"version":\s*"([^"]+)"/) || [])[1] || "?";
 const fileCount = countFiles(dst);
 
+// 4. Spakuj outreach/ -> Outreach-<wersja>.zip w korzeniu repo. To OSTATNI krok
+//    kazdego release'u (patrz DEFINITION OF DONE w CLAUDE.md) — bez paczki
+//    zespol siedzi na starej wersji. Pakujemy ZAWARTOSC outreach/ (manifest.json
+//    w korzeniu zipa). Bez zaleznosci npm: Windows -> systemowy PowerShell
+//    Compress-Archive, Unix -> `zip`. Fallback: instrukcja recznego pakowania.
+const zipName = "Outreach-" + version + ".zip";
+const zipPath = path.join(root, zipName);
+try { fs.rmSync(zipPath, { force: true }); } catch (_) {}
+
+let zipped = false;
+try {
+  if (process.platform === "win32") {
+    const psCmd =
+      "Compress-Archive -Path '" + path.join(dst, "*") +
+      "' -DestinationPath '" + zipPath + "' -Force";
+    execFileSync("powershell", ["-NoProfile", "-NonInteractive", "-Command", psCmd], { stdio: "ignore" });
+  } else {
+    // Unix: zip CLI (jezeli dostepny); -j NIE, bo gubi podfoldery (icons/assets).
+    execFileSync("zip", ["-r", "-q", zipPath, "."], { cwd: dst, stdio: "ignore" });
+  }
+  zipped = fs.existsSync(zipPath);
+} catch (_) {
+  zipped = false;
+}
+
 console.log("");
 console.log("  Build OK — Outreach v" + version);
 console.log("  outreach/  (" + fileCount + " plikow, name='Outreach', osobny key)");
+if (zipped) {
+  const kb = Math.round(fs.statSync(zipPath).size / 1024);
+  console.log("  " + zipName + "  (" + kb + " KB) — spakowane, gotowe do wyslania");
+} else {
+  console.log("  UWAGA: auto-pakowanie zip sie nie powiodlo. Spakuj recznie:");
+  console.log("    Compress-Archive -Path outreach\\* -DestinationPath " + zipName + " -Force");
+}
 console.log("");
 console.log("  Load Unpacked: chrome://extensions/ -> Wczytaj rozpakowane -> folder outreach/");
-console.log("  Dystrybucja: spakuj folder outreach/ do zip (Explorer: prawy klik");
-console.log("  -> Wyslij do -> Folder skompresowany) i przeslij zespolowi.");
 console.log("");
