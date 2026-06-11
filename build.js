@@ -28,7 +28,7 @@ const PUB_KEY =
 
 // Pliki/foldery dev — NIE trafiaja do wersji publikacyjnej.
 const EXCLUDE = new Set([
-  "tests", "node_modules", "{icons,tests}", "dom_sample.txt",
+  "tests", "tools", "node_modules", "{icons,tests}", "dom_sample.txt",
   "package.json", "package-lock.json", "README.md",
 ]);
 
