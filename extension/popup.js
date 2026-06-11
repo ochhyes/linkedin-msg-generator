@@ -1173,6 +1173,8 @@
    */
   async function handleBulkClear() {
     if (!confirm("Wyczyścić całą kolejkę? Statusy zostaną utracone.")) return;
+    // #68: kopia bezpieczeństwa przed czyszczeniem — operacja nieodwracalna.
+    try { await chrome.runtime.sendMessage({ action: "backupNow" }); } catch (_) {}
     // Stop najpierw, potem clear queue (bezpośrednio przez storage.local.set).
     await chrome.runtime.sendMessage({ action: "bulkConnectStop" });
     const state = await chrome.runtime.sendMessage({ action: "getBulkState" });

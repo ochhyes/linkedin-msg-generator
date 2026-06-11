@@ -17,7 +17,9 @@ const DEFAULT_SETTINGS = {
   defaultMaxChars: 1000,
   senderContext: "",
   // #45 v1.14.0: co ile dni auto-backup bazy profili do pliku (0 = wyłączony).
-  backupIntervalDays: 3,
+  // #68: default 3 → 1 — przy aktywnej pracy (setki zaproszeń/tydz.) utrata
+  // 3 dni bolała; plik jest per-data z overwrite, więc 1/dzień nie śmieci.
+  backupIntervalDays: 1,
 };
 
 // ── Settings (local — API creds + runtime defaults) ──────────────────
@@ -2144,7 +2146,7 @@ async function getSettingsDefaults() {
 
 const PROFILE_DB_DEFAULTS = { version: 1, profiles: {}, lastBackupAt: null };
 const DB_BACKUP_ALARM_NAME = "dbBackupAlarm";
-const DEFAULT_BACKUP_INTERVAL_DAYS = 3;
+const DEFAULT_BACKUP_INTERVAL_DAYS = 1; // #68: 3 → 1 (sync z DEFAULT_SETTINGS)
 // Soft limit dla data: URL przekazywanego do chrome.downloads. Powyżej —
 // budujemy "lite" backup bez scrapedProfile (about/experience/skills) żeby
 // download nie failował na zbyt długim data URI.
@@ -2390,6 +2392,12 @@ async function profileDbList(filter = {}) {
  */
 async function profileDbDelete({ slugs, deleteAllFiltered, filter }) {
   const db = await getProfileDb();
+  // #68: snapshot bezpieczeństwa przed masowym kasowaniem — pomyłka w
+  // filtrze "usuń wszystkie przefiltrowane" jest nieodwracalna bez kopii.
+  const bulkDeletion = deleteAllFiltered === true || (Array.isArray(slugs) && slugs.length > 20);
+  if (bulkDeletion) {
+    try { await doAutoBackup(true, "pre-delete"); } catch (_) { /* kopia best-effort */ }
+  }
   let toDelete = [];
   if (deleteAllFiltered === true) {
     const text = ((filter && filter.text) || "").trim().toLowerCase();
@@ -2479,9 +2487,13 @@ function parseCsv(text) {
 async function buildFullBackupJson() {
   const bulk = await getBulkState();
   const db = await getProfileDb();
+  // #68: settings W backupie — bez nich Remove+Add przywracał bazę, ale user
+  // tracił hasło dostępu/ofertę/cele i widział "nie działa". Plik ląduje
+  // lokalnie na dysku usera; hasło dostępu to współdzielony sekret zespołowy.
   return JSON.stringify({
     exportedAt: new Date().toISOString(),
     extVersion: chrome.runtime.getManifest().version,
+    settings: await getSettings(),
     bulkConnect: bulk,
     profileDb: db,
   });
@@ -2507,7 +2519,7 @@ function toBase64Utf8(str) {
   return btoa(unescape(encodeURIComponent(str)));
 }
 
-async function doAutoBackup(force) {
+async function doAutoBackup(force, tag) {
   const db = await getProfileDb();
   const intervalDays = await getBackupIntervalDays();
   if (!force) {
@@ -2519,6 +2531,9 @@ async function doAutoBackup(force) {
   const fullObj = {
     exportedAt: new Date().toISOString(),
     extVersion: chrome.runtime.getManifest().version,
+    // #68: settings w snapshotcie (hasło dostępu, oferta, cele) — patrz
+    // buildFullBackupJson.
+    settings: await getSettings(),
     bulkConnect: await getBulkState(),
     profileDb: db,
   };
@@ -2529,8 +2544,11 @@ async function doAutoBackup(force) {
     json = buildLiteBackupJson(fullObj);
     lite = true;
   }
+  // #68: tag odróżnia snapshoty bezpieczeństwa (pre-import / pre-delete /
+  // pre-clear) od regularnych dziennych — nie nadpisują się wzajemnie.
   const today = todayDateString();
-  const filename = `linkedin-msg-backup/backup-${today}${lite ? "-lite" : ""}.json`;
+  const safeTag = tag ? `-${String(tag).replace(/[^a-z0-9-]/gi, "")}` : "";
+  const filename = `linkedin-msg-backup/backup-${today}${safeTag}${lite ? "-lite" : ""}.json`;
   try {
     const url = "data:application/json;base64," + toBase64Utf8(json);
     const downloadId = await chrome.downloads.download({ url, filename, saveAs: false, conflictAction: "overwrite" });
@@ -2733,6 +2751,11 @@ async function profileDbImportLinkedInExport({ csvText, dryRun, asProspects }) {
 async function profileDbImport({ json, csv, restoreQueue }) {
   let recordsInput = [];
   let bulkPayload = null;
+  let settingsPayload = null;
+
+  // #68: snapshot bezpieczeństwa PRZED importem — import merguje (nie kasuje),
+  // ale błędny plik może zaśmiecić bazę tysiącami rekordów. Fire-and-forget.
+  doAutoBackup(true, "pre-import").catch(() => {});
 
   if (typeof csv === "string" && csv.trim()) {
     const rows = parseCsv(csv);
@@ -2754,6 +2777,7 @@ async function profileDbImport({ json, csv, restoreQueue }) {
     } else if (parsed && parsed.profileDb && parsed.profileDb.profiles) {
       recordsInput = Object.values(parsed.profileDb.profiles);
       bulkPayload = parsed.bulkConnect || null;
+      settingsPayload = parsed.settings || null; // #68: pełny backup niesie settings
     } else if (parsed && parsed.profiles && typeof parsed.profiles === "object") {
       recordsInput = Object.values(parsed.profiles);
     } else if (parsed && Array.isArray(parsed.queue)) {
@@ -2794,7 +2818,23 @@ async function profileDbImport({ json, csv, restoreQueue }) {
     if (incoming.length) await setBulkState({ queue: [...cur.queue, ...incoming] });
   }
 
-  return { success: true, added, updated, total: Object.keys(db.profiles).length, queueRestored };
+  // #68: przywróć ustawienia z pełnego backupu — intencja importu backupu to
+  // "odzyskaj moje dane", a bez hasła dostępu/oferty extension "nie działa".
+  // Merge defensywny: backup nadpisuje tylko tam, gdzie niesie NIEpustą
+  // wartość (świeżo wpisanych lokalnych wartości nie kasujemy pustkami).
+  let settingsRestored = false;
+  if (settingsPayload && typeof settingsPayload === "object") {
+    const cur = await getSettings();
+    const merged = { ...cur };
+    for (const [k, v] of Object.entries(settingsPayload)) {
+      if (v === null || v === undefined || v === "") continue;
+      merged[k] = v;
+    }
+    await saveSettings(merged);
+    settingsRestored = true;
+  }
+
+  return { success: true, added, updated, total: Object.keys(db.profiles).length, queueRestored, settingsRestored };
 }
 
 // ── Import kontaktów 1st-degree z LinkedIn ────────────────────────────
