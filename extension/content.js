@@ -1311,38 +1311,12 @@
           }
         }
 
-        // Stan przycisku — strukturalnie po aria-label (button LUB a).
-        // Connect w tym wariancie to <button aria-label="Zaproś...">,
-        // NIE <a href="/preload/search-custom-invite/"> jak w SDUI.
-        const q = (sel) => row.querySelector(sel);
-        const pendingBtn = q(
-          'button[aria-label^="W toku"], a[aria-label^="W toku"], ' +
-          'button[aria-label^="Oczekuje"], a[aria-label^="Oczekuje"], ' +
-          'button[aria-label^="Pending"], a[aria-label^="Pending"]'
-        );
-        const connectBtn = q(
-          'button[aria-label^="Zaproś"], a[aria-label^="Zaproś"], ' +
-          'button[aria-label^="Invite "], a[aria-label^="Invite "], ' +
-          'button[aria-label^="Connect"], a[aria-label^="Connect"], ' +
-          'a[href*="search-custom-invite"]'
-        );
-        const messageBtn = q(
-          'button[aria-label^="Wiadomość"], a[aria-label^="Wiadomość"], ' +
-          'button[aria-label^="Wyślij wiadomość"], a[aria-label^="Wyślij wiadomość"], ' +
-          'button[aria-label^="Napisz wiadomość"], a[aria-label^="Napisz wiadomość"], ' +
-          'button[aria-label^="Message"], a[aria-label^="Message"], ' +
-          'a[href*="/messaging/"]'
-        );
-        const followBtn = q(
-          'button[aria-label^="Obserwuj"], a[aria-label^="Obserwuj"], ' +
-          'button[aria-label^="Follow"], a[aria-label^="Follow"]'
-        );
-
-        let buttonState = "Unknown";
-        if (pendingBtn) buttonState = "Pending";
-        else if (connectBtn) buttonState = "Connect";
-        else if (messageBtn) buttonState = "Message";
-        else if (followBtn) buttonState = "Follow";
+        // Stan przycisku — wspólna klasyfikacja classifySearchButtonState
+        // (#64 v1.25.5): aria-label'e + preload href'y + tekstowy fallback
+        // "Połącz"/"Connect". Wcześniej Ember miał własny (węższy) zestaw
+        // selektorów — gdy LinkedIn rollował markup, wszystko leciało jako
+        // "Unknown" i bulk fill nie kolejkował nikogo.
+        const buttonState = classifySearchButtonState(row);
 
         results.push({
           name: name || null,
@@ -1467,36 +1441,14 @@
         const slugMatch = href.match(/\/in\/([^/?#]+)/);
         const slug = slugMatch ? slugMatch[1] : null;
 
-        // Button state detection — strukturalnie po href/aria, NIE po klasach.
-        // Connect → link do /preload/search-custom-invite/ (LinkedIn invite flow).
-        // Message → link do /messaging/ (już w sieci 1st degree).
-        // Pending → link z aria-label zaczynającym się "W toku" / "Pending"
-        // (LinkedIn renderuje ten link dla wysłanych ale nie zaakceptowanych
-        // zaproszeń — klik = withdraw flow). Wyłapanie po aria-label jest
-        // odporne na zmiany pozycji w tekście całego <li>.
-        const connectLink = item.querySelector(
-          'a[href*="/preload/search-custom-invite/"]'
-        );
-        const messageLink = item.querySelector('a[href*="/messaging/"]');
-        const pendingLink = item.querySelector(
-          'a[aria-label^="W toku"], a[aria-label^="Pending"]'
-        );
-
-        let buttonState = "Unknown";
-        if (pendingLink) {
-          buttonState = "Pending";
-        } else if (connectLink) {
-          buttonState = "Connect";
-        } else if (messageLink) {
-          buttonState = "Message";
-        } else {
-          // Follow-only profiles (influencerzy / 3rd+ premium-locked) —
-          // tylko jeśli nie ma żadnego z powyższych linków.
-          const itemText = (item.textContent || "").toLowerCase();
-          if (itemText.includes("obserwuj") || itemText.includes("follow")) {
-            buttonState = "Follow";
-          }
-        }
+        // Button state — wspólna klasyfikacja classifySearchButtonState
+        // (#64 v1.25.5). Wcześniej SDUI rozpoznawał Connect WYŁĄCZNIE po
+        // a[href*="/preload/search-custom-invite/"] — gdy LinkedIn zmienił
+        // markup przycisku, każdy profil dostawał "Unknown", bulkAutoFillByUrl
+        // odfiltrowywał wszystko i "Wypełnij do limitu" skakał po stronach
+        // nic nie kolejkując. Classify ma nadzbiór: oba preload href'y,
+        // aria (Zaproś/Połącz/Nawiąż/Invite/Connect) + tekstowy fallback.
+        const buttonState = classifySearchButtonState(item);
 
         results.push({
           name: name || null,
@@ -1536,6 +1488,8 @@
         'a[aria-label^="W toku"], button[aria-label^="W toku"], ' +
         'a[aria-label^="Oczekuje"], button[aria-label^="Oczekuje"], ' +
         'a[aria-label^="Pending"], button[aria-label^="Pending"], ' +
+        'a[aria-label*="Anuluj zaproszenie"], button[aria-label*="Anuluj zaproszenie"], ' +
+        'a[aria-label*="Cofnij zaproszenie"], button[aria-label*="Cofnij zaproszenie"], ' +
         'a[href*="/preload/withdraw-invite/"]'
       )
     ) return "Pending";
@@ -1543,13 +1497,20 @@
       has(
         'a[href*="search-custom-invite"], a[href*="/preload/custom-invite/"], ' +
         'a[aria-label^="Zaproś"], button[aria-label^="Zaproś"], ' +
+        'a[aria-label^="Połącz"], button[aria-label^="Połącz"], ' +
+        'a[aria-label^="Nawiąż"], button[aria-label^="Nawiąż"], ' +
         'a[aria-label^="Invite "], button[aria-label^="Invite "], ' +
         'a[aria-label^="Connect"], button[aria-label^="Connect"]'
       )
     ) return "Connect";
+    // Tekstowy fallback: LinkedIn dokleja sr-only spany do przycisku
+    // ("Połącz\nZaproś Jana…") — match per-LINIA, nie na całym innerText.
     const textConnect = Array.from(root.querySelectorAll("button, a")).some((b) => {
       const t = (b.innerText || b.textContent || "").trim();
-      return /^(Połącz|Connect)$/i.test(t) && !/W toku|Pending|Anuluj|Withdraw|Cofnij/i.test(t);
+      if (!t || /W toku|Pending|Anuluj|Withdraw|Cofnij/i.test(t)) return false;
+      return t.split("\n").some((line) =>
+        /^(Połącz|Connect|Nawiąż kontakt)$/i.test(line.trim())
+      );
     });
     if (textConnect) return "Connect";
     if (
@@ -1568,6 +1529,36 @@
     const txt = (root.textContent || "").toLowerCase();
     if (/\bobserwuj\b|\bfollow\b/.test(txt) && !/połącz|connect/i.test(txt)) return "Follow";
     return "Unknown";
+  }
+
+  // Próbka <a>/<button> pierwszej karty wyników — do telemetrii, gdy parser
+  // nie rozpoznaje buttonState (#64). Z logu backendu odczytamy, JAK LinkedIn
+  // renderuje przycisk Connect po rolloutcie, bez czekania na ręczny dump.
+  function sampleSearchButtons() {
+    try {
+      const nameLink = document.querySelector('main a[href*="/in/"]') ||
+        document.querySelector('a[href*="/in/"]');
+      const card =
+        document.querySelector("div[data-chameleon-result-urn]") ||
+        (nameLink && nameLink.closest('div[role="listitem"], li')) ||
+        (nameLink && nameLink.parentElement && nameLink.parentElement.parentElement) ||
+        null;
+      if (!card) return null;
+      const out = [];
+      for (const el of card.querySelectorAll("a, button")) {
+        if (out.length >= 10) break;
+        const href = (el.getAttribute("href") || "").split("?")[0];
+        out.push({
+          tag: el.tagName.toLowerCase(),
+          aria: (el.getAttribute("aria-label") || "").slice(0, 60),
+          href: href.slice(0, 80),
+          text: (el.innerText || el.textContent || "").trim().slice(0, 40),
+        });
+      }
+      return out;
+    } catch (_) {
+      return null;
+    }
   }
 
   function extractSearchResultsGeneric(rootEl) {
@@ -2395,7 +2386,19 @@
       // SYNC response — ekstrakcja jest synchroniczna (pure DOM walk).
       // Try/catch żeby fail nie zamknął channel'a bez response'a.
       try {
-        sendResponse({ success: true, profiles: extractSearchResults() });
+        const profiles = extractSearchResults();
+        // #64: gdy >połowa kart bez rozpoznanego przycisku — dołącz próbkę
+        // markupu pierwszej karty. Background dorzuci ją do telemetrii
+        // bulk_fill_no_connectable (parser działa, ale selektory przycisków
+        // nie łapią nowego rolloutu LinkedIn).
+        let buttonsSample = null;
+        const unknowns = profiles.filter(
+          (p) => p && p.buttonState === "Unknown"
+        ).length;
+        if (profiles.length > 0 && unknowns > profiles.length / 2) {
+          buttonsSample = sampleSearchButtons();
+        }
+        sendResponse({ success: true, profiles, buttonsSample });
       } catch (err) {
         console.warn("[LinkedIn MSG] extractSearchResults failed:", err);
         sendResponse({

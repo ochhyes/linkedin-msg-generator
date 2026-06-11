@@ -8,6 +8,45 @@
 
 ---
 
+## 2026-06-11 (Claude Code worktree, claude-fable-5) — fix: „Wypełnij do limitu" skacze po stronach i nic nie kolejkuje (#64, v1.25.5)
+
+### Zrobione
+
+- **Zgłoszenie Marcina:** „nie dodaje osób do kontaktów — klik Wypełnij do limitu skacze po stronach i nic się nie dzieje, nie kolejkuje. Sprawdzone na 3 komputerach."
+- **Root cause (analiza kodu, bez świeżego dumpu — Chrome MCP niepodłączony):** SDUI search-parser rozpoznawał Connect **WYŁĄCZNIE** po `a[href*="/preload/search-custom-invite/"]` (content.js), Ember-parser tylko po aria `Zaproś/Invite/Connect`. Gdy LinkedIn przerolował markup przycisku, **każdy profil dostawał `buttonState="Unknown"`** → filtr `p.buttonState !== "Connect"` w `bulkAutoFillByUrl` (background.js) odrzucał wszystko → pętla robiła `pageNum++` aż do `PAGINATION_MAX_PAGES=100`. Stąd dokładnie objaw: skakanie po stronach bez kolejkowania, na każdym koncie. **Telemetria milczała**, bo `search_extract_empty/_fallback_generic` strzela tylko przy `usable==0`, a name+slug parsowały się OK.
+- **Objaw wykluczył inne hipotezy:** content-script-not-injected (#57-pattern) dawałby break po 1. stronie (bez skakania); dedup/limit konta nie występuje identycznie na 3 komputerach; testy na 4 fixture'ach przechodzą (59/0) → kod się nie zepsuł, LinkedIn się zmienił.
+- **Fix 1 (content.js):** `classifySearchButtonState` = **jedna wspólna klasyfikacja** dla Ember + SDUI + generic (wcześniej 3 zduplikowane, każda węższa). Rozszerzona: aria `Połącz`/`Nawiąż` (parity z `findConnectEl`, który na profilach DZIAŁAŁ — stąd pojedyncze connecty szły, bulk nie), oba preload-hrefy, tekstowy fallback **per-linia** innerText (`Połącz`/`Connect`/`Nawiąż kontakt`; sr-only spany doklejają tekst → match całości padał), `Anuluj/Cofnij zaproszenie` → Pending.
+- **Fix 2 (background.js):** bezpiecznik `FILL_NO_NEW_PAGES_LIMIT=5` — 5 kolejnych stron bez nowego connectable kończy scan (zamiast 100 stron × 3-7s jitter ≈ 10 min „skakania"); `stoppedReason` na każdej ścieżce wyjścia; injection-fallback `extractSearchPageProfiles` (#57-pattern) na wypadek SPA-nav.
+- **Fix 3 (diagnostyka):** nowa telemetria `bulk_fill_no_connectable` (1×/scan, gdy widziano >0 profili a zakolejkowano 0): histogram `buttonStates` + `buttonsSample` (tag/aria/href/text 10 przycisków pierwszej karty, zbierane w content.js gdy >50% Unknown) → **następny rollout LinkedIn naprawimy z logu backendu, bez czekania na ręczny dump**. Backend bez zmian (`event_type` = free-form str ≤64).
+- **Fix 4 (popup.js):** `describeEmptyFillScan` — zamiast „Brak nowych profili Connect-able (zeskanowano N stron)" komunikat z rozbiciem: „X z wysłanym już zaproszeniem, Y już w Twoich kontaktach, Z bez rozpoznanego przycisku Połącz…" + przy dominacji Unknown: „LinkedIn mógł zmienić wygląd wyników — diagnostyka została wysłana automatycznie."
+- **Testy:** `test_search_extractor.js` zsynchronizowany (port używa wspólnego classify) + **15 nowych asercji** (#64: text-button/aria/custom-invite/multi-line/Nawiąż kontakt → Connect; Anuluj zaproszenie → Pending; Pending wygrywa z Connect; syntetyczna karta SDUI z `<button>Połącz</button>` przez cały pipeline). **74/0**. Pełny suite zielony: bulk 180, profile_db 141, scraper 93, reply 88, e2e 38, accept 37, followup 35, connections 35, pipeline 54, import_warning 15, syntax 12, connect_profile 9.
+
+### Decyzje
+
+- **Pełny loop PM→Dev→Tester→Commit w jednej sesji bez pytania** — bug blokuje cały zespół (3 komputery), sesja autonomiczna, precedens #61/#62 (zgłoszenie→fix). 
+- **Fix defensywny bez świeżego dumpu (zamiast czekać na dump)** — bo: (a) klasyfikacja po wspólnym nadzbiorze selektorów naprawia najbardziej prawdopodobne warianty rolloutu (text-button, aria-only, custom-invite), (b) gdyby markup okazał się jeszcze inny (np. Shadow DOM), telemetria `bulk_fill_no_connectable` + `buttonsSample` da dokładny obraz z pierwszego uruchomienia u Marcina. Wcześniej taka awaria była CICHA (zero telemetrii przy usable>0) — to gorsze niż sam bug.
+- **DRY zamiast 4. kopii selektorów** — Ember/SDUI/generic używają jednego `classifySearchButtonState`; częściowo realizuje #10 (dedup parserów). Port w teście zsynchronizowany tak samo.
+- **patch 1.25.5** — fix przywracający zepsutą funkcję, bez nowego user-flow.
+- **`upsertProfilesToDb` zostaje przed filtrem connectable** — nawet przy zepsutym przycisku baza prospektów (model Octopus #58) rośnie; ścieżka dashboard→„Dodaj zaznaczone do kolejki" działała cały czas.
+
+### Lessons learned
+
+- **Wąski selektor działa do pierwszego rolloutu — selektor przycisku to też kontrakt.** `findConnectEl` (profil) miał 3 warstwy fallbacku i przeżył; search-parser miał 1 selektor i padł. Każde wykrywanie elementu interaktywnego LinkedIn powinno mieć: href-pattern + aria + per-linia text fallback.
+- **Telemetria gated na „parser zwrócił zero" przegapia póławarie** — name+slug OK przy martwym buttonState = cisza. Sygnałem musi być też „wynik bezużyteczny dla flow" (0 connectable z N>0 widzianych).
+- **Pętla bez progress-watchdoga zamienia cichy bug w „narzędzie szaleje"** — 100 stron × jitter wyglądało jak działanie, było pustym przebiegiem. Każda pętla paginacji dostaje teraz stop po K stronach bez postępu.
+
+### BLOCKED / TODO
+
+- **Smoke v1.25.5 (Marcin, ~5 min):** FF-merge worktree→master → reload → `/search/results/people/` → „Wypełnij do limitu". Oczekiwane: ALBO kolejka rośnie (fix trafił markup), ALBO szybki stop ≤5 stron z komunikatem z rozbiciem stanów + event `bulk_fill_no_connectable` w logu backendu (wtedy `buttonsSample` z loga = materiał na fix właściwy, wrócić do mnie z logiem).
+- **Worktree gotcha (lesson z 2026-06-03):** commit siedzi na branchu `claude/pensive-cori-52eed7` — bez merge do master Chrome Marcina dalej ładuje 1.25.4. Zip `Outreach-1.25.5.zip` wygenerować z master po merge (`.outreach-publish` nie istnieje w worktree → build tu nie publikuje na Dysk OVB).
+- `git push` master→origin — nadal pending (stan sprzed sesji).
+
+### Status końcowy
+
+#64 zaimplementowany i przetestowany (74/0 search_extractor, pełny suite zielony). Wersja 1.25.5. Czeka na: FF-merge do master + smoke Marcina na żywym LinkedIn. Jeśli markup okaże się inny niż przewidziany — telemetria pokaże dokładnie jaki. Phase: PM.
+
+---
+
 ## 2026-06-03 (Claude Code, claude-opus-4-8) — live-verify #61 + build.js auto-zip + decyzja „niezawodność > speed" + early-warning importu (#62, v1.25.4)
 
 ### Zrobione

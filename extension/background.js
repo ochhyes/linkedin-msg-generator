@@ -1613,6 +1613,30 @@ const PAGINATION_RENDER_DELAY_MS = 1500; // SDUI lazy render po SPA nav
 // (3-7s, niżej) dodatkowo maskuje. UWAGA: LI bez Sales Nav capuje wyniki
 // ~100 (commercial use limit) → realnie scan kończy się na pustej stronie.
 const PAGINATION_MAX_PAGES = 100;
+// #64 v1.25.5: bezpiecznik — tyle KOLEJNYCH stron bez ani jednego nowego
+// connectable kończy scan. Bez tego, gdy LinkedIn rollował markup przycisku
+// Connect (wszystkie profile "Unknown"), pętla jechała pusto przez 100 stron
+// — Marcin widział "skacze po stronach i nic nie kolejkuje" przez ~10 minut.
+const FILL_NO_NEW_PAGES_LIMIT = 5;
+
+/**
+ * extractSearchResults z injection-fallbackiem (#57-pattern, v1.24.1).
+ * Goły sendMessage zawodzi gdy content script nie jest wstrzyknięty (karta
+ * po SPA-nav — manifest content_scripts odpala się tylko przy pełnym load).
+ * Fallback: chrome.scripting.executeScript + retry raz.
+ */
+async function extractSearchPageProfiles(tabId) {
+  try {
+    return await chrome.tabs.sendMessage(tabId, { action: "extractSearchResults" });
+  } catch (_) {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ["content.js"],
+    });
+    await new Promise((r) => setTimeout(r, 300));
+    return await chrome.tabs.sendMessage(tabId, { action: "extractSearchResults" });
+  }
+}
 
 /**
  * Auto-pagination przez kolejne strony LinkedIn search results.
@@ -1649,6 +1673,14 @@ async function bulkAutoFillByUrl(maxProfiles) {
   // Dedup także względem istniejącej queue (nie tylko within current scan).
   const existingSlugs = new Set(state.queue.map((q) => q.slug));
   const collected = [];
+  // #64: diagnostyka scanu — histogram buttonState'ów + próbka przycisków
+  // z content scriptu. "0 dodanych" ma być wyjaśnialne (komunikat w popup +
+  // telemetria), nie kończyć się cichą pętlą po pustych stronach.
+  const stateCounts = {};
+  let profilesSeen = 0;
+  let buttonsSample = null;
+  let noNewStreak = 0;
+  let stoppedReason = null;
 
   let pageNum = getPageFromUrl(baseUrl); // start z aktualnej strony
   if (pageNum < 1) pageNum = 1;
@@ -1666,6 +1698,7 @@ async function bulkAutoFillByUrl(maxProfiles) {
     const cancelCheck = await getBulkState();
     if (cancelCheck.autoFillCancelRequested) {
       cancelled = true;
+      stoppedReason = "cancelled";
       break;
     }
     // Pierwsza iteracja na bieżącej stronie — DOM zhydrowany, scrape od razu.
@@ -1684,6 +1717,7 @@ async function bulkAutoFillByUrl(maxProfiles) {
         await waitForTabComplete(tab.id, 12000);
       } catch (err) {
         // Tab load failed — przerwij, zwróć co mamy.
+        stoppedReason = "tab_load_failed";
         break;
       }
       // SDUI lazy render — extractSearchResults na świeżo loaded DOM często
@@ -1693,21 +1727,33 @@ async function bulkAutoFillByUrl(maxProfiles) {
 
     let pageProfiles = [];
     try {
-      const resp = await chrome.tabs.sendMessage(tab.id, {
-        action: "extractSearchResults",
-      });
+      // #64: injection-fallback (#57-pattern) — goły sendMessage zawodził,
+      // gdy karta doszła do search przez SPA-nav (content script nie
+      // wstrzyknięty) i scan kończył się cicho z 0 profili.
+      const resp = await extractSearchPageProfiles(tab.id);
       if (resp && resp.success && Array.isArray(resp.profiles)) {
         pageProfiles = resp.profiles;
+        if (!buttonsSample && resp.buttonsSample) buttonsSample = resp.buttonsSample;
       }
     } catch (err) {
       // Content script nie zareagował — możliwe że LinkedIn redirect'ował na 404
       // dla page > max_pages. Przerwij scan.
+      stoppedReason = "content_script_unreachable";
       break;
     }
 
     if (pageProfiles.length === 0) {
       // Pusta strona — najprawdopodobniej page > max_pages dla tego search.
+      stoppedReason = "empty_page";
       break;
+    }
+
+    // #64: histogram buttonState'ów ze wszystkich obejrzanych profili —
+    // trafia do komunikatu w popup i do telemetrii.
+    profilesSeen += pageProfiles.length;
+    for (const p of pageProfiles) {
+      const st = (p && p.buttonState) || "Unknown";
+      stateCounts[st] = (stateCounts[st] || 0) + 1;
     }
 
     // #58 v1.25.0: napełniaj bazę prospektów CAŁĄ pulą (nie tylko connectable
@@ -1732,9 +1778,26 @@ async function bulkAutoFillByUrl(maxProfiles) {
       if (collected.length >= cap) break;
     }
 
-    if (collected.length >= cap) break;
+    if (collected.length >= cap) {
+      stoppedReason = "cap_reached";
+      break;
+    }
+    // #64: bezpiecznik — kolejne strony nic nie wnoszą (0 nowych connectable)
+    // → przerwij po FILL_NO_NEW_PAGES_LIMIT zamiast jechać do 100. Typowe
+    // przyczyny: LinkedIn przerollował markup przycisków (same "Unknown"),
+    // same duplikaty po dedup, albo commercial-use limit ucina wyniki.
+    if (addedThisPage === 0) {
+      noNewStreak++;
+      if (noNewStreak >= FILL_NO_NEW_PAGES_LIMIT) {
+        stoppedReason = "no_new_connectable";
+        break;
+      }
+    } else {
+      noNewStreak = 0;
+    }
     pageNum++;
   }
+  if (!stoppedReason) stoppedReason = "max_pages_reached";
   } finally {
     // Zawsze resetuj running flag, nawet przy wyjątku — inaczej UI utknęłoby
     // w stanie "Stop" bez możliwości ponownego uruchomienia.
@@ -1748,12 +1811,34 @@ async function bulkAutoFillByUrl(maxProfiles) {
     added = resp.added || collected.length;
   }
 
+  // #64: scan widział profile, ale ŻADEN nie nadawał się do kolejki —
+  // najpewniej LinkedIn zmienił markup przycisku Connect. Telemetria z
+  // histogramem + próbką przycisków pozwala naprawić selektory bez
+  // czekania na ręczny dump od użytkownika. Fire-and-forget, max 1×/scan.
+  if (profilesSeen > 0 && collected.length === 0 && !cancelled) {
+    reportScrapeFailure({
+      url: baseUrl,
+      event_type: "bulk_fill_no_connectable",
+      error_message: `0 connectable z ${profilesSeen} profili (stop: ${stoppedReason || "?"})`,
+      diagnostics: {
+        buttonStates: stateCounts,
+        profilesSeen,
+        pages: pageNum - startPage + 1,
+        stoppedReason,
+        buttonsSample,
+      },
+    });
+  }
+
   return {
     success: true,
     added,
     pagesScanned: pageNum - getPageFromUrl(baseUrl),
     finalPage: pageNum,
     cancelled,
+    profilesSeen,
+    buttonStates: stateCounts,
+    stopped: stoppedReason,
   };
 }
 

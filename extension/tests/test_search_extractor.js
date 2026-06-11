@@ -117,35 +117,8 @@ function extractSearchResultsEmber(rows) {
         }
       }
 
-      const q = (sel) => row.querySelector(sel);
-      const pendingBtn = q(
-        'button[aria-label^="W toku"], a[aria-label^="W toku"], ' +
-        'button[aria-label^="Oczekuje"], a[aria-label^="Oczekuje"], ' +
-        'button[aria-label^="Pending"], a[aria-label^="Pending"]'
-      );
-      const connectBtn = q(
-        'button[aria-label^="Zaproś"], a[aria-label^="Zaproś"], ' +
-        'button[aria-label^="Invite "], a[aria-label^="Invite "], ' +
-        'button[aria-label^="Connect"], a[aria-label^="Connect"], ' +
-        'a[href*="search-custom-invite"]'
-      );
-      const messageBtn = q(
-        'button[aria-label^="Wiadomość"], a[aria-label^="Wiadomość"], ' +
-        'button[aria-label^="Wyślij wiadomość"], a[aria-label^="Wyślij wiadomość"], ' +
-        'button[aria-label^="Napisz wiadomość"], a[aria-label^="Napisz wiadomość"], ' +
-        'button[aria-label^="Message"], a[aria-label^="Message"], ' +
-        'a[href*="/messaging/"]'
-      );
-      const followBtn = q(
-        'button[aria-label^="Obserwuj"], a[aria-label^="Obserwuj"], ' +
-        'button[aria-label^="Follow"], a[aria-label^="Follow"]'
-      );
-
-      let buttonState = "Unknown";
-      if (pendingBtn) buttonState = "Pending";
-      else if (connectBtn) buttonState = "Connect";
-      else if (messageBtn) buttonState = "Message";
-      else if (followBtn) buttonState = "Follow";
+      // #64 v1.25.5: wspólna klasyfikacja (sync z content.js).
+      const buttonState = classifySearchButtonState(row);
 
       results.push({ name: name || null, headline, location, degree, slug, buttonState });
     } catch (err) {
@@ -215,20 +188,9 @@ function extractSearchResultsCore(doc) {
       const slugMatch = href.match(/\/in\/([^/?#]+)/);
       const slug = slugMatch ? decodeURIComponent(slugMatch[1]) : null;
 
-      // Button state — structural: pendingLink po aria-label prefix.
-      const connectLink = item.querySelector('a[href*="/preload/search-custom-invite/"]');
-      const messageLink = item.querySelector('a[href*="/messaging/"]');
-      const pendingLink = item.querySelector(
-        'a[aria-label^="W toku"], a[aria-label^="Pending"]'
-      );
-      let buttonState = "Unknown";
-      if (pendingLink) buttonState = "Pending";
-      else if (connectLink) buttonState = "Connect";
-      else if (messageLink) buttonState = "Message";
-      else {
-        const txt = (item.textContent || "").toLowerCase();
-        if (txt.includes("obserwuj") || txt.includes("follow")) buttonState = "Follow";
-      }
+      // #64 v1.25.5: wspólna klasyfikacja (sync z content.js) — wcześniej
+      // SDUI rozpoznawał Connect WYŁĄCZNIE po preload/search-custom-invite.
+      const buttonState = classifySearchButtonState(item);
 
       results.push({ name, slug, headline, location, degree, buttonState });
     } catch (err) {
@@ -252,6 +214,8 @@ function classifySearchButtonState(root) {
       'a[aria-label^="W toku"], button[aria-label^="W toku"], ' +
       'a[aria-label^="Oczekuje"], button[aria-label^="Oczekuje"], ' +
       'a[aria-label^="Pending"], button[aria-label^="Pending"], ' +
+      'a[aria-label*="Anuluj zaproszenie"], button[aria-label*="Anuluj zaproszenie"], ' +
+      'a[aria-label*="Cofnij zaproszenie"], button[aria-label*="Cofnij zaproszenie"], ' +
       'a[href*="/preload/withdraw-invite/"]'
     )
   ) return "Pending";
@@ -259,13 +223,19 @@ function classifySearchButtonState(root) {
     has(
       'a[href*="search-custom-invite"], a[href*="/preload/custom-invite/"], ' +
       'a[aria-label^="Zaproś"], button[aria-label^="Zaproś"], ' +
+      'a[aria-label^="Połącz"], button[aria-label^="Połącz"], ' +
+      'a[aria-label^="Nawiąż"], button[aria-label^="Nawiąż"], ' +
       'a[aria-label^="Invite "], button[aria-label^="Invite "], ' +
       'a[aria-label^="Connect"], button[aria-label^="Connect"]'
     )
   ) return "Connect";
+  // Tekstowy fallback — match per-LINIA (sr-only spany doklejają tekst).
   const textConnect = Array.from(root.querySelectorAll("button, a")).some((b) => {
-    const t = (b.textContent || "").trim();
-    return /^(Połącz|Connect)$/i.test(t) && !/W toku|Pending|Anuluj|Withdraw|Cofnij/i.test(t);
+    const t = (b.innerText || b.textContent || "").trim();
+    if (!t || /W toku|Pending|Anuluj|Withdraw|Cofnij/i.test(t)) return false;
+    return t.split("\n").some((line) =>
+      /^(Połącz|Connect|Nawiąż kontakt)$/i.test(line.trim())
+    );
   });
   if (textConnect) return "Connect";
   if (
@@ -683,6 +653,86 @@ console.log("\n▸ search_broken_2026-05-22.html — REALNY dump SDUI (proof par
     JSON.stringify(core),
     "Real dump: wrapper==core (generic nie potrzebny)"
   );
+}
+
+// ── #64: odporność buttonState na rollout markupu przycisku Connect ──
+//
+// Repro buga z 2026-06-11: "Wypełnij do limitu" skakał po stronach i nic
+// nie kolejkował (3 komputery). Root cause: SDUI parser rozpoznawał Connect
+// WYŁĄCZNIE po a[href*="/preload/search-custom-invite/"] — gdy LinkedIn
+// wymienił markup, każdy profil dostawał "Unknown" i bulkAutoFillByUrl
+// odfiltrowywał wszystko. Klasyfikacja jest teraz wspólna dla Ember/SDUI/
+// generic (classifySearchButtonState) + tekstowy fallback per-linia.
+console.log("\n▸ #64 classifySearchButtonState — markup bez preload-href");
+{
+  const mk = (html) => {
+    const dom = new JSDOM(`<div id="card">${html}</div>`);
+    return dom.window.document.getElementById("card");
+  };
+  assertEqual(
+    classifySearchButtonState(mk("<button><span>Połącz</span></button>")),
+    "Connect", "Text-button Połącz (bez href/aria) → Connect"
+  );
+  assertEqual(
+    classifySearchButtonState(mk("<button>Connect</button>")),
+    "Connect", "Text-button Connect (EN) → Connect"
+  );
+  assertEqual(
+    classifySearchButtonState(mk("<button>Nawiąż kontakt</button>")),
+    "Connect", "Text-button Nawiąż kontakt → Connect"
+  );
+  assertEqual(
+    classifySearchButtonState(mk('<button aria-label="Połącz z Janem Kowalskim"></button>')),
+    "Connect", "aria-label Połącz z… → Connect"
+  );
+  assertEqual(
+    classifySearchButtonState(mk('<a href="/preload/custom-invite/?vanityName=x">cta</a>')),
+    "Connect", "preload/custom-invite (bez search-) → Connect"
+  );
+  assertEqual(
+    classifySearchButtonState(mk("<button>Połącz\nZaproś Jana Kowalskiego</button>")),
+    "Connect", "Multi-line button text (sr-only span) → Connect"
+  );
+  assertEqual(
+    classifySearchButtonState(mk('<button aria-label="Anuluj zaproszenie wysłane do Jana">W toku</button>')),
+    "Pending", "aria Anuluj zaproszenie → Pending (nie Connect)"
+  );
+  assertEqual(
+    classifySearchButtonState(mk('<button aria-label="W toku, Jan">W toku</button><button>Połącz</button>')),
+    "Pending", "Pending wygrywa z text-Connect w tej samej karcie"
+  );
+  assertEqual(
+    classifySearchButtonState(mk("<button>Obserwuj</button>")),
+    "Follow", "Text-button Obserwuj → Follow"
+  );
+  assertEqual(
+    classifySearchButtonState(mk("<div>zwykly tekst bez przyciskow</div>")),
+    "Unknown", "Karta bez przycisków → Unknown"
+  );
+}
+
+console.log("\n▸ #64 SDUI karta z <button>Połącz</button> przez cały pipeline");
+{
+  const html = `<html><body><main><div role="list">
+    <div role="listitem">
+      <a href="/in/jan-testowy-123/"><p>Jan Testowy • 2</p></a>
+      <p>Specjalista ds. sprzedazy</p>
+      <p>Gdansk</p>
+      <button><span>Połącz</span></button>
+    </div>
+    <div role="listitem">
+      <a href="/in/anna-pending-456/"><p>Anna Pending • 2</p></a>
+      <p>Headline Anny</p>
+      <button aria-label="W toku, zaproszenie do Anna Pending">W toku</button>
+    </div>
+  </div></main></body></html>`;
+  const dom = new JSDOM(html, { url: "https://www.linkedin.com/search/results/people/?keywords=x" });
+  const profiles = extractSearchResults(dom.window.document);
+  assertEqual(profiles.length, 2, "#64 syntetyczna SDUI: 2 profile");
+  assertEqual(profiles[0].buttonState, "Connect", "#64 text-button karta → Connect");
+  assertEqual(profiles[0].slug, "jan-testowy-123", "#64 slug poprawny");
+  assertEqual(profiles[0].name, "Jan Testowy", "#64 name poprawny");
+  assertEqual(profiles[1].buttonState, "Pending", "#64 karta W toku → Pending");
 }
 
 // ── Summary ───────────────────────────────────────────────────────

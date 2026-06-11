@@ -1943,6 +1943,30 @@
 
   // ── Auto-fill kolejki przez paginację LinkedIn'a (#22 wcielona w 1.4.1) ──
 
+  // #64 v1.25.5: "0 dodanych" musi mówić DLACZEGO (reguła: microcopy
+  // konkretnie). Histogram buttonState'ów z bulk scanu → komunikat PL.
+  function describeEmptyFillScan(resp) {
+    const seen = resp?.profilesSeen || 0;
+    // pagesScanned liczy NAWIGACJE (0 gdy scan skończył na bieżącej stronie),
+    // a user widział co najmniej jedną stronę — stąd max(…, 1).
+    const pages = Math.max(resp?.pagesScanned || 0, seen > 0 ? 1 : 0);
+    const states = resp?.buttonStates || {};
+    let msg = `Brak nowych profili do dodania (zeskanowano ${pages} stron, widziano ${seen} profili).`;
+    const parts = [];
+    if (states.Pending) parts.push(`${states.Pending} z wysłanym już zaproszeniem`);
+    if (states.Message) parts.push(`${states.Message} już w Twoich kontaktach`);
+    if (states.Follow) parts.push(`${states.Follow} tylko do obserwowania`);
+    if (states.Connect) parts.push(`${states.Connect} już w kolejce/bazie`);
+    if (states.Unknown) parts.push(`${states.Unknown} bez rozpoznanego przycisku Połącz`);
+    if (parts.length) msg += ` W wynikach: ${parts.join(", ")}.`;
+    if (seen > 0 && (states.Unknown || 0) > seen / 2) {
+      msg += " LinkedIn mógł zmienić wygląd wyników — diagnostyka została wysłana automatycznie.";
+    } else if (seen === 0) {
+      msg = "Nie udało się odczytać żadnych profili z wyników wyszukiwania. Odśwież stronę LinkedIn (F5) i spróbuj ponownie.";
+    }
+    return msg;
+  }
+
   // #44 v1.11.5 — flag w popup'ie pozwala drugiemu klikowi w btnBulkFill
   // wysłać bulkAutoFillCancel zamiast startować kolejny scan.
   let _autoFillInProgress = false;
@@ -2002,7 +2026,7 @@
         }
       } else if (resp?.success) {
         if (bulkError) {
-          bulkError.textContent = `Brak nowych profili Connect-able do dodania (zeskanowano ${resp.pagesScanned || 0} stron).`;
+          bulkError.textContent = describeEmptyFillScan(resp);
           bulkError.classList.remove("hidden");
         }
       } else {
