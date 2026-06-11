@@ -27,7 +27,8 @@ function matchAndFlipAccepts(queue, connections, nowMs) {
     if (!item || !item.slug) return item;
     if (item.status !== "sent") return item;
     if (item.acceptedAt) return item;
-    if (!connSlugs.has(item.slug)) return item;
+    // #67: defensywny lowercase (sync z background.js).
+    if (!connSlugs.has(String(item.slug).toLowerCase())) return item;
     accepted += 1;
     matchedSlugs.push(item.slug);
     return { ...item, acceptedAt: nowMs, lastAcceptCheckAt: nowMs };
@@ -281,6 +282,54 @@ console.log("\n# Section D: integration scenario");
   assertEqual(r.queue[3].acceptedAt, NOW, "D1: dave new acceptedAt");
   assertEqual(r.queue[4].acceptedAt, null, "D1: eve NOT accepted (nie ma w connections)");
   assertEqual(r.queue[5].acceptedAt, null, "D1: frank skipped (status=queued)");
+}
+
+// ── #67: re-enable po update + mixed-case match ─────────────────────
+
+// Port z background.js (sync manualny — debt #10).
+function shouldReenableAcceptTracker(ac, failLimit) {
+  if (!ac || ac.enabled) return false;
+  if (ac.disabledBy === "user") return false;
+  if (ac.disabledBy === "auto") return true;
+  return (ac.failCount || 0) >= failLimit;
+}
+
+console.log("\n[E] #67 shouldReenableAcceptTracker — auto-disable wstaje po update");
+{
+  const LIMIT = 3;
+  assertEqual(
+    shouldReenableAcceptTracker({ enabled: false, disabledBy: "auto", failCount: 3 }, LIMIT),
+    true, "E1: auto-disabled → re-enable"
+  );
+  assertEqual(
+    shouldReenableAcceptTracker({ enabled: false, disabledBy: "user", failCount: 5 }, LIMIT),
+    false, "E1: user-disabled → zostaje wyłączony (nawet z failCount)"
+  );
+  assertEqual(
+    shouldReenableAcceptTracker({ enabled: false, disabledBy: null, failCount: 3 }, LIMIT),
+    true, "E1: BC (sprzed #67) failCount>=limit → traktuj jak auto"
+  );
+  assertEqual(
+    shouldReenableAcceptTracker({ enabled: false, disabledBy: null, failCount: 1 }, LIMIT),
+    false, "E1: BC failCount<limit → user wyłączył, zostaje"
+  );
+  assertEqual(
+    shouldReenableAcceptTracker({ enabled: true, disabledBy: null, failCount: 0 }, LIMIT),
+    false, "E1: włączony → nic do roboty"
+  );
+  assertEqual(shouldReenableAcceptTracker(null, LIMIT), false, "E1: null state → false");
+}
+
+console.log("\n[E] #67 matchAndFlipAccepts — mixed-case slug w queue");
+{
+  const NOW = 9999;
+  const r = matchAndFlipAccepts(
+    [{ slug: "Jan-KOWALSKI-123", status: "sent", acceptedAt: null }],
+    [{ slug: "jan-kowalski-123" }],
+    NOW
+  );
+  assertEqual(r.accepted, 1, "E2: mixed-case slug w queue matchuje lowercase connection");
+  assertEqual(r.queue[0].acceptedAt, NOW, "E2: acceptedAt ustawiony");
 }
 
 // ── Summary ─────────────────────────────────────────────────────────

@@ -249,6 +249,10 @@ const BULK_DEFAULTS = {
     lastError: null,            // string — ostatni komunikat błędu
     lastErrorAt: null,          // ms — kiedy ostatni error
     failCount: 0,               // licznik kolejnych błędów; >=3 → auto-disable
+    // #67: kto wyłączył — "user" (ręcznie w dashboardzie) | "auto" (3 faile).
+    // Auto-disable jest cofany przy UPDATE extensionu (fix parsera = tracker
+    // ma wstać sam); ręczny disable szanujemy na zawsze.
+    disabledBy: null,
   },
 };
 
@@ -586,6 +590,19 @@ const ACCEPT_CHECK_RETRY_DELAY_MS = 30 * 60 * 1000; // 30min retry
 const ACCEPT_CHECK_FAIL_LIMIT = 3;
 
 /**
+ * Pure (#67): czy auto-disabled tracker ma wstać przy update extensionu?
+ * "auto" → tak (nowa wersja zwykle zawiera fix parsera). "user" → nie.
+ * BC: stany sprzed #67 bez disabledBy — failCount>=limit traktujemy jak auto.
+ * Portowane do test_accept_check.js.
+ */
+function shouldReenableAcceptTracker(ac, failLimit) {
+  if (!ac || ac.enabled) return false;
+  if (ac.disabledBy === "user") return false;
+  if (ac.disabledBy === "auto") return true;
+  return (ac.failCount || 0) >= failLimit;
+}
+
+/**
  * Pure logic: match listy connections (z .slug) przeciwko queue items.
  * Flip acceptedAt na items pasujacych slug && status==="sent" && !acceptedAt.
  * Portowane do test_accept_check.js (sync z tym kodem manualnie - debt #10).
@@ -608,7 +625,9 @@ function matchAndFlipAccepts(queue, connections, nowMs) {
     if (!item || !item.slug) return item;
     if (item.status !== "sent") return item;
     if (item.acceptedAt) return item;
-    if (!connSlugs.has(item.slug)) return item;
+    // #67: defensywny lowercase — connSlugs jest znormalizowany, ale legacy
+    // queue item sprzed migracji mógłby mieć mixed-case slug i nie matchować.
+    if (!connSlugs.has(String(item.slug).toLowerCase())) return item;
     accepted += 1;
     matchedSlugs.push(item.slug);
     return { ...item, acceptedAt: nowMs, lastAcceptCheckAt: nowMs };
@@ -663,6 +682,8 @@ async function fetchRecentConnections(limit) {
   try {
     tab = await chrome.tabs.create({ url: CONNECTIONS_TAB_URL, active: false });
     let resp = null, lastErr = null;
+    let injectedFallback = false;
+    let attempts = 0;
     const start = Date.now();
     while (Date.now() - start < ACCEPT_CHECK_TAB_TIMEOUT_MS) {
       try {
@@ -673,6 +694,19 @@ async function fetchRecentConnections(limit) {
         break;
       } catch (err) {
         lastErr = err;
+        attempts++;
+        // #67: injection-fallback (#57-pattern, spójnie z probeProfileTab) —
+        // soft-redirect poza manifest matches zostawiał tab bez scriptu
+        // i tick padał głuchym timeoutem po 30s.
+        if (attempts >= 3 && !injectedFallback) {
+          injectedFallback = true;
+          try {
+            await chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              files: ["content.js"],
+            });
+          } catch (_) { /* retry-loop doleci do timeoutu */ }
+        }
         await new Promise((r) => setTimeout(r, 600));
       }
     }
@@ -730,6 +764,7 @@ async function acceptCheckTick(opts) {
     };
     if (failCount >= ACCEPT_CHECK_FAIL_LIMIT) {
       patch.enabled = false;
+      patch.disabledBy = "auto"; // #67: odróżnij od ręcznego — update re-enable'uje
     }
     await setAcceptCheckState(patch);
     return { success: false, error: fetched.error, failCount, disabled: patch.enabled === false };
@@ -767,9 +802,6 @@ async function acceptCheckTick(opts) {
     nextScanAt,
   };
 }
-
-/**
- * Pre-flight scrape
 
 /**
  * Pre-flight scrape pełnego profilu (reuse `scrapeProfile` z #1).
@@ -2920,9 +2952,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case "acceptCheckRunNow":
           return await acceptCheckTick({ force: true });
         case "acceptCheckEnable":
-          return { success: true, state: await setAcceptCheckState({ enabled: true, failCount: 0, lastError: null }) };
+          return { success: true, state: await setAcceptCheckState({ enabled: true, failCount: 0, lastError: null, disabledBy: null }) };
         case "acceptCheckDisable":
-          return { success: true, state: await setAcceptCheckState({ enabled: false }) };
+          // #67: user wyłączył ręcznie — update extensionu tego NIE cofa.
+          return { success: true, state: await setAcceptCheckState({ enabled: false, disabledBy: "user" }) };
 
         case "bulkScrapeProfileForQueue":
           return await bulkScrapeProfileForQueue(message.slug);
@@ -3062,6 +3095,19 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   // v1.8.0: migracja encoded slug-ów (z wcześniejszych 1.7.x) na decoded
   // lowercase form. Idempotent — items już w decoded form pozostają bez zmian.
   await migrateSlugEncoding();
+  // #67: accept-tracker wyłączony AUTOMATYCZNIE (3 faile, np. rollout DOM
+  // zepsuł parser) wstaje przy update — nowa wersja zwykle ZAWIERA fix
+  // parsera, a bez tego tracker zostawał martwy na zawsze (scenariusz #61:
+  // SDUI rollout → 3 faile → cichy disable u wszystkich → fix wydany →
+  // tracker dalej wyłączony). Ręczny disable (disabledBy:"user") szanujemy.
+  // BC: stany sprzed #67 nie mają disabledBy — failCount>=limit ⇒ auto.
+  try {
+    const ac = await getAcceptCheckState();
+    if (shouldReenableAcceptTracker(ac, ACCEPT_CHECK_FAIL_LIMIT)) {
+      await setAcceptCheckState({ enabled: true, failCount: 0, lastError: null, disabledBy: null, nextScanAt: null });
+      console.log("[LinkedIn MSG] accept-tracker re-enabled po update (był auto-disabled)");
+    }
+  } catch (_) { /* defensive — brak stanu = nic do roboty */ }
   // #25: alarm reset niezależnie od reason — install/update/chrome_update.
   await chrome.alarms.create(FOLLOWUP_ALARM_NAME, { periodInMinutes: 360 });
   // #45 v1.14.0: alarm auto-backupu — sprawdza co 12h czy minął interwał.
