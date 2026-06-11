@@ -1,445 +1,273 @@
-# LinkedIn MSG — instrukcja dla zespołu OVB (v1.14.2)
+# Outreach — instrukcja dla zespołu OVB (v2.0)
 
-Extension Chrome dla **bulk wysyłki zaproszeń** + **AI generator wiadomości** dla nowo zaakceptowanych kontaktów + **trwała baza profili z auto-backupem**. Zastępuje Octopus Starter.
+Rozszerzenie Chrome do **budowania sieci na LinkedIn**: masowe zaproszenia + **wiadomości pisane przez AI** dla osób, które przyjęły zaproszenie + **trwała baza osób z automatyczną kopią zapasową**. Zastępuje Octopus Starter.
 
-> **Nowości w 1.14.x:** trwała baza wszystkich profili (przeżywa nawet utratę rozszerzenia), auto-backup do pliku co kilka dni, eksport/import CSV+JSON, import Twoich kontaktów 1st z LinkedIn, automatyczny dark/light mode wg ustawień przeglądarki, pole "API Key" przemianowane na "Hasło dostępu".
+> **Co nowego w 2.0:**
+> - **Nowy wygląd** — spójny z naszymi stronami (ovb.szmidtke.pl, pilot.szmidtke.pl): jasne kremowe tło, granat i złoto. Prawdziwe ikony zamiast emotikonów.
+> - **Ludzki język** — koniec z „bulk connect" i „follow-upami": jest „Budowanie sieci", „Przypomnienia", „Lista zaproszeń", „Dodaj automatycznie".
+> - **Licznik na żywo** — podczas automatycznego dodawania osób widzisz na bieżąco, ile już doszło (wcześniej trzeba było kliknąć Stop, żeby cokolwiek zobaczyć).
+> - **Mądrzejsza kopia zapasowa** — codzienna (było co 3 dni), zawiera też Twoje ustawienia (hasło dostępu, opis oferty), robi się sama przed wczytaniem pliku i przed masowym usuwaniem.
+> - **Czytelne komunikaty** — gdy automatyczne dodawanie nic nie znajdzie, rozszerzenie mówi DLACZEGO (np. „32 osoby bez przycisku Połącz — LinkedIn mógł zmienić wygląd").
+> - **Auto-naprawa śledzenia akceptacji** — jeśli śledzenie wyłączyło się po awarii, aktualizacja rozszerzenia włącza je z powrotem.
 
 ---
 
 ## 1. Instalacja (jednorazowo, ~2 min)
 
-1. **Rozpakuj** `extension 1.6.0.zip` w dowolnym miejscu na dysku (np. `C:\linkedin-msg-extension-1.6.0\`).
+1. **Rozpakuj** `Outreach-2.0.0.zip` w dowolnym miejscu na dysku (np. `C:\Users\<Ty>\outreach\`).
    - Folder MUSI zostać na dysku — nie usuwaj go po instalacji.
 2. Otwórz Chrome → wpisz w pasek `chrome://extensions/` → Enter.
 3. W prawym górnym rogu: **Tryb dewelopera** ON (przełącznik).
-4. Klik **Załaduj rozpakowane** (Load unpacked) → wybierz rozpakowany folder `linkedin-msg-extension-1.6.0`.
-5. Pojawi się "LinkedIn MSG" na liście — sprawdź wersję `1.6.0` przy nazwie.
-6. (Opcjonalnie) Przypnij ikonę do paska Chrome — kliknij ikonę puzzla 🧩 → przy "LinkedIn MSG" klik pinezki 📌.
+4. Klik **Załaduj rozpakowane** (Load unpacked) → wybierz rozpakowany folder.
+5. Pojawi się "Outreach" na liście — sprawdź wersję `2.0.0` przy nazwie.
+6. (Opcjonalnie) Przypnij ikonę do paska Chrome — kliknij ikonę puzzla → przy "Outreach" klik pinezki.
 
-> **Aktualizacja do nowej wersji** (np. 1.6.0 → 1.8.0)
+> **Aktualizacja do nowej wersji**
 >
-> **⚠️⚠️⚠️ ŻELAZNA REGUŁA: ZAWSZE Reload, NIGDY Usuń + Dodaj.**
+> **ŻELAZNA REGUŁA: ZAWSZE Reload, NIGDY Usuń + Dodaj.**
 >
-> Klik **"Usuń"** na ekranie `chrome://extensions/` **NIEODWRACALNIE KASUJE wszystkie Twoje dane** — kolejkę profili, drafty wiadomości, zaplanowane follow-upy, historię. Stabilny `key` w manifest (od v1.6.0) zachowuje **ID extension'a** po Remove+Add (ikona, nazwa wrócą), ale Chrome i tak wipe'uje `chrome.storage.local` przy każdym Usuń — niezależnie od `key`, niezależnie od wersji. Sprawdzone empirycznie 2026-05-10 i 2026-05-11.
+> Klik **"Usuń"** na ekranie `chrome://extensions/` **NIEODWRACALNIE KASUJE wszystkie Twoje dane** — listę zaproszeń, wiadomości, zaplanowane przypomnienia, historię. Sprawdzone wielokrotnie — żadna sztuczka tego nie obchodzi.
 >
 > **Procedura Reload (JEDYNA POPRAWNA):**
-> 1. Rozpakuj nowy zip do **TEGO SAMEGO folderu** co poprzedni (nadpisuje pliki). Np. masz `C:\linkedin-msg-extension\` z 1.6.0 → wypakuj 1.12.0 do tego samego folderu, kliknij "Tak, nadpisz" przy konflikcie.
-> 2. W `chrome://extensions/` przy LinkedIn MSG klik **Reload** (ikona ↻).
-> 3. Sprawdź nową wersję przy nazwie. Gotowe. Dane (kolejka, drafty, follow-upy) zachowane w 100%.
+> 1. Rozpakuj nowy zip do **TEGO SAMEGO folderu** co poprzedni (nadpisz pliki przy konflikcie). Jeśli zespół korzysta ze wspólnego Dysku Google — folder na Dysku aktualizuje się sam.
+> 2. W `chrome://extensions/` przy Outreach klik **Reload** (ikona okrągłej strzałki).
+> 3. Sprawdź nową wersję przy nazwie. Gotowe. Dane zachowane w 100%.
 >
-> **Gdyby Reload coś popsuł (rzadkie):** zanim klikniesz Usuń, **najpierw zrób backup** (patrz niżej). Bez backupu Remove = total wipe bez recovery.
+> **Gdyby Reload coś popsuł (rzadkie):** zanim klikniesz Usuń, **najpierw zapisz kopię** (patrz niżej). Bez kopii Usuń = wszystko przepada.
 >
-> **🟢 NAJPROSTSZY backup (od 1.14.0):** w rozszerzeniu klik 📊 (dashboard) → sekcja "🗄️ Baza profili" → **"Eksport JSON (pełny backup)"** — pobierze plik z całą bazą + kolejką. Restore: ta sama sekcja → **"Import pliku"** → wybierz plik (zaznacz "przywróć też kolejkę zaproszeń" jeśli chcesz odzyskać też kolejkę). Plus rozszerzenie **samo robi backup co 3 dni** do `Pobrane/linkedin-msg-backup/backup-YYYY-MM-DD.json` (interwał ustawisz w ustawieniach, 0 = wyłącz). Banner na górze sekcji pokazuje kiedy był ostatni backup — jak zrobi się czerwony, kliknij "⬇ Pobierz backup teraz".
+> **NAJPROSTSZA kopia zapasowa:** w rozszerzeniu kliknij ikonę pulpitu (cztery prostokąty, w nagłówku) → sekcja **"Baza osób"** → **"Zapisz pełną kopię (JSON)"** — pobierze plik z całą bazą, listą zaproszeń i ustawieniami. Przywracanie: ta sama sekcja → **"Wczytaj kopię / plik"** → wybierz plik (zaznacz „przywróć też listę zaproszeń", jeśli chcesz odzyskać i ją). Dodatkowo rozszerzenie **samo zapisuje kopię raz dziennie** do `Pobrane/linkedin-msg-backup/backup-RRRR-MM-DD.json`. Pasek na górze sekcji pokazuje, kiedy była ostatnia — jak zrobi się czerwony, kliknij „Zapisz kopię teraz".
 >
-> **Gdzie są fizycznie dane:** `C:\Users\<user>\AppData\Local\Google\Chrome\User Data\Default\Local Extension Settings\<EXTENSION_ID>\` — folder LevelDB (binary). Klik "Usuń" w Chrome czyści ten folder.
->
-> **Backup ręczny przez DevTools (awaryjny, gdy nie masz jeszcze 1.14.0):** prawym myszą na ikonie extension'u → Inspect popup → DevTools Console → wklej:
-> ```js
-> chrome.storage.local.get(null, d => copy(JSON.stringify(d)))
-> ```
-> JSON jest w schowku — wklej do pliku `backup-YYYY-MM-DD.json` i odłóż na bok. Restore: `chrome.storage.local.set(JSON.parse(<paste JSON w cudzysłowach>))` → Enter → reload popup'u.
->
-> **⚠️ Opera / Edge / „znika po zamknięciu przeglądarki":** jeśli rozszerzenie kasuje się samo przy każdym zamknięciu przeglądarki — to NIE jest bug rozszerzenia, tylko Twoje środowisko. Sprawdź: (1) ustawienie „Wyczyść dane przy zamknięciu" w przeglądarce → wyłącz; (2) narzędzia czyszczące (CCleaner itp.) → wyłącz czyszczenie przeglądarek; (3) antywirus → dodaj folder rozszerzenia do wyjątków. Trzymaj folder Load Unpacked w miejscu którego nic nie rusza (np. `C:\Users\<user>\linkedin-ext\`, nie na dyskach z czyszczonymi/serwerowymi danymi). Jeśli da się — **używaj Chrome** zamiast Opery/Edge. Niezależnie: auto-backup z 1.14.0 jest siatką bezpieczeństwa.
+> **Opera / Edge / „znika po zamknięciu przeglądarki":** jeśli rozszerzenie kasuje się samo przy każdym zamknięciu przeglądarki — to NIE jest wina rozszerzenia, tylko Twojego komputera. Sprawdź: (1) ustawienie „Wyczyść dane przy zamknięciu" w przeglądarce → wyłącz; (2) narzędzia czyszczące (CCleaner itp.) → wyłącz czyszczenie przeglądarek; (3) antywirus → dodaj folder rozszerzenia do wyjątków. Najlepiej: **używaj Chrome**, trzymaj folder w bezpiecznym miejscu i miej włączoną automatyczną kopię.
 
 ---
 
 ## 2. Pierwsze uruchomienie — ustawienia (jednorazowo, ~1 min)
 
-1. Klik ikonę LinkedIn MSG → klik **kółko ustawień** (top-right).
+1. Klik ikonę Outreach → klik **kółko ustawień** (prawy górny róg).
 2. Wpisz:
-   - **URL backendu:** `https://linkedin-api.szmidtke.pl`
-   - **Hasło dostępu:** `DreamComeTrue!` (lub cokolwiek Marcin powie — to wspólne hasło zespołu). **To nie jest klucz API Anthropic** — ten siedzi na serwerze. To tylko hasło, żeby backend wiedział że to ktoś z zespołu.
-   - **Kontekst nadawcy:** krótki opis Twojej osoby + co robisz (np. *"Jan Kowalski, doradca finansowy w OVB Allfinanz Polska. Pomagam w inwestycjach długoterminowych i ubezpieczeniach na życie."*). Generator dorzuca to do każdej wiadomości.
-   - **Auto-backup bazy co (dni):** zostaw `3` (0 = wyłącz). Co tyle dni rozszerzenie zapisze plik backupu do `Pobrane/linkedin-msg-backup/`.
+   - **Adres serwera:** `https://linkedin-api.szmidtke.pl` (nie zmieniaj).
+   - **Hasło dostępu:** `DreamComeTrue!` (lub cokolwiek Marcin powie — to wspólne hasło zespołu, żeby serwer wiedział, że to ktoś z OVB).
+   - **O Tobie:** krótki opis — kim jesteś i co robisz (np. *"Jan Kowalski, doradca finansowy w OVB. Pomagam w inwestycjach długoterminowych i ubezpieczeniach na życie."*). AI używa tego w każdej wiadomości.
+   - **Kopia zapasowa co (dni):** zostaw `1` (0 = wyłącz).
 3. Klik **Zapisz**.
+4. **Ważne:** kliknij też **„Personalizacja stylu AI"** na dole ustawień i wypełnij pole **„Co oferujesz odbiorcom"** — bez tego AI nie wie, co proponujesz, i wiadomości wychodzą ogólnikowe.
 
-> **Bez hasła dostępu extension nie wygeneruje wiadomości.** Bulk Connect (zaproszenia) i baza profili działają nawet bez hasła, ale generator AI wymaga.
+> **Bez hasła dostępu rozszerzenie nie wygeneruje wiadomości.** Zapraszanie i baza osób działają bez hasła, ale AI wymaga.
 
 ---
 
-## 3. Codzienny flow — bulk Connect + follow-up wiadomości
+## 3. Codzienny flow — zaproszenia + wiadomości + przypomnienia
 
-### Krok A — Wybór i kolejka (~1 min)
+### Krok A — Znajdź osoby i dodaj do listy (~1 min)
 
-1. Otwórz LinkedIn → **Search** → wpisz target (np. *"key account manager"*) → filtruj po stopniu znajomości (np. **2nd connections**).
-2. Klik ikonę LinkedIn MSG.
-3. W popup'ie pojawi się sekcja **Bulk Connect** z listą 10 widocznych profili (checkboxy):
-   - Domyślnie zaznaczone: profile dostępne do dodania (badge "Połącz" zielony).
-   - Wyszarzone: już wysłane zaproszenia (badge "Wysłano") lub już połączeni (badge "Wiadomość").
-4. **Dwa sposoby dodania do kolejki:**
-   - **Pojedyncza strona:** klik **"Dodaj zaznaczone"** — pobiera 10 profili z aktualnej strony.
-   - **Wiele stron (zalecane):** klik **"Wypełnij do limitu"** — extension automatycznie przełącza między stronami `?page=1, 2, 3...` aż zapełni kolejkę do limitu dziennego (domyślnie 25). Filtry LinkedIn'a są zachowane.
+1. Otwórz LinkedIn → **wyszukiwarka osób** → wpisz, kogo szukasz (np. *"key account manager"*) → przefiltruj (np. **kontakty 2. stopnia**).
+2. Klik ikonę Outreach → zakładka **„Budowanie sieci"** otworzy się sama.
+3. Zobaczysz listę osób z tej strony wyników (z zaznaczonymi tymi, które da się zaprosić).
+4. **Dwa sposoby dodania do listy zaproszeń:**
+   - **Z tej jednej strony:** klik **„Dodaj zaznaczone"**.
+   - **Automatycznie z wielu stron (zalecane):** klik **„Dodaj automatycznie"** — rozszerzenie samo przechodzi po kolejnych stronach wyników i dodaje nowe osoby. **Licznik na przycisku pokazuje postęp na żywo** („Stop (dodano 37 · strona 4)"). Możesz w każdej chwili kliknąć ten przycisk ponownie, żeby zatrzymać.
 
-### Krok B — Ustawienia bulk (~1 min, jednorazowo)
+### Krok B — Ustawienia (~1 min, jednorazowo)
 
-Rozwiń **"Ustawienia bulk connect"** w popup'ie:
+Rozwiń **„Ustawienia budowania sieci"**:
 
-| Pole | Default | Co znaczy |
+| Pole | Domyślnie | Co znaczy |
 |---|---|---|
-| Min delay (s) | 45 | Minimalne opóźnienie między dodaniami |
-| Max delay (s) | 120 | Maksymalne opóźnienie |
-| Daily cap | 25 | Limit zaproszeń na dzień |
-| Godz. start | 9 | Pierwsza godzina aktywności |
-| Godz. end | 18 | Ostatnia godzina aktywności |
+| Przerwa min. (sek.) | 45 | Najkrótsza przerwa między zaproszeniami |
+| Przerwa maks. (sek.) | 120 | Najdłuższa przerwa |
+| Limit zaproszeń na dzień | 25 | Ile zaproszeń dziennie maksymalnie |
+| Ile osób dodać na raz | 50 | Ile osób dorzuca „Dodaj automatycznie" |
+| Od godziny / Do godziny | 9 / 18 | Okno, w którym rozszerzenie pracuje |
 
-**Konserwatywne defaults nie są przypadkowe** — LinkedIn ma anti-bot detection. Nie zmniejszaj poniżej 30s delay i 30/dzień. Klik **Zapisz**.
+**Ostrożne ustawienia nie są przypadkiem** — LinkedIn wykrywa boty. Nie schodź poniżej 30 sekund przerwy i nie podnoś limitu ponad 30-40/dzień. Klik **Zapisz**.
 
-### Krok C — Start (~kilka godzin, w tle)
+### Krok C — Start (kilka godzin, w tle)
 
-1. Klik **"Start"** → status zmieni się na **● Aktywne** (pulsująca kropka).
-2. Pod statusem widzisz countdown: *"Następne dodanie za 1m 23s · ostatnia akcja 5s temu"*.
-3. **Możesz zamknąć popup** — extension chodzi w tle, nawet gdy popup zamknięty. Otwórz ponownie kiedy chcesz, żeby zobaczyć postęp.
-4. **Karta LinkedIn'a musi pozostać otwarta** w jakimś tab'ie. Plugin sam przełącza między stronami search results gdy klika "Połącz" na profilach z różnych stron.
-5. **NOWE w 1.10.0 — auto-recovery gdy zmienisz stronę:** jeśli przypadkiem klikniesz na czyjś profil podczas bulk run, plugin SAM wraca na search results (auto-navigate). Plus: jeśli auto-navigate nie zadziała (np. LinkedIn captcha), na dole popup'u pojawi się żółty pasek **"📍 Powinien być na: <link>"** z klikalnym URL'em do ręcznego powrotu. Pasek znika gdy znajdziesz się we właściwym miejscu. Jeśli auto-navigate zawiedzie 3x z rzędu — bulk pauzuje się automatycznie, otwórz search ręcznie i klik Start.
-6. **NOWE w 1.10.0 — anti-detection jitter:** plugin czeka 5-15s losowo między przeskakiwaniami stron w "Wypełnij do limitu" (zamiast stałego 0.5s). LinkedIn trudniej wykryć automation pattern.
-7. Po wykonaniu wszystkich w kolejce: status zmienia się na **Bezczynne**, queue oznaczony "wysłane" zielonymi badge'ami.
+1. Klik **„Start"** → status zmieni się na **Aktywne**.
+2. Pod statusem widzisz odliczanie: *„Następne dodanie za 1m 23s"*.
+3. **Możesz zamknąć okienko** — rozszerzenie pracuje w tle. Zaglądaj, kiedy chcesz.
+4. Rozszerzenie otwiera profile po cichu w tle i klika „Połącz" — nie musisz niczego pilnować.
+5. Po wysłaniu wszystkiego status zmienia się na **Bezczynne**, a osoby na liście dostają znacznik „wysłane".
 
-### Krok D — Sprawdzanie akceptacji (codziennie, ~30s)
+### Krok D — Kto przyjął zaproszenie (automatycznie)
 
-**Od v1.23.0 sprawdzanie odbywa się automatycznie w tle — nie musisz nic klikać.** Co 24h (godziny 9-18, z losowym jitter'em) plugin otwiera w tle listę Twoich kontaktów na LinkedIn (`/mynetwork/invite-connect/connections/`), skanuje pierwsze ~100 wpisów i automatycznie zaznacza zaakceptowanych w funnel'u i tabeli kontaktów.
+**Sprawdzanie odbywa się samo, raz dziennie** (między 9 a 18). Rozszerzenie po cichu zagląda na Twoją listę kontaktów LinkedIn i odhacza osoby, które przyjęły zaproszenie.
 
-**Status auto-trackera widzisz w dashboardzie** (sekcja **"🔍 Auto-tracking akceptów"** tuż pod Statystykami) — pokazuje kiedy był ostatni scan, ile osób zostało oznaczonych, kiedy będzie następny scan. Tam też możesz:
-- **"Sprawdź teraz"** — wymusza scan natychmiast (zamiast czekać na następny zaplanowany).
-- **"Wyłącz"/"Włącz"** — toggle auto-trackera (np. gdy chcesz mieć ciszę w tle podczas demo).
+**Stan widzisz na Pulpicie** (ikona czterech prostokątów w nagłówku okienka) — sekcja **„Kto przyjął zaproszenie"**: kiedy ostatnio sprawdzało, kiedy sprawdzi następnym razem. Tam też:
+- **„Sprawdź teraz"** — wymusza sprawdzenie od ręki.
+- **„Wyłącz"/„Włącz"** — wyłącznik (np. na czas prezentacji u klienta).
 
-**Manual fallback (stara metoda, dla stragglerów):** w popup'ie w sekcji "Wiadomości po-Connect" jest przycisk **"Sprawdź akceptacje"** który otwiera profil każdego oczekującego po kolei (~3-5s na profil). Używaj gdy auto-tracker nie złapał kogoś (akcepty starsze niż tydzień zsuwają się w głąb listy connections).
+**Ręczna metoda (dla pojedynczych osób):** w okienku, zakładka „Przypomnienia" → sekcja „Po przyjęciu zaproszenia" → **„Sprawdź, kto przyjął"** — otwiera po kolei profile oczekujących (ok. 3-5 s na osobę). Używaj, gdy automat kogoś przegapił (bardzo stare akceptacje).
 
-> **Bezpieczeństwo:** auto-tracker chodzi w hidden tab (nie wskakuje Ci kart), w godzinach pracy, mutex z bulk-connect (nie kolidują). Po 3 kolejnych błędach automatycznie się wyłącza i wisi error w dashboardzie. Per-profil manual sprawdzanie ma rate-limit 4h.
+> **Bezpieczeństwo:** automat działa w ukrytej karcie, w godzinach pracy i nigdy równolegle z wysyłką zaproszeń. Po 3 błędach z rzędu wyłącza się sam (a po aktualizacji rozszerzenia włącza z powrotem — to zwykle znak, że LinkedIn coś zmienił i wyszła poprawka).
 
-### Krok E — Generowanie wiadomości (~1 min na 5 osób)
+### Krok E — Wiadomość dla tych, co przyjęli (~1 min na 5 osób)
 
-1. W sekcji "Wiadomości po-Connect" klik **"Generuj wszystkie (X)"** lub **"Generuj"** per osoba.
-2. Plugin scrape'uje pełny profil każdej osoby (about, doświadczenie, umiejętności) → wysyła do AI → generuje spersonalizowaną wiadomość.
-3. Drafty pojawiają się w textarea pod każdą osobą.
+1. Zakładka „Przypomnienia" → sekcja **„Po przyjęciu zaproszenia"** → klik **„Generuj wszystkie"** (albo „Generuj" przy konkretnej osobie).
+2. AI czyta profil osoby (opis, doświadczenie) i pisze spersonalizowaną wiadomość.
+3. Propozycje pojawiają się w polach tekstowych pod osobami.
 
-> **Pierwsze generowanie zajmuje ~10-15s/osoba** (open profile tab → scrape → API call). Dla 10 osób to ~2-3 minuty. Możesz w tym czasie robić coś innego, plugin chodzi w tle.
+> **Pierwsze generowanie trwa ~10-15 s na osobę.** Dla 10 osób ~2-3 minuty — możesz w tym czasie robić coś innego.
 
-### Krok F — Review + wysłanie (~30s na osobę)
+### Krok F — Przeczytaj i wyślij (~30 s na osobę)
 
-**Anti-halucynacja jest must-have** — AI czasami zmyśla fakty z profilu. Każdą wiadomość ZATWIERDŹ przed wysłaniem:
+**Zawsze czytaj przed wysłaniem** — AI czasem coś zmyśli. Dlatego wiadomości NIE wychodzą same:
 
-1. Przeczytaj draft w textarea.
-2. **Edytuj** jeśli potrzeba (zapis automatyczny po kliknięciu poza textarea).
-3. Klik **"Skopiuj i otwórz"** → plugin:
-   - Kopiuje wiadomość do schowka.
-   - Otwiera nową kartę z LinkedIn Messages dla tej osoby.
-4. W LinkedIn'ie: kliknij w textarea wiadomości → **Ctrl+V** → **Send**.
-5. Wracaj do popup'u → status osoby = **wysłane** ✓.
+1. Przeczytaj propozycję.
+2. **Popraw**, jeśli trzeba (zapisuje się samo po kliknięciu poza pole).
+3. Klik **„Skopiuj i otwórz"** → wiadomość ląduje w schowku, otwiera się czat LinkedIn z tą osobą.
+4. W czacie: **Ctrl+V** → **Wyślij**.
+5. Wróć do okienka → klik **„Wysłałem"** → osoba dostaje znacznik, a rozszerzenie **samo planuje przypomnienia** (za 3 i 7 dni).
 
-**Nie chcesz pisać do kogoś?** Klik **"Pomiń"** → status `pominięto`, item greyed-out.
+**Nie chcesz pisać do kogoś?** Klik **„Pomiń"**.
 
-### Krok F2 — Manual outreach (pisanie do osób spoza Bulk Connect, NOWE w 1.7.2)
+### Krok F2 — Wiadomość do osoby spoza listy (np. stary znajomy)
 
-Bulk Connect (Kroki A-F) to flow dla MASOWYCH zaproszeń do nowych osób. Ale często chcesz napisać do **istniejącego kontaktu** (1st degree) — np. byłego kolegi, znajomego z konferencji. Wtedy używasz głównego flow popup'u:
+1. Wejdź na profil osoby (`linkedin.com/in/...`).
+2. Otwórz okienko → **„Pobierz profil"**.
+3. **„Generuj wiadomość"** → AI pisze propozycję.
+4. Wybierz:
 
-1. Wejdź na profil osoby (np. `linkedin.com/in/jankowalski`).
-2. Otwórz popup → klik **"Pobierz profil"** → AI scrape'uje profil.
-3. Klik **"Generuj wiadomość"** → AI tworzy spersonalizowany draft.
-4. Edytuj jeśli chcesz, potem **wybierz jeden z dwóch buttonów**:
-
-| Button | Co robi |
+| Przycisk | Co robi |
 |---|---|
-| **Kopiuj** | Tylko clipboard. Use gdy chcesz wkleić w mail / Slack / cokolwiek POZA LinkedIn'em |
-| **📨 Kopiuj + śledź** | Clipboard + otwiera czat LinkedIn z osobą + **automatycznie planuje follow-up #1 za 3 dni i #2 za 7 dni**. Use gdy wysyłasz wiadomość przez LinkedIn |
+| **Kopiuj tylko** | Tylko schowek — gdy chcesz wkleić poza LinkedIn (mail, telefon) |
+| **Kopiuj i śledź** | Schowek + **plan przypomnień (za 3 i 7 dni)** — gdy wysyłasz przez LinkedIn |
 
-5. Po kliknięciu **"Kopiuj + śledź"** zobaczysz toast `✓ Zapisano. Follow-up #1 za 3 dni, #2 za 7 dni`.
-6. W otwartej karcie LinkedIn'a: Ctrl+V → Send.
-7. Profil dołącza do "ukrytej" kolejki (status `manual_sent`) — NIE pojawia się w sekcji Bulk Connect ani Wiadomości po-Connect, ale **za 3 dni pojawi się w sekcji "Do follow-up'u"** tak samo jak osoby z bulk pipeline'u.
+5. Po „Kopiuj i śledź": wklej w czacie LinkedIn (Ctrl+V) i wyślij. Za 3 dni osoba pojawi się w „Napisz teraz", jeśli nie odpisze.
 
-> **Idempotency:** Możesz kliknąć "Kopiuj + śledź" wielokrotnie dla tej samej osoby. Drugi klik aktualizuje draft w storage (jeśli wygenerowałeś nową wersję), ale NIE nadpisuje dat follow-upów (te zostają z pierwszego kliku).
->
-> **"Kopiuj + śledź" NIE wysyła wiadomości za Ciebie** — to TY musisz wkleić i kliknąć Send w LinkedIn'ie. Plugin zapisuje fakt że "user wysłał" w tym momencie kliknięcia.
+### Krok G — Przypomnienia (dawne „follow-upy")
 
----
+Pierwsza wiadomość dostaje odpowiedź w ~30% przypadków. Przypomnienie po 3 dniach dokłada ~20%, po 7 dniach ~10% — **bez przypomnień tracisz połowę szans.**
 
-### Krok G — Follow-upy 3d / 7d (NOWE w 1.7.0)
+**Jak poznać, że są przypomnienia do zrobienia:**
+- Czerwona plakietka z liczbą na ikonie Outreach w pasku Chrome.
+- W okienku zakładka **„Przypomnienia"** → sekcja **„Napisz teraz"**.
 
-Pierwsza wiadomość ma ~30% reply rate. Z follow-up'em po 3 dniach +20%, po 7 dniach +10% — łącznie ~60%. **Bez follow-up'ów tracisz połowę leadów.**
+**Na osobę (~30 s):**
+1. **„Napisz przypomnienie (AI)"** — AI zna Twoją pierwszą wiadomość i pisze krótkie, łagodne nawiązanie (nie powtarza oferty).
+2. Przeczytaj/popraw → **„Skopiuj i otwórz"** → Ctrl+V → Wyślij.
+3. Wróć → **„Wysłałem"**.
 
-Po kliknięciu **"Wysłałem"** w Kroku F, extension automatycznie planuje 2 follow-upy:
-- **Follow-up #1** za 3 dni (łagodne przypomnienie).
-- **Follow-up #2** za 7 dni (ostatnie zaczepienie).
+**Dodatkowe przyciski:**
+- **„Pomiń"** — rezygnujesz z przypomnień dla tej osoby.
+- **„Brak zgody"** — osoba napisała, że nie chce kontaktu. Wszystko się zatrzymuje, osoba ląduje w Historii z czerwonym znacznikiem.
+- **„Odroczony w czasie"** — „wróćmy za 2 miesiące": podajesz liczbę dni, oba przypomnienia przesuwają się razem.
 
-**Jak rozpoznać że jest follow-up do zrobienia:**
-- Czerwona ikonka z liczbą `(3)` na ikonie LinkedIn MSG w pasku Chrome → tyle follow-up'ów czeka.
-- Po otwarciu popup'u na samej górze pojawi się sekcja **"Do follow-up'u"** z listą profili.
+### Pulpit — pełny widok wszystkiego
 
-**Per profil zobaczysz:**
-- Imię + headline.
-- Tag `Follow-up #1 (3d po wysłaniu)` lub `#2 (7d po wysłaniu)`.
-- Pustą textarea + 4 buttony.
+Okienko pokazuje tylko to, co pilne. **Pulpit** (ikona czterech prostokątów w nagłówku okienka) otwiera pełny widok w nowej karcie:
 
-**Flow follow-up'u (~30s na osobę):**
+1. **Twoje wyniki** — droga od zaproszenia do odpowiedzi: ile zaproszeń, ile przyjętych, ile odpowiedzi na każdy etap. Wyniki liczą się same z Twoich oznaczeń.
+2. **Kto przyjął zaproszenie** — stan automatu (patrz Krok D).
+3. **Napisz dzisiaj** — przypomnienia na teraz (te same akcje co w okienku, ale więcej miejsca).
+4. **Zaplanowane** — co i kiedy pojawi się w przyszłości.
+5. **Historia** — co już wysłane/pominięte.
+6. **Wszystkie osoby** — tabela każdej osoby w grze. **Gdy ktoś Ci odpisze — kliknij „Odpisał: wiad." (albo „Odpisał: przyp. 1/2") w jego wierszu.** To zatrzymuje dalsze przypomnienia dla tej osoby i zasila statystyki. Pomyłka? „Cofnij".
+7. **Baza osób** — patrz niżej.
 
-1. Klik **"Generuj follow-up"** — AI dostaje treść Twojej PIERWSZEJ wiadomości jako kontekst i pisze łagodne nawiązanie (NIE re-pitch tej samej oferty).
-2. Draft pojawi się w textarea. **Edytuj jeśli potrzeba** (zapis automatyczny po kliknięciu poza textarea).
-3. Klik **"Skopiuj i otwórz"** → schowek + nowa karta z LinkedIn Messages.
-4. W LinkedIn'ie: Ctrl+V → Send.
-5. Wracaj do popup'u → klik **"Wysłałem"** → potwierdzenie → profil znika z listy follow-up'ów.
-
-**Nie chcesz follow-up'u dla tej osoby?** Klik **"Pomiń"** → profil znika z listy permanentnie (oba #1 i #2 anulowane).
-
-> **Co z następną wiadomością po wysłaniu follow-up #1?** Jeśli osoba dalej nie odpowiada, follow-up #2 pojawi się za kolejne 4 dni (= 7 dni od pierwszej wiadomości). To jest "ostatnie zaczepienie" — po nim odpuszczamy lead.
-
-### 3.5 Dashboard follow-upów (NOWE w 1.8.0)
-
-Sekcja "Do follow-up'u" w popup'ie pokazuje TYLKO follow-upy które są DUE TERAZ. Nie widać tam:
-- Co czeka jutro / pojutrze (zaplanowane na przyszłość)
-- Historii (kogo już follow-up'owałem, kogo pominąłem)
-
-**Dashboard** to pełny widok wszystkiego — otwierany w **nowej karcie**.
-
-**Jak otworzyć:**
-- W popup'ie LinkedIn MSG, w prawym górnym rogu obok ikony ⚙️ Ustawień jest **📊 ikonka dashboard'u** (4 prostokąty układu).
-- Klik → otwiera się nowa karta `chrome-extension://...../dashboard.html`.
-
-**3 sekcje:**
-
-1. **Do follow-up'u TERAZ** (żółty pasek, badge z liczbą)
-   - Lista profili gdzie minęły 3 lub 7 dni od pierwszej wiadomości.
-   - Identyczne akcje jak w popup'ie: **Generuj follow-up** / **Skopiuj i otwórz** / **Wysłałem** / **Pomiń**.
-   - Editable textarea z auto-save (klikniesz poza nią — zapisuje).
-   - Większa przestrzeń niż w popup'ie — wygodniej dla 5+ follow-upów na raz.
-
-2. **Zaplanowane** (niebieski pasek, badge z liczbą)
-   - Profile gdzie follow-up jeszcze nie due. Read-only — pokazuje **kiedy** pojawi się (np. `Follow-up #1 za 2 dni (12.05.2026 14:30)`).
-   - Sortowane od najbliższego.
-   - Use: rano w poniedziałek widzisz że we wtorek o 14:30 pojawi się 8 follow-upów do zrobienia → planujesz pracę.
-
-3. **Historia** (szary pasek, badge z liczbą)
-   - Wysłane follow-upy (z datą + draftem który był wysłany — read-only).
-   - Pominięte profile (badge "Pominięty" — anulowałeś follow-up cycle).
-   - Sortowane od najświeższego.
-   - Use: weryfikacja "ile follow-upów wysłałem w tym tygodniu", review draftów.
-
-**Linki do profili LinkedIn:** Imię osoby w każdym wierszu jest klikalne → otwiera profil LinkedIn'a w nowej karcie. Use: szybki rzut oka na profil zanim klikniesz "Generuj follow-up" w dashboardzie.
-
-**Auto-refresh:** Dashboard sam się odświeża gdy klikniesz akcję w popup'ie (np. "Wysłałem" w sekcji "Do follow-up'u"). Nie musisz refreshować ręcznie. Plus button **↻ Odśwież** w prawym górnym jeśli chcesz force-refresh.
-
-> **Dashboard tylko z LOKALNYMI danymi.** Zawartość = `chrome.storage.local` na Twoim komputerze. Nic nie idzie do chmury, do innego użytkownika OVB, do Marcina. Jedyne co opuszcza Twój komputer to wywołania AI (`/api/generate-message`) gdy klikniesz Generuj.
-
-### 3.5.1 „Brak zgody" + „Odroczony w czasie" + anulacja zestawu (NOWE w 1.22.0)
-
-W sekcji **Do follow-up'u TERAZ** każdy wiersz ma teraz dwa dodatkowe przyciski:
-
-- **„Brak zgody"** — kontakt nie wyraził zgody na dalszy kontakt. Klik ustawia status **Brak zgody**, profil wędruje do **Historii** (czerwony tag „Brak zgody") i **żadna wiadomość się nie wygeneruje**. Use: ktoś wprost napisał „nie jestem zainteresowany / nie kontaktujcie się".
-- **„Odroczony w czasie"** — przesuń follow-up na później. Klik pyta **o ile dni odroczyć** (pole liczbowe, minimum 1 dzień, domyślnie **60**). Po zatwierdzeniu extension planuje **oba** follow-upy naraz: Follow-up #1 za X dni, Follow-up #2 za X+4 dni. Profil znika z „Do follow-up'u TERAZ" i pojawia się w **Zaplanowane** (2 wiersze, tag z przerywaną ramką „Odroczony"). Use: „teraz nie ma sensu, ale wróćmy do tematu za 2 miesiące".
-
-**Anulacja całego zestawu (zależność).** Odroczone follow-upy #1 i #2 to **jeden powiązany zestaw**. W sekcji **Zaplanowane** taki wiersz ma przycisk **„Anuluj cały zestaw follow-upów"**. Klik na nim — niezależnie czy klikniesz przy #1 czy przy #2 — **anuluje OBA follow-upy naraz**. Nie da się anulować tylko #1 zostawiając #2: to świadomy mechanizm, żeby nie zostać z „osieroconym" follow-upem #2 bez poprzedzającego #1. Po anulacji profil trafia do Historii.
-
-### 3.6 Statystyki + tracking odpowiedzi (NOWE w 1.11.0)
-
-W dashboardzie (klik 📊 w popup'ie) na samej górze pojawia się sekcja **📊 Statystyki** — funnel pipeline'u:
-
-```
-📨 Invites wysłane: 50
-   ↓ Accept rate: 24%
-✅ Zaakceptowane: 12
-   ↓ Wiadomość 1 wysłana: 8
-📩 Wiadomość 1 wysłana: 8
-   ↓ Reply rate stage 1: 25%
-↪ Odpowiedź na wiadomość 1: 2
-   ↓ FU#1 wysłany: 4
-🔔 Follow-up #1 wysłany: 4
-   ↓ Reply rate stage 2: 50%
-↪ Odpowiedź na FU#1: 2
-   ↓ FU#2 wysłany: 1
-🔔 Follow-up #2 wysłany: 1
-↪ Odpowiedź na FU#2: 0
-
-🎯 TOTAL: Reply rate (any stage): 50% (4/8)
-```
-
-Dane liczone real-time z lokalnego state — zero backend.
-
-#### Jak oznaczyć że ktoś odpowiedział
-
-Na dole dashboardu jest tabela **📋 Wszystkie kontakty w pipeline** z kolumnami: imię, status, invite, accept, msg, reply, FU1, R1, FU2, R2 + akcje.
-
-W kolumnie "Akcje" per wiersz pojawiają się buttony:
-- **↪Msg** — gdy wiadomość 1 wysłana ale brak reply. Klik = oznacz że osoba odpowiedziała na pierwszą wiadomość. Auto-cancel scheduled FU#1+FU#2 (osoba odpowiedziała → nie wysyłaj follow-up'ów).
-- **↪FU1** — analogicznie dla follow-up #1. Auto-cancel scheduled FU#2.
-- **↪FU2** — dla follow-up #2.
-- **✕Msg / ✕FU1 / ✕FU2** — cofnij oznaczenie (jeśli klikniesz pomyłkowo). Restore'uje scheduled follow-up'y.
-
-Każdy z buttonów ma tooltip z datą oznaczenia.
-
-#### Co się dzieje w popup'ie po oznaczeniu reply
-
-Sekcja "Do follow-up'u" w popup'ie:
-- Profile z oznaczonym reply znikają z **Do follow-up'u (due)** — bo follow-up nie ma sensu skoro odpowiedział.
-- W sekcji **Zaplanowane** (jeśli tam były) pokazuje się tag fioletowy "↪ Odp. msg DD.MM" jako informacja kontekstowa.
-- Tab badge (N) — liczba follow-up'ów do zrobienia spada (jeden mniej).
-
-#### Po co to wszystko
-
-**Bo bez tych liczb robisz outreach na ślepo.** 30% accept rate vs 50% mówi czy Twoje pierwsze wiadomości na zaproszeniu są dobre. 5% reply rate na wiadomości post-Connect mówi że copy do poprawki. Octopus Starter pokazuje podobne metryki — to baseline, nie luxury.
-
-Dane wszystkie lokalnie u Ciebie (`chrome.storage.local`), nic nie idzie do żadnego serwera (poza telemetrią błędów scrape, opt-in od v1.2.0).
+> **Wszystko zostaje u Ciebie.** Dane są tylko na Twoim komputerze. Do internetu wychodzą wyłącznie zapytania do AI i pliki kopii zapasowej (do Twojego folderu Pobrane).
 
 ---
 
-### 3.7 Baza profili + auto-backup (NOWE w 1.14.0)
+### 3.7 Baza osób + kopia zapasowa
 
-LinkedIn wprowadził **limity wyszukiwania** (po wyczerpaniu miesięcznego limitu nie wyszukasz nowych ludzi). Dlatego rozszerzenie buduje **trwałą bazę profili** — niezależną od kolejki zaproszeń — żeby raz zescrape'owane profile, wyniki wyszukiwania i adresy nie przepadły.
+LinkedIn ogranicza liczbę wyszukiwań w miesiącu (darmowe konto). Dlatego rozszerzenie zapisuje **każdą widzianą osobę** do trwałej bazy — raz zebrane nie przepada.
 
-**Co trafia do bazy automatycznie:**
-- Każdy wynik wyszukiwania który zobaczy popup (zakładka Bulk) — imię, headline, lokalizacja, stopień, adres profilu.
-- Każdy zescrape'owany profil (z preview albo z generowania wiadomości) — z pełnymi danymi (about/doświadczenie/skills jeśli były).
-- Profile dodane do kolejki Bulk Connect i z manual outreach.
-- Zaimportowane kontakty 1st (patrz niżej).
+**Co trafia do bazy samo:** wyniki wyszukiwania, pobrane profile, osoby z listy zaproszeń, zaimportowane kontakty. Dane się nie dublują, a bogatsze nigdy nie są nadpisywane uboższymi.
 
-Profile w bazie się nie duplikują (klucz = adres profilu) i bogatsze dane nigdy nie nadpisują uboższych — jak raz mamy pełny scrape, kolejny przelot przez wyszukiwarkę go nie skasuje.
+**Gdzie to widzę:** Pulpit → **„Baza osób"** — licznik, szukajka, filtry (źródło / w kontaktach), tabela.
 
-**Gdzie to widać:** dashboard (📊 w popup'ie) → sekcja **"🗄️ Baza profili"** — liczba profili, filtry (szukaj po imieniu / źródło / tylko kontakty), tabela. W zakładce Bulk popup'u profile które już masz w bazie/kontaktach mają tag `✓ w bazie` i nie zaznaczają się do bulk-connect (i tak są w sieci albo już dodane).
+**Import Twoich obecnych kontaktów:** „Baza osób" → **„Pobierz moje kontakty z LinkedIn"** → otworzy się karta z kontaktami, rozszerzenie przewinie ją do końca i zapisze wszystkich. **Nie zamykaj tej karty w trakcie.** Po imporcie wiadomo, do kogo już nie trzeba pisać.
 
-**Import Twoich kontaktów z LinkedIn:** dashboard → "Baza profili" → **"⬇ Importuj kontakty z LinkedIn"** → otworzy się karta z Twoimi kontaktami, rozszerzenie przewinie ją do końca i zapisze wszystkich do bazy z oznaczeniem "kontakt". **Nie zamykaj tej karty w trakcie** — przy dużej liczbie kontaktów może trwać kilka minut. Po imporcie wiesz do kogo już nie pisać (są w sieci) i masz bazę do odbudowy gdyby coś się skasowało.
+**Lepszy import — plik z LinkedIn:** LinkedIn może wysłać Ci komplet Twoich kontaktów mailem (z firmą i stanowiskiem, czego lista na stronie nie pokazuje):
+1. LinkedIn → **Ustawienia** → **Prywatność danych** → **Pobierz kopię swoich danych** → zaznacz tylko **Kontakty** → **Zażądaj archiwum**.
+2. Mail przychodzi zwykle w ~10 minut. Pobierz zip, wyciągnij **Connections.csv**.
+3. Pulpit → „Baza osób" → **„Wczytaj plik Connections.csv"** → wybierz plik → przeczytaj podsumowanie → OK.
 
-**Eksport (na wszelki wypadek / na inny komputer):**
-- **"Eksport CSV"** — plik `linkedin-profiles-DATA.csv` (otwierasz w Excelu) — lista profili z kolumnami imię/headline/lokalizacja/stopień/adres/źródło/kontakt itd.
-- **"Eksport JSON (pełny backup)"** — kompletny zrzut bazy + kolejki zaproszeń. To plik do **restore** przez "Import pliku".
+**Zapis na wszelki wypadek / inny komputer:**
+- **„Zapisz jako CSV (Excel)"** — lista osób do arkusza.
+- **„Zapisz pełną kopię (JSON)"** — komplet: baza + lista zaproszeń + ustawienia. Ten plik służy do odtworzenia.
+- Kopia robi się też **sama, raz dziennie**, do `Pobrane/linkedin-msg-backup/`. Dodatkowo rozszerzenie zapisuje kopię **przed** wczytaniem pliku i **przed** masowym usuwaniem — pomyłki da się cofnąć.
 
-**Auto-backup:** rozszerzenie samo zapisuje pełny backup do `Pobrane/linkedin-msg-backup/backup-YYYY-MM-DD.json` co tyle dni ile ustawisz w ustawieniach (domyślnie 3, `0` = wyłącz). Banner na górze sekcji "Baza profili" pokazuje kiedy był ostatni — czerwony = ponad 7 dni temu albo wyłączony, kliknij wtedy "⬇ Pobierz backup teraz". **To jedyna rzecz która przeżyje "Usuń + Dodaj"** (Chrome wipe'uje storage przy Usuń, ale plik w Pobranych zostaje).
+**Odtworzenie / przeniesienie:** Pulpit → „Baza osób" → **„Wczytaj kopię / plik"** → wybierz `backup-*.json` (zaznacz „przywróć też listę zaproszeń", jeśli trzeba). Wczytanie dokłada i uzupełnia — niczego nie kasuje. Pełna kopia przywraca też ustawienia (hasło dostępu, opis oferty).
 
-**Restore z backupu / przeniesienie na nowy komputer:** dashboard → "Baza profili" → **"Import pliku"** → wybierz `backup-*.json` → (opcjonalnie zaznacz "przywróć też kolejkę zaproszeń") → Import. Baza zostanie scalona z tym co już masz (nic nie kasuje).
+### 3.10 Zbieranie hurtem → zapraszanie kroplówką
 
-### 3.8 Import oficjalnego CSV z LinkedIn (NOWE w 1.20.0)
+Model pracy jak w Octopusie: **najpierw zbierasz dużą pulę osób do bazy, potem wybierasz i zapraszasz powoli**.
 
-Funkcja **"⬇ Importuj kontakty z LinkedIn"** (z 1.14.0) scrolluje stronę `/mynetwork/.../connections/` i wyciąga to co LinkedIn pokazuje na liście — imiona, slug, headline. **Brakuje tam Company i Position** (na liście są skrócone), a przy dużej sieci scroll potrafi się zaciąć / urywać. Od 1.20.0 jest druga ścieżka: **oficjalny LinkedIn data export**. To CSV który LinkedIn sam Ci wyśle mailem, zawiera **wszystkie 1st kontakty** w jednym pliku z polami: First Name, Last Name, URL profilu, Email (jeśli kontakt udostępnił), Company, Position, Connected On (data dołączenia).
+1. Wyszukiwarka LinkedIn (np. „doradca finansowy") → zakładka „Budowanie sieci" → w ustawieniach podbij „Ile osób dodać na raz" (nawet do 1000) → **„Dodaj automatycznie"**.
+2. Rozszerzenie przechodzi po stronach wyników i **zapisuje wszystkich do Bazy osób** (samo czytanie — bezpieczne). Uwaga: LinkedIn bez płatnego konta często pokazuje maks. ~100 wyników — rób kilka różnych wyszukiwań.
+3. Pulpit → „Baza osób" → zaznacz osoby → **„Dodaj do zaproszeń (N)"** (już połączeni i już dodani są pomijani automatycznie).
+4. Okienko → **Start**. Zaproszenia wychodzą powoli (limit dzienny!) — 1000 osób rozłoży się na tygodnie. **To celowe** — LinkedIn ma twardy limit ~100-200 zaproszeń tygodniowo i przekraczanie go kończy się blokadą konta.
 
-**Kiedy używać:** zawsze gdy masz świeży export (LinkedIn pozwala zażądać raz na ~24h). Daje więcej danych niż scroll po stronie kontaktów, działa atomicznie (jeden plik upload zamiast wielominutowego scrolla), nie ma ryzyka detekcji (LinkedIn sam dostarcza dane, nie scrapujesz).
+### 3.9 Tryb ciemny
 
-**Jak zażądać export:**
-1. LinkedIn → **Ustawienia (Settings)** → **Prywatność danych (Data privacy)** → **Pobierz kopię danych (Get a copy of your data)**.
-2. Wybierz **"Wybierz dane do uwzględnienia w zarchiwizowanej kopii"** → odznacz wszystko poza **Connections**. Można też zostawić "wszystko" — interesuje nas tylko jeden plik z paczki.
-3. **"Zażądaj archiwum (Request archive)"** → LinkedIn wyśle Ci maila z linkiem do pobrania. Zwykle przychodzi w **10 minut**, czasem do 24h.
-4. Pobierz `Basic_LinkedInDataExport_DATA.zip`, rozpakuj, **wyciągnij plik `Connections.csv`** (resztę plików możesz wyrzucić).
-
-**Jak zaimportować:**
-1. Dashboard → "🗄️ Baza profili" → **"📥 Importuj CSV (LinkedIn-export)"**.
-2. Wybierz `Connections.csv` z paczki.
-3. **Preview** — rozszerzenie pokaże ile kontaktów znalazło, ile dodać jako nowe, ile scalić z istniejącymi (NIE traci scrape'ów ani wcześniej zebranych danych), ile pominąć (brak slug'a w URL).
-4. **Kliknij OK** żeby zatwierdzić — wjedzie do bazy z oznaczeniem źródła **"LinkedIn-export"** (możesz tym filtrować w dashboardzie).
-
-**Ile emaili dostaniesz w CSV?** W praktyce **~3% kontaktów** (LinkedIn pozwala kontaktom decydować czy chcą dzielić email z siecią; większość ma to wyłączone). Reszta będzie wymagać scrape'u contact-info — to osobny ficzer (#53, w planach po dystrybucji 1.20.0). Email który w polu CSV ma `urn:li:member:...` (LinkedIn wewnętrzny identyfikator zamiast emaila) zostanie automatycznie odrzucony — żeby nie wjechał do bazy jako fałszywy email.
-
-**Skala:** 17000 kontaktów to ~5 MB CSV i ~10-30 sekund importu na nowoczesnym komputerze. Popup/dashboard nie crashują przy dużym imporcie — `unlimitedStorage` w manifeście od 1.14.0 ściąga limit 5 MB Chrome'a.
-
-**Co z duplikatami:** jeśli wcześniej zrobiłeś `⬇ Importuj kontakty z LinkedIn` (1.14.0 scroll po /connections/), te slug'i są już w bazie. CSV-import je rozpozna i **doda Company/Position** (czego scroll nie miał) — istniejący scrape (jeśli był) i notatki **zostają**.
-
-### 3.10 Baza prospektów — zbieranie hurtem + kolejkowanie z dashboardu (NOWE w 1.25.0)
-
-Model jak w Octopus: **najpierw zbierasz dużą pulę prospektów do bazy, potem kurujesz i kolejkujesz**. Kluczowe rozróżnienie: **zbieranie ≠ wysyłka**. Zebranie 1000 osób jest bezpieczne (to tylko czytanie wyników). Wysyłka zaproszeń idzie **kroplówką** wg dziennego limitu (domyślnie 25/dzień) — bo LinkedIn ma twardy limit ~100-200 zaproszeń/tydzień i wysłanie 1000 naraz = ban.
-
-**Zbieranie do bazy (hurtem):**
-1. Search na LinkedIn (np. „doradca finansowy") → zakładka **„Budowanie sieci"**.
-2. W „Ustawienia bulk connect" ustaw **„Ile dodać"** wysoko (do **1000**) → klik **„Wypełnij do limitu"**.
-3. Rozszerzenie przeskakuje przez strony (do 100 = 1000 profili) z odstępem 3-7s i **zapisuje WSZYSTKICH widzianych do bazy profili** (nie tylko tych do połączenia). To Twoja pula prospektów.
-   - ⚠ LinkedIn bez Sales Navigatora często capuje wyniki do ~100 — żeby zebrać 1000, zrób kilka różnych wyszukiwań (różne frazy/filtry). Każde dorzuca do tej samej bazy.
-
-**Kuracja + kolejkowanie (z dashboardu):**
-4. Dashboard (📊) → **„🗄️ Baza profili"**. Filtruj/przeglądaj, zaznacz checkboxami prospektów których chcesz dodać (albo „Zaznacz wszystkie widoczne").
-5. Klik **„➕ Dodaj do kolejki connect (N)"**. Rozszerzenie pomija automatycznie: już połączonych (1st) i tych już w kolejce — pokaże ilu dodano i ilu pominięto.
-6. Wróć do popupu → **Start**. Worker wysyła zaproszenia kroplówką (otwiera profil w tle, klika „Połącz") wg dziennego limitu. 1000 prospektów rozłoży się na tygodnie — to celowo, dla bezpieczeństwa konta.
-
-> **TL;DR:** Wypełnij do limitu (zbiera do bazy) → dashboard zaznacz + „Dodaj do kolejki connect" → Start. Dzienny limit zostaw niski (25-40).
-
-### 3.9 Dark mode (NOWE w 1.14.1)
-
-Rozszerzenie automatycznie dopasowuje się do trybu jasny/ciemny ustawionego w przeglądarce/systemie — nic nie musisz klikać. Jeśli masz w Windowsie/Edge włączony tryb ciemny, popup, dashboard i ustawienia będą ciemne; jasny → jasne.
+Rozszerzenie samo dopasowuje się do trybu jasny/ciemny z systemu — nic nie klikasz.
 
 ---
 
 ## 4. Typowy harmonogram (przykład)
 
-**Poniedziałek 9:00:** Nowa kampania.
-- Search "doradca finansowy Warszawa" → "Wypełnij do limitu" (25) → Start.
-- Plugin chodzi 9:00-18:00, ~25 zaproszeń wysłanych.
+**Poniedziałek 9:00:** Nowa kampania. Wyszukiwarka → „Dodaj automatycznie" → Start. Rozszerzenie pracuje 9-18, ~25 zaproszeń.
 
-**Wtorek 9:00:** Sprawdzanie + pierwsza wiadomość.
-- Klik "Sprawdź akceptacje" → 8 osób z 25 zaakceptowało.
-- Klik "Generuj wszystkie (8)" → drafty pojawiają się.
-- Per osoba: czytam, edytuję, "Skopiuj i otwórz" → paste w LinkedIn → Send → "Wysłałem". ~5 min.
-- *Każde "Wysłałem" automatycznie planuje follow-up #1 na piątek i #2 na następny wtorek.*
+**Wtorek:** Automat sam odhacza, kto przyjął. Zakładka „Przypomnienia" → „Generuj wszystkie" → czytasz, poprawiasz, „Skopiuj i otwórz" → Ctrl+V → Wyślij → „Wysłałem". ~5 min.
 
-**Środa-Czwartek:** powtarzaj sprawdzanie raz dziennie. Kolejni accept'ują, kolejne "Wysłałem".
+**Piątek:** Plakietka z liczbą na ikonie = przypomnienia gotowe. „Napisz przypomnienie (AI)" → wyślij → „Wysłałem". ~3-5 min.
 
-**Piątek 9:00:** Follow-up #1 dla wtorkowej grupy.
-- Czerwony badge `(8)` na ikonie → 8 follow-up'ów due.
-- Sekcja "Do follow-up'u" w popup'ie pokazuje listę. Per osoba: "Generuj follow-up" → review → "Skopiuj i otwórz" → Send → "Wysłałem". ~3-5 min.
+**Następny wtorek:** Przypomnienie 2 dla milczących. Po nim odpuszczamy.
 
-**Następny wtorek 9:00:** Follow-up #2 dla tych co dalej nie odpowiedzieli. Po tym puszczamy lead.
-
-**Następny poniedziałek:** nowa kampania (queue z poprzedniego tygodnia można "Wyczyścić kolejkę" lub zostawić jako historia).
+**Cały czas:** gdy ktoś odpisze — Pulpit → „Wszystkie osoby" → „Odpisał". To wyłącza dalsze przypomnienia dla tej osoby.
 
 ---
 
 ## 5. FAQ / problemy
 
-**Q: Status "Outside working hours" pojawił się.**  
-A: Sprawdź godziny w "Ustawienia bulk connect". Plugin nie wysyła poza zakresem (np. po 18:00). Klik **Resume** następnego dnia od 9:00.
+**P: Status „Outside working hours".**
+O: Jesteś poza godzinami z ustawień (np. po 18). Klik **Wznów** następnego dnia.
 
-**Q: Status "Daily cap reached".**  
-A: Limit dzienny osiągnięty. Reset o północy. Możesz tymczasowo zwiększyć w settings.
+**P: Status „Daily cap reached".**
+O: Dzienny limit osiągnięty. Licznik zeruje się o północy.
 
-**Q: Status "Lost LinkedIn search tab".**  
-A: Zamknąłeś kartę LinkedIn'a. Otwórz ponownie `https://www.linkedin.com/search/results/people/?keywords=...` → klik **Resume** w popup'ie.
+**P: „Dodaj automatycznie" przeskakuje strony, ale nic nie dodaje.**
+O: Od 2.0 zatrzyma się samo po kilku pustych stronach i napisze dlaczego (np. „32 bez rozpoznanego przycisku Połącz — LinkedIn mógł zmienić wygląd; diagnostyka wysłana"). Taki komunikat = daj znać Marcinowi, poprawka zwykle wychodzi szybko. Jeśli pisze „z wysłanym już zaproszeniem" — po prostu wyczerpałeś te wyniki, zmień wyszukiwanie.
 
-**Q: Plugin "zatrzymał się" po stronie 1 (auto-pagination).**  
-A: To było w starszej wersji (1.4.1). W **1.6.0 naprawione** — sprawdź czy masz 1.6.0 w `chrome://extensions/`.
+**P: Wiadomość wysłana, a status dalej „draft".**
+O: Status zmienia się po kliknięciu „Skopiuj i otwórz" / „Wysłałem". Jak skopiowałeś ręcznie — kliknij „Wysłałem" sam.
 
-**Q: Wiadomość wysłana, ale w popup'ie status nadal "draft".**  
-A: Klik "Skopiuj i otwórz" mark'uje status jako "wysłane" automatycznie. Jeśli skopiowałeś ręcznie z textarea bez tego buttona — status nie zmieni się. Klik "Pomiń" jeśli chcesz oznaczyć ręcznie.
+**P: Mogę zapraszać bez generatora wiadomości?**
+O: Tak. Zapraszanie i baza działają bez hasła dostępu; AI wymaga hasła.
 
-**Q: Widzę error "chrome-extension://invalid/" w konsoli LinkedIn'a po reload extension'u.**  
-A: Plugin auto-reloaduje kartę po 3 sekundach (od v1.2.1). Jeśli się to powtarza — `chrome://extensions/` → Reload + odśwież kartę LinkedIn (Ctrl+R).
+**P: Czy LinkedIn zbanuje konto?**
+O: Ustawienia domyślne są ostrożne (45-120 s przerwy, 25/dzień, godziny 9-18). LinkedIn wykrywa raczej serie (50 zaproszeń w 5 minut) niż ludzkie tempo. Nie podkręcaj limitów.
 
-**Q: Mogę używać Bulk Connect bez generatora wiadomości?**  
-A: Tak. Generator wymaga API key, Bulk Connect (samo dodawanie do kontaktów) nie wymaga. Można po accept'cie pisać własne wiadomości ręcznie w LinkedIn'ie.
+**P: LinkedIn pisze „osiągnięto limit wyszukiwania w tym miesiącu".**
+O: Limit darmowego konta LinkedIn. Pracuj z Bazą osób (wszystko, co już widziałeś, jest zapisane) i zaimportuj swoje kontakty — import nie zużywa limitu.
 
-**Q: Bezpieczeństwo — czy LinkedIn zbanuje konto?**  
-A: Defaults są konserwatywne (45-120s losowe opóźnienia, 25/dzień, 9-18h). Marcin używa Octopusa od 3 lat z podobnymi limitami bez bana. Anti-bot LinkedIn'a wykrywa raczej burst'y (np. 50 zaproszeń w 5 min) niż timing'i podobne do człowieka.
+**P: Gdzie jest moja kopia zapasowa?**
+O: `Pobrane/linkedin-msg-backup/backup-RRRR-MM-DD.json`, codziennie + przed ryzykownymi operacjami. Pasek w sekcji „Baza osób" pokazuje datę ostatniej.
 
-**Q: Po update'cie do 1.8.0 nie widzę sekcji "Do follow-up'u" w popup'ie ani 📊 ikonki Dashboard'u.**  
-A: Najpierw sprawdź wersję w `chrome://extensions/` — musi być **1.8.0**. Jeśli stara — kliknij **Reload** przy LinkedIn MSG. Ikonka Dashboard'u jest zawsze widoczna w nagłówku popup'u (obok ⚙️). Sekcja "Do follow-up'u" w popup'ie pojawia się TYLKO gdy są follow-upy due (po 3 lub 7 dniach od pierwszej wiadomości); pełny widok zaplanowanych jest w **Dashboard** (klik 📊).
+**P: Przenosiny na nowy komputer.**
+O: Stary: Pulpit → „Zapisz pełną kopię (JSON)". Nowy: zainstaluj → Pulpit → „Wczytaj kopię / plik" → wybierz plik → zaznacz „przywróć też listę zaproszeń". Ustawienia (hasło, oferta) wracają same z pełnej kopii.
 
-**Q: Wgrałem 1.8.0 i nie widzę żadnych zaplanowanych follow-upów mimo że wcześniej wysyłałem wiadomości.**  
-A: Follow-upy są planowane DOPIERO przy klik **"Wysłałem"** (w sekcji "Wiadomości po-Connect") albo **"📨 Kopiuj + śledź"** (manual outreach) **w wersji 1.7.0+**. Wiadomości wysłane przed 1.7.0 NIE mają zaplanowanych follow-upów (storage nie miał wtedy tych pól). Workaround: nie ma — odpuszczamy stare leady. Następne wiadomości będą miały follow-upy automatycznie.
+**P: Import kontaktów się zaciął / wszedł pusty.**
+O: Od 2.0 dostaniesz głośne ostrzeżenie zamiast cichego „0". Otwórz ręcznie `linkedin.com/mynetwork/invite-connect/connections/`, przewiń listę i spróbuj ponownie. Jak ostrzeżenie mówi o zmianie wyglądu strony — zgłoś Marcinowi.
 
-**Q: AI follow-up brzmi tak samo jak pierwsza wiadomość (re-pitch tej samej oferty).**  
-A: AI dostaje treść Twojej pierwszej wiadomości jako kontekst i instrukcję "łagodne nawiązanie, NIE re-pitch". Jeśli mimo to brzmi powtórzenie — **edytuj draft w textarea** zanim Skopiujesz. Auto-save zapisuje. Albo zgłoś przykład Marcinowi do tunowania promptu.
-
-**Q: URL nowej karty z czatem ma dziwne `%25c5%2582` w slugu i otwiera ogólne /messaging zamiast czatu z osobą.**  
-A: Bug 1.7.x — naprawiony w **1.8.0**. Sprawdź wersję, jeśli stara — Reload.
-
-**Q: LinkedIn nie pozwala mi już wyszukiwać ludzi ("osiągnięto limit wyszukiwania w tym miesiącu").**  
-A: To limit LinkedIn'a (free konto). Dlatego od 1.14.0 jest **trwała baza profili** — wszystko co już zobaczyłeś (wyniki wyszukiwania, scrape'y) jest zapisane na stałe (dashboard 📊 → "Baza profili"). Pracuj z tego co masz. Dodatkowo zaimportuj swoje kontakty 1st ("⬇ Importuj kontakty z LinkedIn") — to nie zużywa limitu wyszukiwania.
-
-**Q: Gdzie ląduje auto-backup?**  
-A: `Pobrane/linkedin-msg-backup/backup-YYYY-MM-DD.json`, co 3 dni (interwał w ustawieniach). Banner w dashboardzie (sekcja "Baza profili") pokazuje datę ostatniego. Restore: "Import pliku" tamże.
-
-**Q: Chcę przenieść wszystko na nowy komputer.**  
-A: Stary komputer: dashboard → "Baza profili" → "Eksport JSON (pełny backup)". Nowy: zainstaluj rozszerzenie, dashboard → "Import pliku" → wybierz ten plik (zaznacz "przywróć też kolejkę zaproszeń"). Gotowe.
-
-**Q: Import kontaktów się zaciął / nic nie zaimportował.**  
-A: Otwórz ręcznie `https://www.linkedin.com/mynetwork/invite-connect/connections/`, przewiń trochę listę żeby się załadowała, i spróbuj ponownie z dashboardu. Nie zamykaj karty z kontaktami w trakcie importu.
-
-**Q: Rozszerzenie znika samo po zamknięciu przeglądarki (Opera/Edge).**  
-A: To nie bug rozszerzenia — to ustawienie przeglądarki ("wyczyść dane przy zamknięciu"), narzędzie czyszczące (CCleaner itp.) albo antywirus kwarantannujący pliki .js. Patrz ramka w sekcji 1 ("⚠️ Opera / Edge / znika po zamknięciu"). Najlepiej: Chrome + folder rozszerzenia w bezpiecznym miejscu + auto-backup włączony.
+**P: Rozszerzenie znika po zamknięciu przeglądarki (Opera/Edge).**
+O: To ustawienie przeglądarki („wyczyść dane przy zamknięciu"), CCleaner albo antywirus — patrz ramka w sekcji 1. Najlepiej Chrome + włączona automatyczna kopia.
 
 ---
 
-## 6. Co NIE robi (limitations)
+## 6. Czego NIE robi (świadomie)
 
-- ❌ **Nie wysyła zaproszeń z notatką** — LinkedIn ma limit 5 not/tydzień dla free konta. Niewarte. Wysyłamy bez noty, personalizujemy DOPIERO po accept (sekcja Wiadomości po-Connect).
-- ❌ **Nie ma automatycznego cross-device sync** — każdy komputer ma osobną kolejkę i bazę. ALE od 1.14.0 możesz **ręcznie** przenieść/zsynchronizować przez Eksport JSON → Import pliku.
-- ❌ **Nie ma team-wide dashboardu** — każdy członek OVB ma własną statystykę i bazę.
-- ❌ **Nie wysyła wiadomości automatycznie po Generate** — anti-halucynacja wymaga że TY klikniesz Send w LinkedIn'ie po review.
+- **Nie wysyła zaproszeń z notatką** — darmowy LinkedIn ogranicza notatki do 5/tydzień. Personalizujemy PO przyjęciu zaproszenia.
+- **Nie wysyła wiadomości sama** — AI pisze, ale to TY czytasz i klikasz „Wyślij". To zabezpieczenie przed wpadkami.
+- **Nie synchronizuje się między komputerami sama** — przenosisz ręcznie przez pełną kopię (JSON).
+- **Nie ma wspólnego pulpitu zespołu** — każdy ma swoje liczby i swoją bazę.
 
 ---
 
 ## 7. Kontakt
 
-Bug / feature request → Marcin: `ochh.yes@gmail.com`.
+Błąd / pomysł → Marcin: `ochh.yes@gmail.com`.
 
-Plugin chodzi na backend pod `https://linkedin-api.szmidtke.pl`. Health check: `https://linkedin-api.szmidtke.pl/api/health`.
+Serwer: `https://linkedin-api.szmidtke.pl` (test działania: `https://linkedin-api.szmidtke.pl/api/health`).

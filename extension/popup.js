@@ -363,15 +363,15 @@
       }
       const ago = formatRelativeTime(item.messageSentAt);
       const fu1 = item.followup1SentAt
-        ? "✓ wysłany"
+        ? "wysłane"
         : item.followup1RemindAt
         ? formatAbsoluteDate(item.followup1RemindAt)
         : "—";
       const skipped = item.followupStatus === "skipped";
       if (skipped) {
-        trackChip.textContent = `✓ Wiadomość zapisana ${ago} · follow-upy pominięte`;
+        trackChip.textContent = `Wiadomość zapisana ${ago} · przypomnienia pominięte`;
       } else {
-        trackChip.textContent = `✓ Śledzone · ${ago} · FU#1: ${fu1}`;
+        trackChip.textContent = `Śledzone · ${ago} · przypomnienie 1: ${fu1}`;
       }
       trackChip.classList.remove("hidden");
     } catch (err) {
@@ -416,7 +416,7 @@
       setActionBtn("btn-copy-track", { show: false });
     } else if (!hasMessage) {
       // Faza 2 — ghost (pobierz ponownie) + primary (generuj).
-      setActionBtn("btn-scrape", { variant: "btn--ghost btn--sm", label: "↻ Pobierz ponownie" });
+      setActionBtn("btn-scrape", { variant: "btn--ghost btn--sm", label: "Pobierz ponownie" });
       setActionBtn("btn-regenerate", { show: false });
       setActionBtn("btn-copy", { show: false });
       setActionBtn("btn-generate", { variant: "btn--primary", label: "Generuj wiadomość" });
@@ -424,7 +424,7 @@
     } else {
       // Faza 3 — ghost (nowa wersja) + ghost (kopiuj tylko) + primary (kopiuj i śledź).
       setActionBtn("btn-scrape", { show: false });
-      setActionBtn("btn-regenerate", { variant: "btn--ghost btn--sm", label: "↻ Nowa wersja" });
+      setActionBtn("btn-regenerate", { variant: "btn--ghost btn--sm", label: "Nowa wersja" });
       setActionBtn("btn-copy", { variant: "btn--ghost btn--sm", label: "Kopiuj tylko" });
       setActionBtn("btn-generate", { show: false });
       setActionBtn("btn-copy-track", { variant: "btn--primary", label: "Kopiuj i śledź" });
@@ -662,10 +662,10 @@
         // bardziej niezawodne (compose?recipient=<slug> bywał kapryśny).
         const action = resp.action === "updated" ? "Zaktualizowano" : "Zapisano";
         showToast(
-          `✓ ${action}. Wiadomość w schowku — kliknij „Wiadomość" na profilu tej osoby i wklej (Ctrl+V → wyślij). Follow-up #1 za 3 dni, #2 za 7.`,
+          `${action}. Wiadomość w schowku — kliknij „Wiadomość" na profilu tej osoby i wklej (Ctrl+V). Przypomnienie 1 za 3 dni, drugie za 7.`,
           "success"
         );
-        setCtLabel("✓ Zapisano");
+        setCtLabel("Zapisano");
         renderTrackChip(currentProfile);
 
         // Re-enable button po 2s — jakby user chciał ponowić (np. zmienił
@@ -865,7 +865,7 @@
 
       const badge = document.createElement("span");
       badge.className = `badge badge--${inDb ? "known" : String(state).toLowerCase()}`;
-      badge.textContent = inDb ? "✓ w bazie" : badgeLabel(state);
+      badge.textContent = inDb ? "w bazie" : badgeLabel(state);
       if (inDb) badge.title = "Ten profil jest już w Twojej bazie / kontaktach";
 
       li.appendChild(textCol);
@@ -1077,13 +1077,13 @@
         _autoFillInProgress = true;
         const p = state.autoFillProgress;
         btnBulkFill.textContent = p
-          ? `⏹ Stop (dodano ${p.added} · strona ${p.page})`
-          : "⏹ Stop dodawania";
+          ? `Stop (dodano ${p.added} · strona ${p.page})`
+          : "Stop dodawania";
         btnBulkFill.classList.add("btn--danger");
         btnBulkFill.disabled = false;
       } else if (_autoFillInProgress && !recentClick) {
         _autoFillInProgress = false;
-        btnBulkFill.textContent = "Wypełnij do limitu";
+        btnBulkFill.textContent = "Dodaj automatycznie";
         btnBulkFill.classList.remove("btn--danger");
         btnBulkFill.disabled = false;
       }
@@ -1148,7 +1148,7 @@
     }
     if (resp && resp.success === false) {
       if (resp.error === "queue_empty") {
-        showError("Kolejka jest pusta — nie ma kogo łączyć. Otwórz wyszukiwarkę LinkedIn, kliknij Wypełnij do limitu, potem Start.");
+        showError("Lista zaproszeń jest pusta. Otwórz wyszukiwarkę LinkedIn, kliknij „Dodaj automatycznie”, potem Start.");
       } else {
         showError("Nie udało się wystartować: " + (resp.error || "nieznany błąd"));
       }
@@ -1666,7 +1666,7 @@
 
     const meta = document.createElement("p");
     meta.className = "followup-row__meta";
-    meta.textContent = `Pierwsza wiadomość: ${formatAbsoluteDate(item.messageSentAt)} · follow-up: ${formatAbsoluteDate(item.remindAt)}`;
+    meta.textContent = `Pierwsza wiadomość: ${formatAbsoluteDate(item.messageSentAt)} · przypomnienie: ${formatAbsoluteDate(item.remindAt)}`;
     li.appendChild(meta);
 
     // #38 reply tracking — read-only tag dla scheduled rows. Pokazuje się
@@ -1676,15 +1676,15 @@
     if (replyAt) {
       let stageLabel = "msg";
       if (item.messageReplyAt) stageLabel = "msg";
-      else if (item.followup1ReplyAt) stageLabel = "FU#1";
-      else if (item.followup2ReplyAt) stageLabel = "FU#2";
+      else if (item.followup1ReplyAt) stageLabel = "przyp. 1";
+      else if (item.followup2ReplyAt) stageLabel = "przyp. 2";
 
       const d = new Date(replyAt);
       const formatted = `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}`;
 
       const replyTag = document.createElement("span");
       replyTag.className = "followup-row__replied";
-      replyTag.textContent = `↪ Odp. ${stageLabel} ${formatted}`;
+      replyTag.textContent = `Odpisał (${stageLabel}) ${formatted}`;
       li.appendChild(replyTag);
     }
 
@@ -1715,7 +1715,7 @@
 
     const tag = document.createElement("span");
     tag.className = "followup-row__tag" + (followupNum === 2 ? " followup-row__tag--second" : "");
-    tag.textContent = `Follow-up #${followupNum} (${days}d po wysłaniu)`;
+    tag.textContent = `Przypomnienie ${followupNum} (po ${days} dniach od wiadomości)`;
 
     head.appendChild(nameEl);
     head.appendChild(tag);
@@ -1738,7 +1738,7 @@
 
     const btnGen = document.createElement("button");
     btnGen.className = "btn btn--small btn--outline";
-    btnGen.textContent = item.draft ? "Regeneruj follow-up" : "Generuj follow-up";
+    btnGen.textContent = item.draft ? "Napisz nową wersję (AI)" : "Napisz przypomnienie (AI)";
     btnGen.dataset.action = "followup-generate";
     btnGen.dataset.slug = slug;
     btnGen.dataset.followupNum = String(followupNum);
@@ -1798,7 +1798,7 @@
         );
         if (ta) ta.value = resp.draft || "";
       } else {
-        alert("Nie udało się wygenerować follow-up'a: " + (resp?.error || "unknown"));
+        alert("Nie udało się napisać przypomnienia: " + (resp?.error || "unknown"));
       }
     } catch (err) {
       alert("Błąd generowania: " + ((err && err.message) || err));
@@ -1866,7 +1866,7 @@
   async function handleFollowupMarkSent(slug, followupNum, name) {
     if (!slug) return;
     const label = name || slug;
-    if (!confirm(`Wysłałeś follow-up #${followupNum} do ${label}?`)) return;
+    if (!confirm(`Wysłałeś przypomnienie ${followupNum} do ${label}?`)) return;
     try {
       await chrome.runtime.sendMessage({
         action: "followupMarkSent",
@@ -1882,7 +1882,7 @@
   async function handleFollowupSkip(slug, name) {
     if (!slug) return;
     const label = name || slug;
-    if (!confirm(`Pomiń follow-upy dla ${label}?`)) return;
+    if (!confirm(`Pominąć przypomnienia dla ${label}?`)) return;
     try {
       await chrome.runtime.sendMessage({ action: "followupSkip", slug });
       await loadFollowupList();
@@ -2021,7 +2021,7 @@
     _autoFillClickedAt = Date.now();
     // NIE disable button — user musi mieć możliwość kliknięcia Stop podczas
     // trwania scan'u. Text + className zmienia button na warning style.
-    btnBulkFill.textContent = "⏹ Stop dodawania";
+    btnBulkFill.textContent = "Stop dodawania";
     btnBulkFill.classList.add("btn--danger");
 
     try {
@@ -2075,7 +2075,7 @@
     } finally {
       _autoFillInProgress = false;
       btnBulkFill.disabled = false;
-      btnBulkFill.textContent = "Wypełnij do limitu";
+      btnBulkFill.textContent = "Dodaj automatycznie";
       btnBulkFill.classList.remove("btn--danger");
     }
   }

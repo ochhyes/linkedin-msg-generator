@@ -29,7 +29,7 @@
   // #55: prompt liczby dni odroczenia follow-upu. Pole numeryczne, walidacja
   // min 1, default 60. Zwraca int dni albo null (anulowano / błędna wartość).
   function promptDeferDays() {
-    const raw = window.prompt("O ile dni odroczyć follow-up? (liczba całkowita, min 1)", "60");
+    const raw = window.prompt("O ile dni odroczyć przypomnienie? (liczba całkowita, min 1)", "60");
     if (raw == null) return null; // anulowano
     const n = Number(String(raw).trim());
     if (!Number.isInteger(n) || n < 1) {
@@ -91,7 +91,7 @@
 
     const tag = document.createElement("span");
     tag.className = `row__tag row__tag--fu${num}`;
-    tag.textContent = `Follow-up #${num} (${days}d po wysłaniu)`;
+    tag.textContent = `Przypomnienie ${num} (po ${days} dniach od wiadomości)`;
     head.appendChild(tag);
     li.appendChild(head);
 
@@ -109,7 +109,7 @@
 
     const draft = document.createElement("textarea");
     draft.className = "row__draft";
-    draft.placeholder = "Klik 'Generuj' żeby AI stworzyło draft, albo wpisz własny.";
+    draft.placeholder = "Kliknij „Napisz przypomnienie (AI)” albo wpisz własny tekst.";
     draft.value = item.draft || "";
     draft.addEventListener("blur", () => {
       const key = `${item.slug}#${num}`;
@@ -132,7 +132,7 @@
     const actions = document.createElement("div");
     actions.className = "row__actions";
 
-    const btnGen = btn("Generuj follow-up", "btn--primary");
+    const btnGen = btn("Napisz przypomnienie (AI)", "btn--primary");
     btnGen.addEventListener("click", async () => {
       btnGen.disabled = true;
       const orig = btnGen.textContent;
@@ -179,7 +179,7 @@
 
     const btnSent = btn("Wysłałem", "btn--outline");
     btnSent.addEventListener("click", async () => {
-      if (!confirm(`Wysłałeś follow-up #${num} do ${item.name || item.slug}?`)) return;
+      if (!confirm(`Wysłałeś przypomnienie ${num} do ${item.name || item.slug}?`)) return;
       try {
         await chrome.runtime.sendMessage({
           action: "followupMarkSent",
@@ -193,7 +193,7 @@
 
     const btnSkip = btn("Pomiń", "btn--danger");
     btnSkip.addEventListener("click", async () => {
-      if (!confirm(`Pomiń follow-upy dla ${item.name || item.slug}? (też #2 jeśli jeszcze nie wysłany)`)) return;
+      if (!confirm(`Pominąć przypomnienia dla ${item.name || item.slug}? (także drugie, jeśli jeszcze nie wysłane)`)) return;
       try {
         await chrome.runtime.sendMessage({ action: "followupSkip", slug: item.slug });
         loadAll();
@@ -204,7 +204,7 @@
     // #55: "Brak zgody" — kontakt nie wyraził zgody, status no_consent.
     const btnNoConsent = btn("Brak zgody", "btn--outline");
     btnNoConsent.addEventListener("click", async () => {
-      if (!confirm(`Oznaczyć „${item.name || item.slug}" jako Brak zgody? Follow-upy zostaną zatrzymane, żadna wiadomość nie pójdzie.`)) return;
+      if (!confirm(`Oznaczyć „${item.name || item.slug}" jako Brak zgody? Przypomnienia zostaną zatrzymane, żadna wiadomość nie pójdzie.`)) return;
       try {
         await chrome.runtime.sendMessage({ action: "followupMarkNoConsent", slug: item.slug });
         loadAll();
@@ -267,10 +267,10 @@
       // #55: zestaw odroczony — wyróżniony tag.
       tag.className = "row__tag row__tag--deferred";
       const deferNote = item.followupDeferredDays ? ` — odroczono o ${item.followupDeferredDays} dni` : "";
-      tag.textContent = `Odroczony: Follow-up #${num} za ${dayLabel} (${formatDate(item.remindAt)})${deferNote}`;
+      tag.textContent = `Odroczone: przypomnienie ${num} za ${dayLabel} (${formatDate(item.remindAt)})${deferNote}`;
     } else {
       tag.className = "row__tag row__tag--scheduled";
-      tag.textContent = `Follow-up #${num} za ${dayLabel} (${formatDate(item.remindAt)})`;
+      tag.textContent = `Przypomnienie ${num} za ${dayLabel} (${formatDate(item.remindAt)})`;
     }
     head.appendChild(tag);
     li.appendChild(head);
@@ -293,7 +293,7 @@
       actions.className = "row__actions";
       const btnVoid = btn("Anuluj cały zestaw follow-upów", "btn--danger");
       btnVoid.addEventListener("click", async () => {
-        if (!confirm(`Anulować cały zestaw follow-upów dla ${item.name || item.slug}? Skasuje to ZARÓWNO Follow-up #1 jak i #2 — to akcje powiązane.`)) return;
+        if (!confirm(`Anulować oba przypomnienia dla ${item.name || item.slug}? Skasuje to przypomnienie 1 i 2 — są powiązane.`)) return;
         try {
           const resp = await chrome.runtime.sendMessage({
             action: "followupVoidSet", slug: item.slug, followupIdToCancel: num,
@@ -350,7 +350,7 @@
       tag.textContent = "Odpowiedział";
     } else {
       tag.className = "row__tag row__tag--sent";
-      tag.textContent = `Follow-up #${item.followupNum || "?"} wysłany ${formatDate(item.sentAt)}`;
+      tag.textContent = `Przypomnienie ${item.followupNum || "?"} wysłane ${formatDate(item.sentAt)}`;
     }
     head.appendChild(tag);
     li.appendChild(head);
@@ -392,26 +392,36 @@
     }
   }
 
+  // 2.0: ikony SVG zamiast emoji (stałe stringi — bezpieczne dla innerHTML).
+  const FUNNEL_ICONS = {
+    send: '<svg class="ico ico--sm" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>',
+    check: '<svg class="ico ico--sm" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
+    mail: '<svg class="ico ico--sm" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>',
+    reply: '<svg class="ico ico--sm" viewBox="0 0 24 24"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>',
+    bell: '<svg class="ico ico--sm" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>',
+    target: '<svg class="ico ico--sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>',
+  };
+
   function renderStatsFunnel(totals, rates) {
     if (!statsFunnel) return;
     if ((totals.invitesSent || 0) === 0 && (totals.messagesSent || 0) === 0) {
       statsFunnel.innerHTML = "";
       const p = document.createElement("p");
       p.className = "stats-empty";
-      p.textContent = "Zacznij od bulk Connect lub manual outreach żeby zobaczyć statystyki.";
+      p.textContent = "Wyniki pojawią się, gdy wyślesz pierwsze zaproszenia (zakładka „Budowanie sieci” w okienku rozszerzenia).";
       statsFunnel.appendChild(p);
       return;
     }
 
     const rows = [
-      { icon: "📨", label: "Invites wysłane", value: totals.invitesSent || 0, arrow: `Accept rate: ${fmtRate(rates.acceptRate)}%` },
-      { icon: "✅", label: "Zaakceptowane", value: totals.accepted || 0, arrow: `Wiadomość 1 wysłana: ${totals.messagesSent || 0}` },
-      { icon: "📩", label: "Wiadomość 1 wysłana", value: totals.messagesSent || 0, arrow: `Reply rate stage 1: ${fmtRate(rates.messageReplyRate)}%` },
-      { icon: "↪", label: "Odpowiedź na wiadomość 1", value: totals.messageReplies || 0, arrow: `FU#1 wysłany: ${totals.followup1Sent || 0}` },
-      { icon: "🔔", label: "Follow-up #1 wysłany", value: totals.followup1Sent || 0, arrow: `Reply rate stage 2: ${fmtRate(rates.followup1ReplyRate)}%` },
-      { icon: "↪", label: "Odpowiedź na FU#1", value: totals.followup1Replies || 0, arrow: `FU#2 wysłany: ${totals.followup2Sent || 0}` },
-      { icon: "🔔", label: "Follow-up #2 wysłany", value: totals.followup2Sent || 0, arrow: `Reply rate stage 3: ${fmtRate(rates.followup2ReplyRate)}%` },
-      { icon: "↪", label: "Odpowiedź na FU#2", value: totals.followup2Replies || 0, arrow: null },
+      { icon: "send", label: "Zaproszenia wysłane", value: totals.invitesSent || 0, arrow: `przyjęło: ${fmtRate(rates.acceptRate)}%` },
+      { icon: "check", label: "Zaproszenia przyjęte", value: totals.accepted || 0, arrow: `dostało wiadomość: ${totals.messagesSent || 0}` },
+      { icon: "mail", label: "Pierwsza wiadomość wysłana", value: totals.messagesSent || 0, arrow: `odpisało: ${fmtRate(rates.messageReplyRate)}%` },
+      { icon: "reply", label: "Odpowiedź na wiadomość", value: totals.messageReplies || 0, arrow: `dostało przypomnienie 1: ${totals.followup1Sent || 0}` },
+      { icon: "bell", label: "Przypomnienie 1 wysłane", value: totals.followup1Sent || 0, arrow: `odpisało: ${fmtRate(rates.followup1ReplyRate)}%` },
+      { icon: "reply", label: "Odpowiedź na przypomnienie 1", value: totals.followup1Replies || 0, arrow: `dostało przypomnienie 2: ${totals.followup2Sent || 0}` },
+      { icon: "bell", label: "Przypomnienie 2 wysłane", value: totals.followup2Sent || 0, arrow: `odpisało: ${fmtRate(rates.followup2ReplyRate)}%` },
+      { icon: "reply", label: "Odpowiedź na przypomnienie 2", value: totals.followup2Replies || 0, arrow: null },
     ];
 
     statsFunnel.innerHTML = "";
@@ -420,7 +430,7 @@
       div.className = "stats-row";
       const iconSpan = document.createElement("span");
       iconSpan.className = "stats-row__icon";
-      iconSpan.textContent = row.icon;
+      iconSpan.innerHTML = FUNNEL_ICONS[row.icon] || ""; // stałe SVG, nie user input
       const labelSpan = document.createElement("span");
       labelSpan.className = "stats-row__label";
       labelSpan.textContent = row.label;
@@ -434,7 +444,7 @@
       if (row.arrow) {
         const arr = document.createElement("div");
         arr.className = "stats-arrow";
-        arr.textContent = `↓ ${row.arrow}`;
+        arr.textContent = row.arrow;
         statsFunnel.appendChild(arr);
       }
     }
@@ -444,10 +454,10 @@
     total.className = "stats-row stats-row--total";
     const totIcon = document.createElement("span");
     totIcon.className = "stats-row__icon";
-    totIcon.textContent = "🎯";
+    totIcon.innerHTML = FUNNEL_ICONS.target;
     const totLabel = document.createElement("span");
     totLabel.className = "stats-row__label";
-    totLabel.textContent = "TOTAL: Reply rate (any stage)";
+    totLabel.textContent = "Łącznie odpisało (dowolny etap)";
     const totValue = document.createElement("span");
     totValue.className = "stats-row__value";
     const anyReply = totals.anyReply || 0;
@@ -564,27 +574,27 @@
     actionsTd.className = "actions-cell";
 
     if (item.messageSentAt && !item.messageReplyAt) {
-      actionsTd.appendChild(makeReplyBtn("↪Msg", "Oznacz że odpowiedział na wiadomość 1", "btn-mark-reply",
+      actionsTd.appendChild(makeReplyBtn("Odpisał: wiad.", "Oznacz, że ta osoba odpisała na pierwszą wiadomość", "btn-mark-reply",
         () => markReply(item.slug, "message")));
     }
     if (item.followup1SentAt && !item.followup1ReplyAt) {
-      actionsTd.appendChild(makeReplyBtn("↪FU1", "Oznacz że odpowiedział na FU#1", "btn-mark-reply",
+      actionsTd.appendChild(makeReplyBtn("Odpisał: przyp. 1", "Oznacz, że ta osoba odpisała na przypomnienie 1", "btn-mark-reply",
         () => markReply(item.slug, "followup1")));
     }
     if (item.followup2SentAt && !item.followup2ReplyAt) {
-      actionsTd.appendChild(makeReplyBtn("↪FU2", "Oznacz że odpowiedział na FU#2", "btn-mark-reply",
+      actionsTd.appendChild(makeReplyBtn("Odpisał: przyp. 2", "Oznacz, że ta osoba odpisała na przypomnienie 2", "btn-mark-reply",
         () => markReply(item.slug, "followup2")));
     }
     if (item.messageReplyAt) {
-      actionsTd.appendChild(makeReplyBtn("✕Msg", "Cofnij oznaczenie odpowiedzi na msg", "btn-unmark-reply",
+      actionsTd.appendChild(makeReplyBtn("Cofnij: wiad.", "Cofnij oznaczenie odpowiedzi na wiadomość", "btn-unmark-reply",
         () => unmarkReply(item.slug, "message")));
     }
     if (item.followup1ReplyAt) {
-      actionsTd.appendChild(makeReplyBtn("✕FU1", "Cofnij oznaczenie odpowiedzi na FU#1", "btn-unmark-reply",
+      actionsTd.appendChild(makeReplyBtn("Cofnij: przyp. 1", "Cofnij oznaczenie odpowiedzi na przypomnienie 1", "btn-unmark-reply",
         () => unmarkReply(item.slug, "followup1")));
     }
     if (item.followup2ReplyAt) {
-      actionsTd.appendChild(makeReplyBtn("✕FU2", "Cofnij oznaczenie odpowiedzi na FU#2", "btn-unmark-reply",
+      actionsTd.appendChild(makeReplyBtn("Cofnij: przyp. 2", "Cofnij oznaczenie odpowiedzi na przypomnienie 2", "btn-unmark-reply",
         () => unmarkReply(item.slug, "followup2")));
     }
     tr.appendChild(actionsTd);
@@ -603,7 +613,7 @@
     const d = new Date(date);
     const dd = String(d.getDate()).padStart(2, "0");
     const mm = String(d.getMonth() + 1).padStart(2, "0");
-    td.textContent = `✓ ${dd}.${mm}`;
+    td.textContent = `${dd}.${mm}`;
     const iso = d.toISOString().slice(0, 16).replace("T", " ");
     td.title = `${title}: ${iso}`;
     return td;
@@ -834,7 +844,7 @@
       const interval = resp.intervalDays;
       let danger = false;
       if (!last) {
-        backupBannerText.textContent = "⚠ Backup nigdy nie był jeszcze zrobiony — kliknij „Pobierz backup teraz” poniżej.";
+        backupBannerText.textContent = "Uwaga: kopia zapasowa nie była jeszcze robiona — kliknij „Zapisz kopię teraz”.";
         danger = true;
       } else {
         const days = Math.floor((Date.now() - last) / 86400000);
@@ -923,10 +933,10 @@
       try {
         const resp = await chrome.runtime.sendMessage({ action: "importConnections", maxPages: 80 });
         if (resp && resp.success && resp.warning === "extract_empty") {
-          setProfileDbStatus("⚠ Wykryto 0 kontaktów na stronie. Prawdopodobnie LinkedIn zmienił układ strony kontaktów (albo limit konta przekierował stronę). Odśwież stronę kontaktów (F5) i spróbuj ponownie. Jeśli się powtarza — zrób dump strony i zgłoś.", true);
+          setProfileDbStatus("Uwaga: wykryto 0 kontaktów na stronie. Prawdopodobnie LinkedIn zmienił układ strony kontaktów (albo limit konta przekierował stronę). Odśwież stronę kontaktów (F5) i spróbuj ponownie. Jeśli się powtarza — zrób dump strony i zgłoś.", true);
           loadProfileDb();
         } else if (resp && resp.success && resp.warning === "extract_degraded") {
-          setProfileDbStatus("⚠ Zaimportowano " + resp.scraped + " kontaktów, ale " + (resp.scraped - resp.named) + " bez imienia — parser może być częściowo niezgodny z nowym układem LinkedIna. Dane częściowe; jeśli dużo pustych, zrób dump strony i zgłoś.", true);
+          setProfileDbStatus("Uwaga: zaimportowano " + resp.scraped + " kontaktów, ale " + (resp.scraped - resp.named) + " bez imienia — parser może być częściowo niezgodny z nowym układem LinkedIna. Dane częściowe; jeśli dużo pustych, zrób dump strony i zgłoś.", true);
           loadProfileDb();
         } else if (resp && resp.success) {
           setProfileDbStatus(`Zaimportowano ${resp.scraped || 0} kontaktów (${resp.added || 0} nowych, ${resp.updated || 0} zaktualizowanych${resp.hitCap ? ", osiągnięto limit stron — uruchom ponownie po doscrollowaniu" : ""}).`);
@@ -963,13 +973,13 @@
         }
         // Krok 2: confirm.
         const msg = [
-          `LinkedIn-export (${modeLabel}): ${preview.total} profili.`,
+          `Plik z LinkedIn (${modeLabel}): ${preview.total} osób.`,
           `• ${preview.newSlugs} nowych do dodania`,
-          `• ${preview.mergedSlugs} istniejących do scalenia (Company/Position/Email dorzucone, scrape zachowany)`,
-          asProspects ? "• isConnection=false → profile można dodać do kolejki connect (Dashboard → ➕ Dodaj do kolejki connect)" : null,
-          `• ${preview.skippedNoSlug} pominiętych (brak URL/slug)`,
-          preview.urnEmailsBlocked ? `• ${preview.urnEmailsBlocked} maili odrzucono (LinkedIn URN zamiast literal email)` : null,
-          preview.parseErrors ? `• ${preview.parseErrors} błędów parsowania (pominięte)` : null,
+          `• ${preview.mergedSlugs} już znanych — dane zostaną uzupełnione (firma/stanowisko/e-mail)`,
+          asProspects ? "• trafią do bazy jako osoby do zaproszenia (przycisk „Dodaj do zaproszeń” w Bazie osób)" : null,
+          `• ${preview.skippedNoSlug} pominiętych (brak adresu profilu)`,
+          preview.urnEmailsBlocked ? `• ${preview.urnEmailsBlocked} e-maili odrzucono (LinkedIn podał kod zamiast adresu)` : null,
+          preview.parseErrors ? `• ${preview.parseErrors} wierszy nie dało się odczytać (pominięte)` : null,
           "",
           "Zatwierdzić i zapisać do bazy?",
         ].filter(Boolean).join("\n");
@@ -1237,7 +1247,7 @@
       try {
         const resp = await chrome.runtime.sendMessage({ action: "acceptCheckRunNow" });
         if (resp && resp.success) {
-          alert("✓ Przeskanowano " + (resp.scanned || 0) + " kontaktów, oznaczono " + (resp.accepted || 0) + " akceptów.");
+          alert("Sprawdzone: " + (resp.scanned || 0) + " kontaktów, nowe akceptacje: " + (resp.accepted || 0) + ".");
         } else if (resp && resp.skipped) {
           const map = {
             disabled: "Tracker wyłączony — najpierw kliknij Włącz.",

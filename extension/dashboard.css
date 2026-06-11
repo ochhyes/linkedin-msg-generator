@@ -719,3 +719,18 @@ body {
 .profiledb-filters input[type="text"]:focus,
 .profiledb-filters select:focus { border-color: var(--brand-primary); box-shadow: 0 0 0 3px var(--brand-primary-soft); }
 .profiledb-filters input[type="text"] { flex: 1; min-width: 180px; }
+
+/* ── Ikony SVG 2.0 (zamiast emoji) ───────────────────────────── */
+.ico {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vertical-align: -3px;
+}
+.ico--sm { width: 14px; height: 14px; vertical-align: -2px; }
+button .ico, .btn .ico { margin-right: 2px; }

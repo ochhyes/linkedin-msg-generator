@@ -23,7 +23,7 @@
         </div>
       </div>
       <div class="header__actions">
-        <button id="btn-dashboard" class="btn-icon" title="Dashboard follow-upów" aria-label="Dashboard follow-upów">
+        <button id="btn-dashboard" class="btn-icon" title="Otwórz pulpit" aria-label="Otwórz pulpit">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
             <rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/>
           </svg>
@@ -50,7 +50,7 @@
         <button id="tab-profile" class="tab tab--active" role="tab" data-tab="profile">Profil</button>
         <button id="tab-bulk" class="tab" role="tab" data-tab="bulk">Budowanie sieci</button>
         <button id="tab-followup" class="tab" role="tab" data-tab="followup">
-          Follow-upy <span id="tab-followup-badge" class="tab__badge"></span>
+          Przypomnienia <span id="tab-followup-badge" class="tab__badge"></span>
         </button>
       </nav>
 
@@ -143,14 +143,14 @@
           <ul id="profiles-list" class="bulk-connect__list"></ul>
           <div class="bulk-connect__add-row" id="bulk-add-row" hidden>
             <button id="btn-add-queue" class="btn btn--small btn--primary">Dodaj zaznaczone</button>
-            <button id="btn-bulk-fill" class="btn btn--small btn--outline" title="Pobiera profile z kolejnych stron LinkedIn'a, aż doda 'addCount' nowych do kolejki (ustawisz w Ustawieniach bulk).">Wypełnij do limitu</button>
+            <button id="btn-bulk-fill" class="btn btn--small btn--outline" title="Samo przejdzie po kolejnych stronach wyników i doda nowe osoby na listę zaproszeń (ile — ustawisz w ustawieniach niżej).">Dodaj automatycznie</button>
           </div>
         </section>
 
         <!-- Queue (oddzielnie) -->
         <section id="queue-section" class="bulk-queue hidden">
           <div class="bulk-queue__header">
-            <span class="bulk-queue__title">Kolejka</span>
+            <span class="bulk-queue__title">Lista zaproszeń</span>
             <span id="bulk-status" class="bulk-queue__status"></span>
             <span id="bulk-progress" class="bulk-queue__progress"></span>
           </div>
@@ -159,8 +159,8 @@
           <div class="bulk-queue__controls">
             <button id="btn-bulk-start" class="btn btn--small btn--primary" hidden>Start</button>
             <button id="btn-bulk-stop" class="btn btn--small btn--danger" hidden>Stop</button>
-            <button id="btn-bulk-resume" class="btn btn--small btn--primary" hidden>Resume</button>
-            <button id="btn-bulk-clear" class="btn btn--small btn--outline" title="Wyczyść całą kolejkę zaproszeń">Wyczyść</button>
+            <button id="btn-bulk-resume" class="btn btn--small btn--primary" hidden>Wznów</button>
+            <button id="btn-bulk-clear" class="btn btn--small btn--outline" title="Wyczyść całą listę zaproszeń (najpierw zapisze się kopia)">Wyczyść</button>
           </div>
           <p id="bulk-error" class="bulk-queue__error hidden"></p>
         </section>
@@ -169,12 +169,12 @@
         <details id="bulk-settings" class="bulk-settings">
           <summary>Ustawienia budowania sieci</summary>
           <div class="bulk-settings__grid">
-            <label>Min delay (s)<input type="number" id="set-bulk-delaymin" min="10" max="600"></label>
-            <label>Max delay (s)<input type="number" id="set-bulk-delaymax" min="10" max="600"></label>
-            <label>Daily cap (wysyłka/dzień)<input type="number" id="set-bulk-cap" min="1" max="200"></label>
-            <label>Ile dodać za „Wypełnij"<input type="number" id="set-bulk-addcount" min="1" max="500"></label>
-            <label>Godz. start<input type="number" id="set-bulk-hstart" min="0" max="23"></label>
-            <label>Godz. end<input type="number" id="set-bulk-hend" min="0" max="23"></label>
+            <label>Przerwa min. (sek.)<input type="number" id="set-bulk-delaymin" min="10" max="600"></label>
+            <label>Przerwa maks. (sek.)<input type="number" id="set-bulk-delaymax" min="10" max="600"></label>
+            <label>Limit zaproszeń na dzień<input type="number" id="set-bulk-cap" min="1" max="200"></label>
+            <label>Ile osób dodać na raz<input type="number" id="set-bulk-addcount" min="1" max="500"></label>
+            <label>Od godziny<input type="number" id="set-bulk-hstart" min="0" max="23"></label>
+            <label>Do godziny<input type="number" id="set-bulk-hend" min="0" max="23"></label>
           </div>
           <button id="btn-bulk-save-settings" class="btn btn--small btn--outline">Zapisz</button>
         </details>
@@ -187,12 +187,12 @@
         <!-- Follow-up reminders -->
         <section id="followup-section" class="followup-section">
           <div class="followup-section__header">
-            <span class="followup-section__title">Do follow-up'u</span>
+            <span class="followup-section__title">Napisz teraz</span>
             <span id="followup-count-badge" class="followup-count-badge"></span>
           </div>
-          <p class="followup-section__hint">Profile, do których minęły 3 lub 7 dni od pierwszej wiadomości i czas na follow-up.</p>
+          <p class="followup-section__hint">Osoby, którym wysłałeś wiadomość 3 lub 7 dni temu — czas na przypomnienie.</p>
           <ul id="followup-list" class="followup-section__list"></ul>
-          <p id="followup-empty" class="followup-empty hidden">Nic do zrobienia teraz. ✓</p>
+          <p id="followup-empty" class="followup-empty hidden">Nic do zrobienia teraz.</p>
         </section>
 
         <!-- Zaplanowane (future, read-only) -->
@@ -201,19 +201,19 @@
             <span class="followup-section__title">Zaplanowane</span>
             <span id="followup-scheduled-count" class="followup-count-badge followup-count-badge--neutral"></span>
           </div>
-          <p class="followup-section__hint">Profile czekające na follow-up — sortowane od najbliższej daty.</p>
+          <p class="followup-section__hint">Przypomnienia czekające na swój termin — od najbliższego.</p>
           <ul id="followup-scheduled-list" class="followup-section__list"></ul>
-          <p class="followup-section__link"><a href="#" id="link-dashboard">→ Pełny dashboard (z historią)</a></p>
+          <p class="followup-section__link"><a href="#" id="link-dashboard">Otwórz pełny pulpit (z historią)</a></p>
         </section>
 
         <!-- Post-Connect Messaging -->
         <section id="message-pipeline" class="message-pipeline hidden">
           <div class="message-pipeline__header">
-            <span class="message-pipeline__title">Wiadomości po-Connect</span>
+            <span class="message-pipeline__title">Po przyjęciu zaproszenia</span>
             <span id="message-pipeline-count" class="message-pipeline__count"></span>
           </div>
           <div class="message-pipeline__controls">
-            <button id="btn-check-accepts" class="btn btn--small btn--outline">Sprawdź akceptacje</button>
+            <button id="btn-check-accepts" class="btn btn--small btn--outline">Sprawdź, kto przyjął</button>
             <button id="btn-generate-all-msg" class="btn btn--small btn--primary" hidden>Generuj wszystkie</button>
           </div>
           <p id="message-pipeline-status" class="message-pipeline__status"></p>
@@ -248,7 +248,7 @@
           </svg>
           <span class="btn__label">Generuj wiadomość</span>
         </button>
-        <button id="btn-copy-track" class="btn btn--primary hidden" title="Kopiuje wiadomość do schowka i planuje follow-up #1 za 3 dni, #2 za 7 dni — wklej na profilu osoby pod „Wiadomość”">
+        <button id="btn-copy-track" class="btn btn--primary hidden" title="Kopiuje wiadomość do schowka i planuje przypomnienia (za 3 i 7 dni) — wklej na profilu osoby pod „Wiadomość”">
           <span class="btn__label">Kopiuj i śledź</span>
         </button>
       </div>
@@ -260,7 +260,7 @@
       <h3 class="settings__title">Ustawienia</h3>
       <div class="controls">
         <div class="control-row">
-          <label for="set-api-url">URL backendu</label>
+          <label for="set-api-url">Adres serwera (nie zmieniaj)</label>
           <input type="text" id="set-api-url" placeholder="https://linkedin-api.szmidtke.pl">
         </div>
         <div class="control-row">
@@ -269,16 +269,16 @@
           <small class="control-hint">To nie jest klucz API Anthropic — ten siedzi na serwerze. To tylko hasło, żeby backend wiedział że to Ty.</small>
         </div>
         <div class="control-row">
-          <label for="set-sender">Kontekst nadawcy</label>
-          <textarea id="set-sender" rows="3" placeholder="Kim jestem, co robię — wzbogaca personalizację wiadomości"></textarea>
+          <label for="set-sender">O Tobie</label>
+          <textarea id="set-sender" rows="3" placeholder="Kim jesteś i co robisz — AI użyje tego do personalizacji wiadomości"></textarea>
         </div>
         <div class="control-row">
-          <label for="set-max-chars">Limit znaków</label>
+          <label for="set-max-chars">Maks. długość wiadomości (znaki)</label>
           <input type="number" id="set-max-chars" min="50" max="2000" value="1000">
         </div>
         <div class="control-row">
-          <label for="set-backup-days">Auto-backup bazy co (dni)</label>
-          <input type="number" id="set-backup-days" min="0" max="90" value="1" title="0 = wyłącz auto-backup. Backup ląduje w Pobrane/linkedin-msg-backup/.">
+          <label for="set-backup-days">Kopia zapasowa co (dni)</label>
+          <input type="number" id="set-backup-days" min="0" max="90" value="1" title="0 = wyłącz. Kopia zapisuje się w Pobrane/linkedin-msg-backup/.">
         </div>
       </div>
       <div class="actions">
