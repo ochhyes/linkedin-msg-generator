@@ -478,6 +478,8 @@ async function probeProfileTab(slug, action) {
     // Wait for tab content script — retry sendMessage do timeout.
     const start = Date.now();
     let lastErr = null;
+    let injectedFallback = false;
+    let attempts = 0;
     while (Date.now() - start < TAB_LOAD_TIMEOUT_MS) {
       try {
         const resp = await Promise.race([
@@ -487,6 +489,24 @@ async function probeProfileTab(slug, action) {
         return resp;
       } catch (err) {
         lastErr = err;
+        attempts++;
+        // #66 v1.25.6-audyt: manifest wstrzykuje content.js tylko na
+        // /in/*, /search/.../people/*, /connections/*. LinkedIn przy limicie
+        // konta redirectuje /in/<slug>/ na gołe /mynetwork/ — tam scriptu
+        // NIE MA i sendMessage będzie padać aż do tab_load_timeout (~12s)
+        // zamiast zwrócić czytelny skip. Po 3 nieudanych próbach wstrzyknij
+        // programmatycznie (host_permissions pokrywa całe linkedin.com) —
+        // guard redirected_off_profile/wrong_profile_loaded w content.js
+        // odpowie wtedy konkretnym powodem.
+        if (attempts >= 3 && !injectedFallback) {
+          injectedFallback = true;
+          try {
+            await chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              files: ["content.js"],
+            });
+          } catch (_) { /* tab chroniony / zamknięty — retry-loop doleci do timeoutu */ }
+        }
         // Content script może jeszcze nie być zainjectowany — czekamy.
         await new Promise((r) => setTimeout(r, 500));
       }

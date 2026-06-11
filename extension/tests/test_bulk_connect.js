@@ -46,27 +46,9 @@ function assertEqual(actual, expected, testName) {
   }
 }
 
-// ── Re-implementacja helpers z content.js (#19) ──────────────────
-
-function findLiBySlug(doc, slug) {
-  if (!slug) return null;
-  const link = doc.querySelector(`a[href*="/in/${slug}/"]`);
-  if (!link) return null;
-  return link.closest('[role="listitem"], li');
-}
-
-// Klasyfikacja stanu profilu — używana w skip filter w bulkConnectClick.
-function classifyLi(li) {
-  if (!li) return "no_li";
-  const pendingLink = li.querySelector('a[aria-label^="W toku"], a[aria-label^="Pending"]');
-  if (pendingLink) return "pending";
-  const connectLink =
-    li.querySelector('a[href*="search-custom-invite"][aria-label^="Zaproś użytkownika"]') ||
-    li.querySelector('a[href*="search-custom-invite"][aria-label^="Invite "]') ||
-    li.querySelector('a[href*="search-custom-invite"]');
-  if (!connectLink) return "not_connectable";
-  return "connectable";
-}
+// (v2.0-cleanup) Porty findLiBySlug/classifyLi usunięte razem z martwym
+// bulkConnectClick w content.js (#49: worker łączy z profilu). Klasyfikację
+// stanu przycisków testuje test_search_extractor.js (classifySearchButtonState).
 
 // ── Re-implementacja helpers z background.js (#19) ────────────────
 
@@ -112,64 +94,6 @@ function loadFixture(name) {
 }
 
 // ── Test suite ────────────────────────────────────────────────────
-
-console.log("\n▸ findLiBySlug — search results fixture");
-{
-  const doc = loadFixture("search_results_people.html");
-
-  // Pierwszy profil w fixturze: Mariusz Fedorowski.
-  const li = findLiBySlug(doc, "mariusz-fedorowski-1645a4173");
-  assert(li !== null, "Finds <li> for Mariusz Fedorowski");
-  assert(
-    li && (li.matches('[role="listitem"]') || li.tagName === "LI"),
-    "Returned element is [role=listitem] or <li>"
-  );
-
-  // Slug który nie istnieje.
-  const missing = findLiBySlug(doc, "nieexistujacy-profil-123");
-  assertEqual(missing, null, "Returns null for missing slug");
-
-  // Empty / falsy slug.
-  assertEqual(findLiBySlug(doc, ""), null, "Empty slug → null");
-  assertEqual(findLiBySlug(doc, null), null, "Null slug → null");
-}
-
-console.log("\n▸ classifyLi — skip filter logic");
-{
-  const doc = loadFixture("search_results_people.html");
-
-  // Wszystkie 10 profili w fixturze są Connect-able (2nd-degree, brak pending).
-  const items = doc.querySelectorAll('div[role="listitem"]');
-  let connectableCount = 0;
-  for (const li of items) {
-    if (classifyLi(li) === "connectable") connectableCount++;
-  }
-  assert(connectableCount >= 10, "At least 10 connectable profiles in fixture", `got ${connectableCount}`);
-
-  // Synthetic test: zmodyfikuj jeden profil żeby symulować Pending state.
-  // Bierzemy pierwszy profil, dorzucamy mu fake pending link, sprawdzamy klasyfikację.
-  const targetLi = findLiBySlug(doc, "mariusz-fedorowski-1645a4173");
-  const fakePending = doc.createElement("a");
-  fakePending.setAttribute("aria-label", "W toku; kliknij, aby wycofać zaproszenie");
-  fakePending.setAttribute("href", "/withdraw");
-  targetLi.appendChild(fakePending);
-  assertEqual(classifyLi(targetLi), "pending", "Pending link detected via aria-label");
-
-  // Synthetic: <li> bez żadnego connect/pending linka → not_connectable.
-  const emptyLi = doc.createElement("li");
-  const profileLink = doc.createElement("a");
-  profileLink.setAttribute("href", "/in/test-slug/");
-  emptyLi.appendChild(profileLink);
-  assertEqual(classifyLi(emptyLi), "not_connectable", "No connect link → not_connectable");
-
-  // Synthetic: EN aria-label "Invite ..." też klasyfikowany.
-  const enLi = doc.createElement("li");
-  const enConnect = doc.createElement("a");
-  enConnect.setAttribute("href", "/preload/search-custom-invite/?vanityName=foo");
-  enConnect.setAttribute("aria-label", "Invite Foo Bar to connect");
-  enLi.appendChild(enConnect);
-  assertEqual(classifyLi(enLi), "connectable", "EN aria-label 'Invite ...' classified as connectable");
-}
 
 console.log("\n▸ addToQueue — dedup po slug");
 {
