@@ -199,7 +199,7 @@ Sprint:        #11 — …/1.25.4/1.25.5 DONE. Otwarte: #53 (contact-info), #56B
 Phase:         PM. Smoke v1.25.5 (Marcin): FF-merge worktree→master → reload → search → "Wypełnij do limitu". Oczekiwane: kolejka rośnie ALBO stop ≤5 stron z komunikatem-rozbiciem + event bulk_fill_no_connectable w logu (wtedy buttonsSample z loga → fix właściwy). UWAGA: konto Marcina hituje commercial-use limit LI — część "źle dodaje" to limit konta, nie kod.
 Active task:   (none).
 Repo state:    czysto. #64 (v1.25.5) na branchu claude/pensive-cori-52eed7 — CZEKA NA MERGE do master.
-Last commit:   (sha w DONE) — fix: bulk fill nie kolejkował (#64 v1.25.5)
+Last commit:   187a7ea — fix: bulk fill nie kolejkował (#64 v1.25.5)
 Updated:       2026-06-11
 ```
 
@@ -247,7 +247,7 @@ Updated:       2026-06-11
 
 > 1 linia per release (sha, opis, bump). Pełne treści: `git show <sha>` + `PROGRESS.md`.
 
-- **v1.25.5** (worktree, do merge) — fix: bulk fill nie kolejkował — wspólny `classifySearchButtonState` (Ember+SDUI+generic, text fallback per-linia), stop po 5 pustych stronach, telemetria `bulk_fill_no_connectable` + buttonsSample (#64)
+- **v1.25.5** (187a7ea, worktree → merge do master) — fix: bulk fill nie kolejkował — wspólny `classifySearchButtonState` (Ember+SDUI+generic, text fallback per-linia), stop po 5 pustych stronach, telemetria `bulk_fill_no_connectable` + buttonsSample (#64)
 - **v1.25.4** (5cfd22c) — feat: early-warning importu kontaktów — telemetria `connections_extract_empty/_degraded` + głośny warning w UI gdy 0/puste imiona (#62)
 - **v1.25.3** (8c5b04e) — fix: parser kontaktów na SDUI /connections/ (dedup→grupowanie+merge, cleanName #OpenToWork), naprawia import + accept-tracker (#61)
 - **v1.25.2** (9e68dc1) — feat: import LinkedIn-CSV jako prospekty, opts.asProspects → isConnection:false (#60)
