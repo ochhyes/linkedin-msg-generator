@@ -196,14 +196,14 @@ Uruchom testy automatyczne (pytest backend + jsdom extension). Wykonaj kroki man
 
 ```
 Sprint:        #11 — …/1.25.4/1.25.5 DONE. Otwarte: #53 (contact-info), #56B (reply-tracker, BLOCKED na dump /messaging/).
-Phase:         PM. Smoke v1.25.5 (Marcin): FF-merge worktree→master → reload → search → "Wypełnij do limitu". Oczekiwane: kolejka rośnie ALBO stop ≤5 stron z komunikatem-rozbiciem + event bulk_fill_no_connectable w logu (wtedy buttonsSample z loga → fix właściwy). UWAGA: konto Marcina hituje commercial-use limit LI — część "źle dodaje" to limit konta, nie kod.
+Phase:         PM. Smoke v1.25.5 (Marcin): reload extension → search → "Wypełnij do limitu". Oczekiwane: kolejka rośnie ALBO stop ≤5 stron z komunikatem-rozbiciem + event bulk_fill_no_connectable w logu (wtedy buttonsSample z loga → fix właściwy). UWAGA: konto Marcina hituje commercial-use limit LI — część "źle dodaje" to limit konta, nie kod.
 Active task:   (none).
-Repo state:    czysto. #64 (v1.25.5) na branchu claude/pensive-cori-52eed7 — CZEKA NA MERGE do master.
-Last commit:   187a7ea — fix: bulk fill nie kolejkował (#64 v1.25.5)
+Repo state:    czysto. #64 (v1.25.5) zmergowany do master (FF, a819f83); build+publikacja na Dysk OVB zrobione 2026-06-11.
+Last commit:   a819f83 — docs: sha #64; fix sam = 187a7ea (v1.25.5)
 Updated:       2026-06-11
 ```
 
-**Pending operacyjne (Marcin):** (1) **FF-merge `claude/pensive-cori-52eed7` → master** (bez tego Chrome ładuje 1.25.4) + `node build.js` z master (zip + publikacja na Dysk OVB). (2) `git push` — lokalny `master` przed origin. (3) Smoke v1.25.5 (patrz Phase) + zaległe v1.25.0-1.25.2 (~15 min, kroki w PROGRESS.md). (4) Smoke v1.19.0 wg `docs/SMOKE-TEST.md`, regen zipa, dystrybucja zespołowi OVB. (5) VPS: `API_KEYS=DreamComeTrue!` w prod `.env` → `cd deploy && docker compose up -d --build`.
+**Pending operacyjne (Marcin):** (1) `git push` — lokalny `master` przed origin. (2) Smoke v1.25.5 (patrz Phase) + zaległe v1.25.0-1.25.2 (~15 min, kroki w PROGRESS.md). (3) Smoke v1.19.0 wg `docs/SMOKE-TEST.md` — zip 1.25.5 już na Dysku OVB, zespół tylko Reload. (4) VPS: `API_KEYS=DreamComeTrue!` w prod `.env` → `cd deploy && docker compose up -d --build`.
 
 ---
 
