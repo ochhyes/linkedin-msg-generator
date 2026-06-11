@@ -195,15 +195,15 @@ Uruchom testy automatyczne (pytest backend + jsdom extension). Wykonaj kroki man
 # CURRENT STATE
 
 ```
-Sprint:        2.0 DONE (#64-#70, v1.25.5→v2.0.0). Otwarte: #53 (contact-info), #56B (reply-tracker, BLOCKED na dump /messaging/).
-Phase:         PM. SMOKE 2.0 (Marcin, ~10 min): reload → wygląd (krem/granat/złoto, serif, zero emoji) → 3 zakładki popupu → Pulpit (sekcje+ikony SVG) → "Dodaj automatycznie" na wyszukiwarce (licznik live na przycisku) → ustawienia. Po akceptacji: `node build.js` z master = publikacja 2.0 na Dysk OVB (wstrzymana --no-publish do smoke). UWAGA: konto Marcina hituje commercial-use limit LI — część "źle dodaje" to limit konta, nie kod.
+Sprint:        2.0 DONE i WYDANE (#64-#71, v1.25.5→v2.0.1). Otwarte: #53 (contact-info), #56B (reply-tracker, BLOCKED na dump /messaging/).
+Phase:         PM. 2.0.1 OPUBLIKOWANE na Dysk OVB (smoke Marcina OK — „Jest ładnie"). Zespół: tylko Reload w chrome://extensions/. Następny task z TODO: #53 (contact-info) / #56B (BLOCKED na dump /messaging/). UWAGA: konto Marcina hituje commercial-use limit LI — część "źle dodaje" to limit konta, nie kod.
 Active task:   (none).
-Repo state:    czysto, sprint 2.0 zmergowany do master (FF). Zip Outreach-2.0.0.zip zbudowany BEZ publikacji na Dysk.
-Last commit:   patrz DONE (sprint 2.0 = 9 commitów #64-#70, fix sam = 42601dd)
+Repo state:    czysto, wszystko na master (FF). Outreach-2.0.1.zip zbudowany i OPUBLIKOWANY na wspólny Dysk OVB.
+Last commit:   ca211ee — feat: ikona 2.0 (#71 v2.0.1)
 Updated:       2026-06-11
 ```
 
-**Pending operacyjne (Marcin):** (1) **Smoke 2.0** (patrz Phase) → po akceptacji `node build.js` z master (publikuje na Dysk OVB) → ogłoszenie 2.0 zespołowi. (2) `git push` — lokalny `master` przed origin. (3) Zaległe smoke v1.25.0-1.25.2 — w praktyce pokryje je smoke 2.0. (4) VPS: `API_KEYS=DreamComeTrue!` w prod `.env` → `cd deploy && docker compose up -d --build`.
+**Pending operacyjne (Marcin):** (1) Ogłoszenie 2.0 zespołowi — Dysk ma już 2.0.1, każdy robi tylko Reload (dane zostają). (2) `git push` — lokalny `master` przed origin. (3) VPS: `API_KEYS=DreamComeTrue!` w prod `.env` → `cd deploy && docker compose up -d --build`.
 
 ---
 
@@ -247,6 +247,7 @@ Updated:       2026-06-11
 
 > 1 linia per release (sha, opis, bump). Pełne treści: `git show <sha>` + `PROGRESS.md`.
 
+- **v2.0.1** (ca211ee) — feat: ikona rozszerzenia = brandowy monogram „in" navy+złoto, generator `tools/make_icons.js`, build EXCLUDE tools (#71)
 - **v2.0.0** (42601dd) — feat: ikony SVG zamiast emoji + język nie-techniczny (Pulpit/Przypomnienia/Lista zaproszeń/„Dodaj automatycznie") + manifest name→"Outreach" + INSTRUKCJA 2.0 (#70)
 - **v1.26.0** (f0f07de) — feat: skórka cream/navy/gold ze stron szmidtke.pl (tokeny z CSS Pilota), serif Fraunces, `--on-primary` (#69)
 - **v1.25.9** (42204fb) — feat: backup z settings + restore ustawień + snapshoty pre-import/pre-delete/pre-clear + interwał 1d (#68)
