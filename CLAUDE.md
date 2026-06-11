@@ -195,15 +195,15 @@ Uruchom testy automatyczne (pytest backend + jsdom extension). Wykonaj kroki man
 # CURRENT STATE
 
 ```
-Sprint:        #11 — …/1.25.4/1.25.5 DONE. Otwarte: #53 (contact-info), #56B (reply-tracker, BLOCKED na dump /messaging/).
-Phase:         PM. Smoke v1.25.5 (Marcin): reload extension → search → "Wypełnij do limitu". Oczekiwane: kolejka rośnie ALBO stop ≤5 stron z komunikatem-rozbiciem + event bulk_fill_no_connectable w logu (wtedy buttonsSample z loga → fix właściwy). UWAGA: konto Marcina hituje commercial-use limit LI — część "źle dodaje" to limit konta, nie kod.
+Sprint:        2.0 DONE (#64-#70, v1.25.5→v2.0.0). Otwarte: #53 (contact-info), #56B (reply-tracker, BLOCKED na dump /messaging/).
+Phase:         PM. SMOKE 2.0 (Marcin, ~10 min): reload → wygląd (krem/granat/złoto, serif, zero emoji) → 3 zakładki popupu → Pulpit (sekcje+ikony SVG) → "Dodaj automatycznie" na wyszukiwarce (licznik live na przycisku) → ustawienia. Po akceptacji: `node build.js` z master = publikacja 2.0 na Dysk OVB (wstrzymana --no-publish do smoke). UWAGA: konto Marcina hituje commercial-use limit LI — część "źle dodaje" to limit konta, nie kod.
 Active task:   (none).
-Repo state:    czysto. #64 (v1.25.5) zmergowany do master (FF, a819f83); build+publikacja na Dysk OVB zrobione 2026-06-11.
-Last commit:   a819f83 — docs: sha #64; fix sam = 187a7ea (v1.25.5)
+Repo state:    czysto, sprint 2.0 zmergowany do master (FF). Zip Outreach-2.0.0.zip zbudowany BEZ publikacji na Dysk.
+Last commit:   patrz DONE (sprint 2.0 = 9 commitów #64-#70, fix sam = 42601dd)
 Updated:       2026-06-11
 ```
 
-**Pending operacyjne (Marcin):** (1) `git push` — lokalny `master` przed origin. (2) Smoke v1.25.5 (patrz Phase) + zaległe v1.25.0-1.25.2 (~15 min, kroki w PROGRESS.md). (3) Smoke v1.19.0 wg `docs/SMOKE-TEST.md` — zip 1.25.5 już na Dysku OVB, zespół tylko Reload. (4) VPS: `API_KEYS=DreamComeTrue!` w prod `.env` → `cd deploy && docker compose up -d --build`.
+**Pending operacyjne (Marcin):** (1) **Smoke 2.0** (patrz Phase) → po akceptacji `node build.js` z master (publikuje na Dysk OVB) → ogłoszenie 2.0 zespołowi. (2) `git push` — lokalny `master` przed origin. (3) Zaległe smoke v1.25.0-1.25.2 — w praktyce pokryje je smoke 2.0. (4) VPS: `API_KEYS=DreamComeTrue!` w prod `.env` → `cd deploy && docker compose up -d --build`.
 
 ---
 
@@ -247,7 +247,13 @@ Updated:       2026-06-11
 
 > 1 linia per release (sha, opis, bump). Pełne treści: `git show <sha>` + `PROGRESS.md`.
 
-- **v1.25.5** (187a7ea, worktree → merge do master) — fix: bulk fill nie kolejkował — wspólny `classifySearchButtonState` (Ember+SDUI+generic, text fallback per-linia), stop po 5 pustych stronach, telemetria `bulk_fill_no_connectable` + buttonsSample (#64)
+- **v2.0.0** (42601dd) — feat: ikony SVG zamiast emoji + język nie-techniczny (Pulpit/Przypomnienia/Lista zaproszeń/„Dodaj automatycznie") + manifest name→"Outreach" + INSTRUKCJA 2.0 (#70)
+- **v1.26.0** (f0f07de) — feat: skórka cream/navy/gold ze stron szmidtke.pl (tokeny z CSS Pilota), serif Fraunces, `--on-primary` (#69)
+- **v1.25.9** (42204fb) — feat: backup z settings + restore ustawień + snapshoty pre-import/pre-delete/pre-clear + interwał 1d (#68)
+- **v1.25.8** (8082886) — fix: accept-tracker auto-disable wstaje po update (`disabledBy`), injection-fallback, lowercase match (#67)
+- **v1.25.7** (e15103e) — refactor: audyt fallbacków DOM — findConnectEl parity z classify, probeProfileTab injection-fallback, dead code OUT (#66)
+- **v1.25.6** (92938f0) — fix: live licznik podczas „Dodaj automatycznie" (addToQueue per strona + autoFillProgress + restore przycisku po reopen) (#65)
+- **v1.25.5** (187a7ea) — fix: bulk fill nie kolejkował — wspólny `classifySearchButtonState` (Ember+SDUI+generic, text fallback per-linia), stop po 5 pustych stronach, telemetria `bulk_fill_no_connectable` + buttonsSample (#64)
 - **v1.25.4** (5cfd22c) — feat: early-warning importu kontaktów — telemetria `connections_extract_empty/_degraded` + głośny warning w UI gdy 0/puste imiona (#62)
 - **v1.25.3** (8c5b04e) — fix: parser kontaktów na SDUI /connections/ (dedup→grupowanie+merge, cleanName #OpenToWork), naprawia import + accept-tracker (#61)
 - **v1.25.2** (9e68dc1) — feat: import LinkedIn-CSV jako prospekty, opts.asProspects → isConnection:false (#60)
@@ -269,7 +275,7 @@ Updated:       2026-06-11
 
 ## BACKLOG (poza sprintem, później)
 
-- **#45 P1 UX redesign** — ✅ zrobione w Sprincie #9. Otwarte: ew. rename `manifest.name` → "Outreach" + bump major v2.0.0.
+- **#45 P1 UX redesign** — ✅ DOMKNIĘTE w 2.0.0 (#70): rename `manifest.name` → "Outreach" + major bump zrobione.
 - **#6** Self-test scraper widget w popup (settings → diagnostyka).
 - **#10** Wersjonowanie selektorów + auto-fallback chain (selectors.json + hot-update z backendu) + dedup Voyager parsera (zduplikowany w test_e2e.js i content.js).
 - **#22 fix** Auto-pagination "Wypełnij do limitu". Wymaga DOM dump paginacji → fix selektorów `bulkAutoExtract` + checkboxy 2nd-only/unselect-pending + "Stop after N pages".

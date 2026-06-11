@@ -8,6 +8,44 @@
 
 ---
 
+## 2026-06-11 cz. 2 (ta sama sesja) — sprint 2.0: licznik live, audyty, backup, redesign, język (#65-#70, v2.0.0)
+
+### Zrobione
+
+- **#65 (92938f0, v1.25.6) — live licznik „Dodaj automatycznie":** root cause „nie odświeża się ile dodał" = `addToQueue` szło RAZ po całej pętli → storage.onChanged (który popup MA) milczał cały scan. Fix: addToQueue per strona + `autoFillProgress {page,added,seen}` + przycisk Wypełnij/Stop jako POCHODNA `state.autoFillRunning` w renderBulkUI (naprawia też: reopen popupu w trakcie scanu pokazywał „Wypełnij" i drugi klik odpalał RÓWNOLEGŁY scan; okno 3s po kliku chroni race).
+- **#66 (e15103e, v1.25.7) — audyt fallbacków DOM dodawania:** (1) `findConnectEl` dostał per-linia text-match + „Nawiąż kontakt" + aria `Nawiąż` (parity z classify — ta sama klasa błędu co #64); (2) `probeProfileTab` injection-fallback po 3 nieudanych sendMessage (redirect /in/→/mynetwork/ przy limicie konta lądował poza manifest matches = głuchy 12s timeout zamiast `redirected_off_profile`); (3) dead code OUT: `bulkConnectClick`+`findLiBySlug`+`waitForShadow`+`bulkAutoExtract`+2 handlery (martwe od #49) — testy 180→171.
+- **#67 (8082886, v1.25.8) — audyt accept-trackera:** NAJWAŻNIEJSZE: auto-disable (3 faile) był cichy i WIECZNY — scenariusz #61 wyłączył tracker u wszystkich, fix parsera go NIE wskrzeszał. Teraz `disabledBy:"user"|"auto"` + `shouldReenableAcceptTracker` przy onInstalled-update (BC: failCount>=3 bez flagi ⇒ auto). Plus injection-fallback w fetchRecentConnections + lowercase legacy slugów w matchu + naprawiony urwany JSDoc (łykał następny komentarz). Testy 37→45.
+- **#68 (42204fb, v1.25.9) — lepszy backup:** settings W kopii (Remove+Add przywracał bazę ale gubił hasło dostępu/ofertę → „nie działa mimo backupu"); restore settings z pełnej kopii (merge: tylko niepuste wartości); snapshoty tagowane PRZED import/masowym delete (>20 lub filtr)/czyszczeniem kolejki; default interwału 3→1 dzień.
+- **#69 (f0f07de, v1.26.0) — skórka 2.0:** tokeny z PRODUKCYJNEGO CSS pilot.szmidtke.pl (curl bundle → :root) + bootloader ovb.szmidtke.pl: cream #FAFAF7 + białe karty (raised), navy #1A2E4C, złoto #C7956D (dark: navy deep #0F1F36 + złote CTA z navy tekstem — nowy token `--on-primary`), serif Fraunces na nagłówkach, ciepłe bordery/cienie, radiusy 6/8/12. ZERO zmian w regułach komponentów — tylko wartości tokenów (Sprint #9 się spłacił).
+- **#70 (42601dd, v2.0.0) — ikony + język + rename:** emotikony → inline SVG (nagłówki pulpitu, przyciski, lejek — mapa FUNNEL_ICONS; ✓/— w komórkach DANYCH tabeli zostaje świadomie); język nie-techniczny: Dashboard→Pulpit, Follow-upy→Przypomnienia, Kolejka→Lista zaproszeń, „Wypełnij do limitu"→„Dodaj automatycznie", „Wiadomości po-Connect"→„Po przyjęciu zaproszenia", funnel po polsku, akcje „↪Msg"→„Odpisał: wiad.", ustawienia bez żargonu; manifest name→„Outreach" (#45 backlog; key/ID bez zmian) + opis PL; INSTRUKCJA.md przepisana pod 2.0.
+- **build.js `--no-publish`** — duża zmiana wizualna NIE idzie na Dysk OVB przed smoke Marcina („niezawodność > speed"). Zip 2.0.0 zbudowany lokalnie.
+
+### Decyzje
+
+- **Publikacja 2.0 na Dysk OVB WSTRZYMANA do smoke Marcina** (zamiast auto-publish jak 1.25.4/1.25.5), bo redesignu nikt nie widział na żywo — testy logiki zielone + jsdom ID-check kompletny, ale render oceni człowiek. Po smoke: `node build.js` z master (bez flagi) publikuje.
+- **Tokeny zamiast przepisywania komponentów** — cała skórka to podmiana wartości w :root (3 pliki), struktura CSS nietknięta. Niskie ryzyko, łatwy rollback.
+- **„✓/—" w komórkach danych tabel zostaje** — to notacja danych (jak w Excelu), nie emotikon-dekoracja.
+- **Worktree → FF-merge: 2× w tej sesji** (1.25.5 zmergowane+opublikowane wcześniej; 2.0.0 zmergowane, publikacja po smoke).
+
+### Lessons learned
+
+- **Polski cudzysłów „..." w JS-stringu w `"`-quotes = syntax error** — w HTML OK, w JS zamykać typograficznym `”`. node --check łapie natychmiast.
+- **UI bez live-feedbacku = user myśli że nic nie działa** — każda pętla w tle musi pisać postęp do storage, skoro popup i tak ma onChanged-renderer.
+- **Cichy auto-disable przeżywa fix** — każdy automat z wyłącznikiem awaryjnym musi odróżniać „user wyłączył" od „samo się wyłączyło" i wstawać po update.
+- **jsdom ID-check po przepisaniu HTML** (wszystkie `$("#…")` z JS istnieją w DOM) — tani test, łapie literówki refaktoru UI zanim zrobi to użytkownik.
+
+### BLOCKED / TODO
+
+- **Smoke 2.0 (Marcin, ~10 min):** reload → wygląd (krem/granat/złoto, serif nagłówki, zero emoji) → klik po 3 zakładkach popupu → Pulpit (wszystkie sekcje renderują się, ikony SVG widoczne) → „Dodaj automatycznie" na wyszukiwarce (licznik live na przycisku!) → ustawienia. Po akceptacji: `node build.js` z master → publikacja na Dysk → ogłoszenie 2.0 zespołowi.
+- Fraunces ładuje się z Google Fonts (online); offline → fallback Georgia (zaakceptowane).
+- INSTRUKCJA: zrzuty ekranu (jeśli kiedyś były) nieaktualne po redesignie.
+
+### Status końcowy
+
+Sprint 2.0 W CAŁOŚCI na branchu → master: #64-#70, wersje 1.25.5→2.0.0, 9 commitów. Pełny suite zielony (758 asercji w 13 plikach). Zip `Outreach-2.0.0.zip` zbudowany (bez publikacji). Czeka: smoke wizualny Marcina → publikacja. Phase: PM.
+
+---
+
 ## 2026-06-11 (Claude Code worktree, claude-fable-5) — fix: „Wypełnij do limitu" skacze po stronach i nic nie kolejkuje (#64, v1.25.5)
 
 ### Zrobione

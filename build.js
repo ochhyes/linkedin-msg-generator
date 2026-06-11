@@ -115,7 +115,12 @@ try {
 const publishCfg = path.join(root, ".outreach-publish");
 let published = null;
 let publishErr = null;
-if (fs.existsSync(publishCfg)) {
+// --no-publish: zbuduj + spakuj, ale NIE wypychaj na wspolny Dysk (np. duza
+// zmiana wizualna czeka na smoke zanim zespol ja dostanie przy Reload).
+const skipPublish = process.argv.includes("--no-publish");
+if (skipPublish) {
+  publishErr = "pominieta (--no-publish)";
+} else if (fs.existsSync(publishCfg)) {
   try {
     const target = fs.readFileSync(publishCfg, "utf8").trim();
     if (target) {
