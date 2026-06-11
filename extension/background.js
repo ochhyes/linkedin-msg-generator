@@ -232,6 +232,9 @@ const BULK_DEFAULTS = {
   // autoFillRunning żeby popup wiedział kiedy pokazać "Stop" zamiast "Wypełnij".
   autoFillRunning: false,
   autoFillCancelRequested: false,
+  // #65 v1.25.6 — live progress scanu "Wypełnij do limitu". Aktualizowany po
+  // każdej stronie; popup renderuje licznik na przycisku (storage.onChanged).
+  autoFillProgress: null, // {page, added, seen} | null
   // #56A v1.23.0 — auto accept-tracker w tle. 1× dziennie hidden tab na
   // /mynetwork/invite-connect/connections/, scan pierwszej porcji listy,
   // match po slug → flip acceptedAt dla wszystkich pasujących queue items
@@ -1763,20 +1766,35 @@ async function bulkAutoFillByUrl(maxProfiles) {
     upsertProfilesToDb(pageProfiles, "search").catch(() => {});
 
     let addedThisPage = 0;
+    const pageCollected = [];
     for (const p of pageProfiles) {
       if (!p || !p.slug) continue;
       if (existingSlugs.has(p.slug)) continue;
       if (p.buttonState !== "Connect") continue;
       existingSlugs.add(p.slug);
-      collected.push({
+      pageCollected.push({
         slug: p.slug,
         name: p.name || "",
         headline: p.headline || "",
         pageNumber: pageNum,
       });
       addedThisPage++;
-      if (collected.length >= cap) break;
+      if (collected.length + pageCollected.length >= cap) break;
     }
+
+    // #65 v1.25.6: dorzucaj do kolejki PER STRONA, nie po całym scanie.
+    // Popup ma storage.onChanged → renderBulkUI, więc lista i licznik
+    // odświeżają się NA ŻYWO. Wcześniej addToQueue szło raz na końcu —
+    // UI stało martwe aż do końca/Stop (zgłoszenie "nie odświeża się
+    // ile już dodał — musiałem kliknąć stop").
+    if (pageCollected.length > 0) {
+      collected.push(...pageCollected);
+      await addToQueue(pageCollected);
+    }
+    // Progress dla popupu (licznik na przycisku Stop).
+    await setBulkState({
+      autoFillProgress: { page: pageNum, added: collected.length, seen: profilesSeen },
+    });
 
     if (collected.length >= cap) {
       stoppedReason = "cap_reached";
@@ -1801,15 +1819,15 @@ async function bulkAutoFillByUrl(maxProfiles) {
   } finally {
     // Zawsze resetuj running flag, nawet przy wyjątku — inaczej UI utknęłoby
     // w stanie "Stop" bez możliwości ponownego uruchomienia.
-    await setBulkState({ autoFillRunning: false, autoFillCancelRequested: false });
+    await setBulkState({
+      autoFillRunning: false,
+      autoFillCancelRequested: false,
+      autoFillProgress: null,
+    });
   }
 
-  // Dorzuć do queue (addToQueue zachowuje pageNumber).
-  let added = 0;
-  if (collected.length > 0) {
-    const resp = await addToQueue(collected);
-    added = resp.added || collected.length;
-  }
+  // #65: profile trafiały do kolejki na bieżąco (per strona) — tu tylko suma.
+  const added = collected.length;
 
   // #64: scan widział profile, ale ŻADEN nie nadawał się do kolejki —
   // najpewniej LinkedIn zmienił markup przycisku Connect. Telemetria z

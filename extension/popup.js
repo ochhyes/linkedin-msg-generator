@@ -1065,6 +1065,30 @@
       bulkError.classList.add("hidden");
     }
 
+    // #65 v1.25.6: przycisk "Wypełnij do limitu"/"Stop" = pochodna stanu
+    // background'u, nie lokalnej flagi. Dzięki temu: (a) podczas scanu licznik
+    // dodanych aktualizuje się NA ŻYWO (autoFillProgress przez onChanged),
+    // (b) po zamknięciu/otwarciu popupu w trakcie scanu przycisk wraca jako
+    // "Stop" zamiast startować drugi równoległy scan. Okno 3s po kliku
+    // chroni przed wyścigiem zanim background ustawi autoFillRunning=true.
+    if (btnBulkFill) {
+      const recentClick = Date.now() - _autoFillClickedAt < 3000;
+      if (state.autoFillRunning) {
+        _autoFillInProgress = true;
+        const p = state.autoFillProgress;
+        btnBulkFill.textContent = p
+          ? `⏹ Stop (dodano ${p.added} · strona ${p.page})`
+          : "⏹ Stop dodawania";
+        btnBulkFill.classList.add("btn--danger");
+        btnBulkFill.disabled = false;
+      } else if (_autoFillInProgress && !recentClick) {
+        _autoFillInProgress = false;
+        btnBulkFill.textContent = "Wypełnij do limitu";
+        btnBulkFill.classList.remove("btn--danger");
+        btnBulkFill.disabled = false;
+      }
+    }
+
     // Post-Connect messaging pipeline (#21).
     renderMessagePipeline(state);
   }
@@ -1969,7 +1993,11 @@
 
   // #44 v1.11.5 — flag w popup'ie pozwala drugiemu klikowi w btnBulkFill
   // wysłać bulkAutoFillCancel zamiast startować kolejny scan.
+  // #65: flaga jest synchronizowana ze state.autoFillRunning w renderBulkUI
+  // (restore po reopen popupu); _autoFillClickedAt chroni okno między klikiem
+  // a ustawieniem autoFillRunning przez background.
   let _autoFillInProgress = false;
+  let _autoFillClickedAt = 0;
 
   async function handleAutoFillQueue() {
     if (!btnBulkFill) return;
@@ -1988,6 +2016,7 @@
     }
 
     _autoFillInProgress = true;
+    _autoFillClickedAt = Date.now();
     // NIE disable button — user musi mieć możliwość kliknięcia Stop podczas
     // trwania scan'u. Text + className zmienia button na warning style.
     btnBulkFill.textContent = "⏹ Stop dodawania";
