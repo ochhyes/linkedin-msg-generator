@@ -54,6 +54,8 @@
   const btnBulkStart = $("#btn-bulk-start");
   const btnBulkStop = $("#btn-bulk-stop");
   const btnBulkResume = $("#btn-bulk-resume");
+  const btnBulkRetry = $("#btn-bulk-retry");
+  const btnBulkDiag = $("#btn-bulk-diag");
   const btnBulkClear = $("#btn-bulk-clear");
   const bulkError = $("#bulk-error");
   const bulkSettings = $("#bulk-settings");
@@ -975,6 +977,32 @@
   }
 
   /**
+   * Tłumaczy techniczny kod błędu/pominięcia na czytelny powód po polsku.
+   * Pokazywany inline przy „błąd"/„pominięto" (#72 v2.1.0) — wcześniej powód
+   * był tylko w tooltipie (title) i Marcin go nie widział.
+   */
+  function friendlyBulkError(code) {
+    if (!code) return "";
+    const c = String(code);
+    // Kody mogą mieć sufiks diagnostyczny ("modal_did_not_appear [dlg=1 ...]")
+    // — dopasowujemy po prefiksie, a pełny string ląduje w tooltipie (title).
+    const is = (p) => c.indexOf(p) === 0;
+    if (is("weekly_limit")) return "limit LinkedIna";
+    if (is("redirected_off_profile") || is("wrong_profile_loaded")) return "przekierowanie (limit konta?)";
+    if (is("tab_load_timeout")) return "karta nie załadowała się (przekierowanie/limit?)";
+    if (is("modal_did_not_appear")) return "okno zaproszenia nie wykryte";
+    if (is("send_button_missing")) return "brak przycisku „Wyślij” w oknie";
+    if (is("pending_not_visible")) return "kliknięto, brak potwierdzenia";
+    if (c === "bulk_tick_timeout" || c === "no_response") return "przekroczono czas";
+    if (is("Could not establish")) return "karta nie odpowiedziała (przekierowanie?)";
+    if (c === "already_pending") return "już zaproszony";
+    if (c === "follow_only") return "tylko obserwowanie";
+    if (c === "not_connectable") return "nie można zaprosić";
+    if (c.indexOf("connect_click_failed") === 0 || c.indexOf("send_click_failed") === 0) return "nie udało się kliknąć";
+    return c;
+  }
+
+  /**
    * Renderuje całe queue UI: settings inputs, queue list, progress, controls,
    * error message. Wywoływane po loadBulkState() oraz przy storage.onChanged.
    */
@@ -1037,10 +1065,16 @@
           failed: "błąd",
           skipped: "pominięto",
         })[item.status] || item.status;
-        if (item.status === "failed" && item.error) status.title = item.error;
-        if (item.status === "skipped" && item.error) status.title = item.error;
         li.appendChild(name);
         li.appendChild(status);
+        // #72: powód inline (nie tylko w tooltipie) przy błędzie/pominięciu.
+        if ((item.status === "failed" || item.status === "skipped") && item.error) {
+          status.title = item.error;
+          const reason = document.createElement("span");
+          reason.className = "bulk-queue__item-reason";
+          reason.textContent = friendlyBulkError(item.error);
+          li.appendChild(reason);
+        }
         queueList.appendChild(li);
       }
 
@@ -1052,9 +1086,14 @@
       // Controls visibility.
       const hasPending = state.queue.some((q) => q.status === "pending");
       const hasSent = state.queue.some((q) => q.status === "sent");
+      const hasFailed = state.queue.some((q) => q.status === "failed");
       btnBulkStart.hidden = !hasPending || state.active || hasSent;
       btnBulkStop.hidden = !state.active;
       btnBulkResume.hidden = state.active || !hasPending || !hasSent;
+      // #72: „Ponów błędy" widoczny gdy są osoby z „błąd" i worker nie leci.
+      if (btnBulkRetry) btnBulkRetry.hidden = state.active || !hasFailed;
+      // #72: „Diagnostyka" — gdy są jakieś profile i worker nie leci.
+      if (btnBulkDiag) btnBulkDiag.hidden = state.active || !(hasPending || hasFailed);
     }
 
     // Error message.
@@ -1181,6 +1220,59 @@
     await chrome.storage.local.set({
       bulkConnect: { ...state, queue: [], errorMsg: null },
     });
+    await loadBulkState();
+  }
+
+  /**
+   * #72 v2.1.0 — „Diagnostyka dodawania". Próbny przebieg na 1 profilu BEZ
+   * wysyłania zaproszenia. Pokazuje co dokładnie widzi rozszerzenie (URL po
+   * redirectach, czy znaleziono „Połącz", czy modal, etykiety przycisków) —
+   * twarde dane do diagnozy zamiast zgadywania. Wynik → schowek + okno.
+   */
+  async function handleBulkDiagnose() {
+    showToast("Diagnostyka: otwieram profil w tle (bez wysyłania)… ~15 s", "info");
+    let resp = null;
+    try {
+      resp = await chrome.runtime.sendMessage({ action: "bulkConnectDiagnose" });
+    } catch (err) {
+      showError("Diagnostyka nie ruszyła: " + ((err && err.message) || err));
+      return;
+    }
+    const text = "OUTREACH DIAG v" + (chrome.runtime.getManifest().version) + "\n" + JSON.stringify(resp, null, 2);
+    console.log("[LinkedIn MSG] DIAG:\n" + text);
+    let copied = false;
+    try { await navigator.clipboard.writeText(text); copied = true; } catch (_) {}
+    const r = resp && resp.result;
+    const verdict = r
+      ? (r.success ? (r.dryRun ? "OK — dodałoby zaproszenie (nie wysłano)" : "OK") : ("BŁĄD: " + (r.error || resp.probeError || "?")))
+      : ("BŁĄD: " + (resp && resp.probeError || "brak wyniku"));
+    showToast("Diagnostyka: " + verdict + (copied ? " — skopiowano do schowka" : ""), r && r.success ? "success" : "error");
+    // Okno z pełnym wynikiem (łatwe zaznaczenie/kopiowanie i wklejenie).
+    try { window.prompt("Wynik diagnostyki (zaznacz wszystko = Ctrl+A, kopiuj = Ctrl+C — wklej do Claude):", text); } catch (_) {}
+  }
+
+  /**
+   * #72 v2.1.0 — „Ponów błędy". Przywraca osoby ze statusem „błąd" na listę
+   * (failed→oczekuje) i dociąga prospektów z bazy. Po resecie limitu LinkedIna
+   * wystarczy kliknąć ten przycisk, potem Wznów.
+   */
+  async function handleBulkRetryFailed() {
+    if (!confirm("Przywrócić osoby z błędem na listę zaproszeń i dociągnąć prospektów z bazy? Potem kliknij „Wznów”.")) return;
+    let resp = null;
+    try {
+      resp = await chrome.runtime.sendMessage({ action: "bulkConnectRetryFailed" });
+    } catch (err) {
+      showError("Nie udało się ponowić: " + ((err && err.message) || err));
+      return;
+    }
+    if (resp && resp.success) {
+      const parts = [];
+      parts.push(`Przywrócono ${resp.retried || 0} z błędem`);
+      if (resp.fromBase) parts.push(`+ ${resp.fromBase} z bazy`);
+      showToast(parts.join(" ") + ". Kliknij „Wznów”, gdy limit LinkedIna się odnowi.", "success");
+    } else {
+      showError("Nie udało się ponowić: " + ((resp && resp.error) || "nieznany błąd"));
+    }
     await loadBulkState();
   }
 
@@ -1495,6 +1587,8 @@
   if (btnBulkStart) btnBulkStart.addEventListener("click", handleBulkStart);
   if (btnBulkStop) btnBulkStop.addEventListener("click", handleBulkStop);
   if (btnBulkResume) btnBulkResume.addEventListener("click", handleBulkStart); // Resume = Start
+  if (btnBulkRetry) btnBulkRetry.addEventListener("click", handleBulkRetryFailed);
+  if (btnBulkDiag) btnBulkDiag.addEventListener("click", handleBulkDiagnose);
   if (btnBulkClear) btnBulkClear.addEventListener("click", handleBulkClear);
   if (btnBulkSaveSettings) btnBulkSaveSettings.addEventListener("click", handleBulkSaveSettings);
   if (btnBulkFill) btnBulkFill.addEventListener("click", handleAutoFillQueue);

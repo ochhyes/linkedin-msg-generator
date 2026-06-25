@@ -1063,6 +1063,7 @@ body {
 .bulk-queue__item-status--sent { background: var(--success-soft); color: var(--success); }
 .bulk-queue__item-status--failed { background: var(--error-soft); color: var(--error); }
 .bulk-queue__item-status--skipped { background: var(--warning-soft); color: var(--warning); }
+.bulk-queue__item-reason { font-size: 10px; color: var(--text-muted); flex-shrink: 0; max-width: 45%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bulk-queue__controls { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
 .bulk-queue__controls .btn { flex: 1; min-width: 60px; }
 .bulk-queue__error { font-size: 11px; color: var(--error); padding: 6px 8px; background: var(--error-soft); border-radius: var(--radius); margin: 0; }

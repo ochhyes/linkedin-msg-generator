@@ -228,6 +228,9 @@ const BULK_DEFAULTS = {
   tabId: null,
   lastSearchKeywords: null,
   navigateFailCount: 0,
+  // #72 v2.1.0 — licznik kolejnych "failed" ticków. >=3 → auto-pauza
+  // (konto ograniczone/limit). Zerowany przez sent/skipped i przy Start/Wznów.
+  consecutiveFails: 0,
   // #44 v1.11.5 — cooperative cancel dla bulkAutoFillByUrl (pagination loop).
   // Popup ustawia autoFillCancelRequested=true gdy user kliknie Stop. Loop
   // sprawdza flag po każdej iteracji i breakuje z partial result.
@@ -458,6 +461,78 @@ async function addToQueue(profiles) {
   return { success: true, queueSize: next.queue.length, added: fresh.length };
 }
 
+// #72 v2.1.0 — "Ponów błędy". PURE: queue items status==="failed" → "pending"
+// (czyść error/timestamp). sent/manual_sent/skipped/pending nietknięte.
+function resetFailedToPending(queue) {
+  let retried = 0;
+  const next = (queue || []).map((q) => {
+    if (q && q.status === "failed") {
+      retried += 1;
+      return { ...q, status: "pending", error: null, timestamp: null };
+    }
+    return q;
+  });
+  return { queue: next, retried };
+}
+
+// Przywraca osoby z błędem do listy zaproszeń:
+//  (1) reset failed→pending w kolejce (osoby, które wcześniej wywaliły "błąd"),
+//  (2) "też z bazy/historii" — docina prospektów z profileDb (nie-kontakty),
+//      których nie ma jeszcze w kolejce (np. po "Wyczyść" lub nigdy nie dodani).
+// Worker (dailyCap) drenuje listę powoli, więc dorzucenie bazy jest bezpieczne.
+async function bulkConnectRetryFailed() {
+  const state = await getBulkState();
+  const { queue, retried } = resetFailedToPending(state.queue);
+  await setBulkState({ queue, errorMsg: null });
+
+  const db = await getProfileDb();
+  const queueSlugs = new Set(queue.map((q) => q.slug));
+  const allSlugs = Object.keys((db && db.profiles) || {});
+  const { toAdd } = selectEnqueueCandidates(db.profiles, allSlugs, queueSlugs);
+  let fromBase = 0;
+  if (toAdd.length) {
+    const resp = await addToQueue(toAdd);
+    fromBase = resp.added != null ? resp.added : toAdd.length;
+  }
+  const after = await getBulkState();
+  return {
+    success: true,
+    retried,
+    fromBase,
+    queueSize: (after.queue || []).length,
+  };
+}
+
+// #72 v2.1.0 — DIAGNOSTYKA dodawania. Otwiera profil w karcie w tle i wykonuje
+// CAŁY flow connectFromProfile w trybie dryRun (NIE wysyła zaproszenia), zwraca
+// strukturę z każdego etapu (URL po redirectach, czy znaleziono przycisk, czy
+// modal, etykiety przycisków). To jest "pobierz prawdziwe dane" jednym klikiem.
+async function bulkConnectDiagnose(slug) {
+  const state = await getBulkState();
+  let targetSlug = slug;
+  if (!targetSlug) {
+    const pending = (state.queue || []).find((q) => q.status === "pending");
+    const failed = (state.queue || []).find((q) => q.status === "failed");
+    targetSlug = (pending && pending.slug) || (failed && failed.slug) || null;
+  }
+  if (!targetSlug) return { success: false, error: "no_slug", hint: "brak profili w kolejce" };
+  const t0 = Date.now();
+  let result, errMsg = null;
+  try {
+    result = await probeProfileTab(targetSlug, "connectFromProfile", { dryRun: true });
+  } catch (err) {
+    errMsg = (err && err.message) || String(err);
+    result = { success: false, error: errMsg };
+  }
+  return {
+    success: true,
+    slug: targetSlug,
+    elapsedMs: Date.now() - t0,
+    result: result || null,
+    probeError: errMsg,
+  };
+}
+
 async function updateQueueItem(slug, patch) {
   const state = await getBulkState();
   const queue = state.queue.map((q) =>
@@ -472,52 +547,107 @@ const ACCEPT_CHECK_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4h rate-limit per item
 const TAB_LOAD_TIMEOUT_MS = 12000; // 12s na document_idle
 const TAB_SCRAPE_TIMEOUT_MS = 30000; // jak BULK_TICK_TIMEOUT_MS
 
+// #72 v2.1.0 — czeka aż karta osiągnie status "complete" (lub timeout).
+// Pozwala redirectom (/in/→/mynetwork/ przy limicie) ustabilizować się zanim
+// zaczniemy injektować/sendMessage, żeby trafić w finalny dokument.
+function waitForTabComplete(tabId, timeoutMs) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      try { chrome.tabs.onUpdated.removeListener(onUpd); } catch (_) {}
+      resolve();
+    };
+    const onUpd = (id, info) => {
+      if (id === tabId && info.status === "complete") finish();
+    };
+    try { chrome.tabs.onUpdated.addListener(onUpd); } catch (_) {}
+    // Może już być complete zanim dodaliśmy listener.
+    chrome.tabs.get(tabId).then((t) => {
+      if (t && t.status === "complete") finish();
+    }).catch(() => {});
+    setTimeout(finish, timeoutMs);
+  });
+}
+
 /**
  * Otwiera background tab z URL'em, czeka aż content script zareaguje na
  * sendMessage, zwraca response. Cleanup: zamyka tab niezależnie od wyniku.
  */
-async function probeProfileTab(slug, action) {
+async function probeProfileTab(slug, action, opts) {
   const url = `https://www.linkedin.com/in/${encodeURIComponent(slug)}/`;
   let tab = null;
-  try {
-    tab = await chrome.tabs.create({ url, active: false });
-    // Wait for tab content script — retry sendMessage do timeout.
+
+  // Jedna runda: czeka na load karty, injektuje content.js, odpytuje go.
+  // Zwraca response z content.js albo rzuca rich `tab_load_timeout`.
+  async function oneRound() {
+    // Poczekaj aż karta skończy ładowanie (i ustabilizuje redirecty) zanim
+    // zaczniemy gadać — inaczej injektujemy w dokument, który zaraz zniknie.
+    await waitForTabComplete(tab.id, 8000);
     const start = Date.now();
-    let lastErr = null;
-    let injectedFallback = false;
-    let attempts = 0;
+    let lastErr = null, injectOk = false, injectErrMsg = null, attempts = 0;
     while (Date.now() - start < TAB_LOAD_TIMEOUT_MS) {
+      attempts++;
+      // #72 v2.1.0: wstrzykuj content.js PROAKTYWNIE na KAŻDEJ próbie (nie raz
+      // po 3 failach). Powód lawiny "Could not establish connection": manifest
+      // content_scripts matchuje tylko /in/*, /search/.../people/*,
+      // /connections/* — konto z limitem redirectuje /in/<slug>/ na gołe
+      // /mynetwork/, gdzie manifest NIE wstrzykuje; a redirect potrafi też
+      // nastąpić PO injekcji i zabić listener z poprzedniego dokumentu.
+      // host_permissions pokrywa całe linkedin.com, więc executeScript wejdzie
+      // wszędzie; guard __LINKEDIN_MSG_LOADED__ w content.js robi z powtórnej
+      // injekcji w tym samym dokumencie no-op (zero podwójnych listenerów).
       try {
-        const resp = await Promise.race([
-          chrome.tabs.sendMessage(tab.id, { action }),
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ["content.js"],
+        });
+        injectOk = true;
+      } catch (e) { injectErrMsg = (e && e.message) || String(e); }
+      try {
+        return await Promise.race([
+          chrome.tabs.sendMessage(tab.id, { action, opts: opts || undefined }),
           new Promise((_, rej) => setTimeout(() => rej(new Error("scrape_timeout")), TAB_SCRAPE_TIMEOUT_MS)),
         ]);
-        return resp;
       } catch (err) {
         lastErr = err;
-        attempts++;
-        // #66 v1.25.6-audyt: manifest wstrzykuje content.js tylko na
-        // /in/*, /search/.../people/*, /connections/*. LinkedIn przy limicie
-        // konta redirectuje /in/<slug>/ na gołe /mynetwork/ — tam scriptu
-        // NIE MA i sendMessage będzie padać aż do tab_load_timeout (~12s)
-        // zamiast zwrócić czytelny skip. Po 3 nieudanych próbach wstrzyknij
-        // programmatycznie (host_permissions pokrywa całe linkedin.com) —
-        // guard redirected_off_profile/wrong_profile_loaded w content.js
-        // odpowie wtedy konkretnym powodem.
-        if (attempts >= 3 && !injectedFallback) {
-          injectedFallback = true;
-          try {
-            await chrome.scripting.executeScript({
-              target: { tabId: tab.id },
-              files: ["content.js"],
-            });
-          } catch (_) { /* tab chroniony / zamknięty — retry-loop doleci do timeoutu */ }
-        }
-        // Content script może jeszcze nie być zainjectowany — czekamy.
+        // Content script może jeszcze nie być gotowy / dokument w nawigacji.
         await new Promise((r) => setTimeout(r, 500));
       }
     }
-    throw lastErr || new Error("tab_load_timeout");
+    // DIAGNOSTYKA: samoopisujący się błąd — finalny URL karty + status injekcji.
+    let finalPath = "?", finalStatus = "?";
+    try {
+      const t = await chrome.tabs.get(tab.id);
+      try { finalPath = new URL(t.url).pathname; } catch (_) { finalPath = t.url || "?"; }
+      finalStatus = t.status || "?";
+    } catch (_) {}
+    const last = (lastErr && lastErr.message) || "no_response";
+    const lastShort = last.indexOf("establish connection") >= 0 ? "no_listener" : last;
+    throw new Error(
+      `tab_load_timeout [path=${finalPath} status=${finalStatus} ` +
+      `inject=${injectOk ? "ok" : "FAIL:" + (injectErrMsg || "?")} tries=${attempts} last=${lastShort}]`
+    );
+  }
+
+  try {
+    tab = await chrome.tabs.create({ url, active: false });
+    let resp = await oneRound();
+    // #72 v2.1.0 — RETRY przy redirektcie. Konto rate-limitowane bywa
+    // redirectowane /in/→/mynetwork/ PRZEJŚCIOWO: pojedyncze świeże wejście
+    // przechodzi (potwierdzone Diagnostyką "martyradomska" — wouldSend:true),
+    // a seryjny bulk odbija. Przeładuj kartę z powrotem na /in/<slug>/ i spróbuj
+    // ponownie (do 2×, z odstępem) — odzyskuje przejściowe redirecty.
+    let redirectRetries = 0;
+    while (resp && resp.error === "redirected_off_profile" && redirectRetries < 2) {
+      redirectRetries++;
+      await new Promise((r) => setTimeout(r, 1500 + Math.random() * 1500));
+      try { await chrome.tabs.update(tab.id, { url }); } catch (_) {}
+      resp = await oneRound();
+    }
+    if (resp && typeof resp === "object") resp.redirectRetries = redirectRetries;
+    return resp;
   } finally {
     if (tab && tab.id) {
       try { await chrome.tabs.remove(tab.id); } catch (_) { /* tab już zamknięty */ }
@@ -1959,13 +2089,36 @@ async function bulkConnectTick() {
     response = await Promise.race([
       probeProfileTab(pending.slug, "connectFromProfile"),
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("bulk_tick_timeout")), 50000)
+        // #72 v2.1.0: 75s (było 50s) — probeProfileTab robi teraz do 3 rund
+        // (retry przy przejściowym redirektcie /in/→/mynetwork/).
+        setTimeout(() => reject(new Error("bulk_tick_timeout")), 75000)
       ),
     ]);
   } catch (err) {
     response = { success: false, error: (err && err.message) || "send_failed" };
   }
   if (!response) response = { success: false, error: "no_response" };
+
+  // #72 v2.1.0 — LinkedIn wstrzymał zaproszenia (tygodniowy limit konta).
+  // NIE oznaczaj osoby jako "błąd" (to limit konta, nie wina profilu) —
+  // zostaw ją jako pending, zatrzymaj worker i pokaż czytelny komunikat.
+  // Wznów po resecie limitu (kilka dni).
+  if (response.limit || response.error === "weekly_limit") {
+    await setBulkState({
+      active: false,
+      errorMsg:
+        "LinkedIn wstrzymał wysyłanie zaproszeń (tygodniowy limit konta). " +
+        "Spróbuj ponownie za kilka dni — kliknij „Wznów”, gdy limit się odnowi.",
+      nextTickAt: null,
+    });
+    await chrome.alarms.clear(BULK_ALARM_NAME);
+    reportScrapeFailure({
+      event_type: "bulk_connect_weekly_limit",
+      error_message: "weekly_limit",
+      diagnostics: { slug: pending.slug },
+    });
+    return;
+  }
 
   // Update queue item.
   const now = Date.now();
@@ -1993,7 +2146,36 @@ async function bulkConnectTick() {
     newStats.sentToday += 1;
     newStats.sentTotal += 1;
   }
-  await setBulkState({ stats: newStats });
+
+  // #72 v2.1.0 — bezpiecznik serii błędów. "sent"/"skipped" = LinkedIn
+  // odpowiada normalnie → zeruj licznik. Seria "failed" (np. każdy profil
+  // redirectuje na /mynetwork/ albo "Could not establish connection") =
+  // konto prawdopodobnie ograniczone/zablokowane → auto-pauza zamiast
+  // przepalać całą kolejkę. Łapie limit niezależnie od tekstu modala.
+  let consecutiveFails = after.consecutiveFails || 0;
+  if (newStatus === "failed") consecutiveFails += 1;
+  else consecutiveFails = 0;
+  await setBulkState({ stats: newStats, consecutiveFails });
+
+  const FAIL_STREAK_LIMIT = 3;
+  if (consecutiveFails >= FAIL_STREAK_LIMIT) {
+    await setBulkState({
+      active: false,
+      consecutiveFails: 0,
+      errorMsg:
+        `${FAIL_STREAK_LIMIT} nieudane próby z rzędu — LinkedIn prawdopodobnie ` +
+        "ogranicza to konto (tygodniowy limit zaproszeń lub czasowa blokada). " +
+        "Wstrzymano. Spróbuj ponownie za kilka dni — kliknij „Wznów”.",
+      nextTickAt: null,
+    });
+    await chrome.alarms.clear(BULK_ALARM_NAME);
+    reportScrapeFailure({
+      event_type: "bulk_connect_fail_streak",
+      error_message: errorVal,
+      diagnostics: { slug: pending.slug, streak: FAIL_STREAK_LIMIT },
+    });
+    return;
+  }
 
   // Schedule next tick — random delay między delayMin a delayMax.
   const delay =
@@ -2020,6 +2202,7 @@ async function startBulkConnect() {
     nextTickAt: Date.now() + 100,
     lastTickAt: null,
     navigateFailCount: 0,
+    consecutiveFails: 0,
   });
   // Keep-alive alarm (24s period < 30s SW idle limit).
   await chrome.alarms.create(BULK_ALARM_NAME, { periodInMinutes: 0.4 });
@@ -2946,6 +3129,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         case "bulkConnectStop":
           return await stopBulkConnect();
+
+        case "bulkConnectRetryFailed":
+          return await bulkConnectRetryFailed();
+
+        case "bulkConnectDiagnose":
+          return await bulkConnectDiagnose(message.slug || null);
 
         case "bulkConnectAddToQueue":
           // #43-followup v1.14.4: persistuj keywords przy dodawaniu do kolejki

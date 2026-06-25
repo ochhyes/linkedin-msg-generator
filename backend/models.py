@@ -235,3 +235,54 @@ class ScrapeFailureReport(BaseModel):
             "Default backward-compat z klientami < 1.4.0."
         ),
     )
+
+
+# ---------------------------------------------------------------------------
+# Campaign models (bulk contact messaging)
+# ---------------------------------------------------------------------------
+
+
+class CampaignContact(BaseModel):
+    """A single contact pulled from the user's LinkedIn connections list."""
+    contact_id: str = Field(..., description="Unikalne ID kontaktu (profile slug / urn)")
+    first_name: str = Field(..., description="Imię (pierwszy człon imienia i nazwiska)")
+    headline: Optional[str] = Field(None, description="Nagłówek profilu (stanowisko, firma)")
+    profile_url: Optional[str] = Field(None, description="URL profilu LinkedIn")
+
+
+class CampaignRequest(BaseModel):
+    """Request to generate a full campaign for a batch of contacts."""
+    batch_id: str = Field(..., description="Identyfikator batcha (np. UUID)")
+    contacts: List[CampaignContact] = Field(
+        ..., min_length=1, max_length=50,
+        description="Lista kontaktów (max 50 na batch — throttle)"
+    )
+    product_description: str = Field(
+        ..., min_length=10, max_length=500,
+        description="Opis programu/produktu — co oferujemy"
+    )
+    author_context: str = Field(
+        ..., min_length=10, max_length=500,
+        description="Kontekst autora — kim jestem, dlaczego robię ten program"
+    )
+
+
+class HookInfo(BaseModel):
+    """Information about the hook category assigned to a contact."""
+    contact_id: str
+    hook_category: str = Field(..., description="Etykieta kategorii, np. 'doradca', 'dyrektor / manager'")
+
+
+class GeneratedMessage(BaseModel):
+    """A single generated message for a contact."""
+    contact_id: str
+    message: str = Field(..., description="Wygenerowana wiadomość")
+    hook_category: str = Field(..., description="Kategoria użyta jako hook")
+    status: str = Field(default="ok", description="ok | error")
+    error: Optional[str] = Field(None, description="Komunikat błędu jeśli status=error")
+
+
+class CampaignResponse(BaseModel):
+    """Response from the campaign generation endpoint."""
+    batch_id: str
+    messages: List[GeneratedMessage] = Field(..., description="Lista wygenerowanych wiadomości")

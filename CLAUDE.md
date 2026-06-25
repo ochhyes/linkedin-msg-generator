@@ -195,12 +195,12 @@ Uruchom testy automatyczne (pytest backend + jsdom extension). Wykonaj kroki man
 # CURRENT STATE
 
 ```
-Sprint:        2.0 DONE i WYDANE (#64-#71, v1.25.5→v2.0.1). Otwarte: #53 (contact-info), #56B (reply-tracker, BLOCKED na dump /messaging/).
-Phase:         PM. 2.0.1 OPUBLIKOWANE na Dysk OVB (smoke Marcina OK — „Jest ładnie"). Zespół: tylko Reload w chrome://extensions/. Następny task z TODO: #53 (contact-info) / #56B (BLOCKED na dump /messaging/). UWAGA: konto Marcina hituje commercial-use limit LI — część "źle dodaje" to limit konta, nie kod.
-Active task:   (none).
-Repo state:    czysto, wszystko na master (FF). Outreach-2.0.1.zip zbudowany i OPUBLIKOWANY na wspólny Dysk OVB.
+Sprint:        2.1 — #72 (Ponów błędy + detekcja limitu LI) KOD GOTOWY, niezacommitowany, czeka na smoke Marcina. Otwarte: #53 (contact-info), #56B (reply-tracker, BLOCKED na dump /messaging/).
+Phase:         Tester→Commit. #72 v2.1.0: testy zielone (test_bulk_retry 33/0, baseline bez regresji). Czeka: (a) smoke Marcina + powód błędu inline → wklei czy to weekly_limit, (b) decyzja commit/push, (c) publikacja na Dysk OVB. UWAGA: konto Marcina hituje commercial-use limit LI — lawina „błąd" to limit konta, nie kod (stąd #72: auto-pauza + Ponów błędy).
+Active task:   #72 — czeka na smoke + OK do commitu/publikacji.
+Repo state:    master; #72 NIEZACOMMITOWANY (content/background/popup*/manifest 2.1.0 + test_bulk_retry.js). Outreach-2.0.1.zip opublikowany; 2.1.0 jeszcze nie budowany.
 Last commit:   ca211ee — feat: ikona 2.0 (#71 v2.0.1)
-Updated:       2026-06-11
+Updated:       2026-06-16
 ```
 
 **Pending operacyjne (Marcin):** (1) Ogłoszenie 2.0 zespołowi — Dysk ma już 2.0.1, każdy robi tylko Reload (dane zostają). (2) `git push` — lokalny `master` przed origin. (3) VPS: `API_KEYS=DreamComeTrue!` w prod `.env` → `cd deploy && docker compose up -d --build`.
@@ -247,6 +247,7 @@ Updated:       2026-06-11
 
 > 1 linia per release (sha, opis, bump). Pełne treści: `git show <sha>` + `PROGRESS.md`.
 
+- **v2.1.0** (uncommitted, ZWALIDOWANE na żywo) — feat: „Ponów błędy" + auto-pauza przy limicie (weekly_limit modal + bezpiecznik 3 faili) + fix injekcji `probeProfileTab` (re-inject każda próba + waitForTabComplete) + szersze wykrywanie modala (naprawia hist. 545× `modal_did_not_appear`) + dłuższe timeouty + INSTRUMENTACJA (samoopisujący `tab_load_timeout`, `describeDialogs`, przycisk „Diagnostyka" dryRun) + powód inline. Diagnostyka u Marcina potwierdziła: flow działa end-to-end gdy profil się ładuje (`wouldSend:true`); reszta błędów = `redirected_off_profile` (LIMIT KONTA, nie kod) (#72)
 - **v2.0.1** (ca211ee) — feat: ikona rozszerzenia = brandowy monogram „in" navy+złoto, generator `tools/make_icons.js`, build EXCLUDE tools (#71)
 - **v2.0.0** (42601dd) — feat: ikony SVG zamiast emoji + język nie-techniczny (Pulpit/Przypomnienia/Lista zaproszeń/„Dodaj automatycznie") + manifest name→"Outreach" + INSTRUKCJA 2.0 (#70)
 - **v1.26.0** (f0f07de) — feat: skórka cream/navy/gold ze stron szmidtke.pl (tokeny z CSS Pilota), serif Fraunces, `--on-primary` (#69)

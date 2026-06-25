@@ -1821,10 +1821,21 @@
         host.shadowRoot.querySelector(".artdeco-modal");
       if (inner) return inner;
     }
-    // Klasyczny artdeco modal w głównym DOM (musi mieć actionbar — żeby nie
-    // złapać innych LinkedIn'owych dialogów typu reklamy).
+    // Klasyczny artdeco modal w głównym DOM. #72 v2.1.0: nie wymagaj sztywno
+    // `.artdeco-modal__actionbar` (markup bywa przerollowany — Marcin widział
+    // realny modal zaproszenia, a my zwracaliśmy "modal_did_not_appear").
+    // Akceptuj dialog z actionbar/send-invite ALBO z przyciskiem akcji
+    // zaproszenia ("Wyślij [bez notatki]" / "Dodaj notatkę" / "Połącz" / EN) —
+    // wciąż wąsko, żeby nie złapać cookie/reklamy.
     const dialogs = Array.from(document.querySelectorAll('[role="dialog"], .artdeco-modal'));
-    return dialogs.find((d) => d.querySelector(".artdeco-modal__actionbar, .send-invite")) || null;
+    const looksLikeInvite = (d) => {
+      if (d.querySelector(".artdeco-modal__actionbar, .send-invite")) return true;
+      return Array.from(d.querySelectorAll("button")).some((b) => {
+        const t = ((b.innerText || b.textContent || "") + " " + (b.getAttribute("aria-label") || "")).toLowerCase();
+        return /wyślij bez notatki|wyślij zaproszenie|dodaj notatk[ęe]|połącz teraz|send without a note|send invitation|add a note|connect now/.test(t);
+      });
+    };
+    return dialogs.find(looksLikeInvite) || null;
   }
 
   function findSendWithoutNoteBtn(modal) {
@@ -1843,21 +1854,120 @@
     );
   }
 
-  async function connectFromProfile(slug) {
-    // #58-followup guard: czy realnie jesteśmy na stronie profilu? Konto z
-    // limitem LinkedIn bywa redirectowane z /in/<slug>/ na /mynetwork/ (same
-    // sugestie "Osoby, które możesz znać") — wtedy klik "Połącz" trafiłby w
-    // PRZYPADKOWĄ osobę. Bail z czytelnym powodem zamiast zaprosić nie tego.
+  // #72 v2.1.0 — detekcja tygodniowego limitu zaproszeń (commercial-use cap).
+  // Konto z wyczerpanym limitem po kliknięciu "Połącz" dostaje modal/ekran
+  // "Osiągnięto tygodniowy limit zaproszeń" (upsell Premium) zamiast okna
+  // "Wyślij bez notatki". Musimy go wykryć ZANIM klikniemy fallbackowy primary
+  // button (inaczej klik trafiłby w "Wypróbuj Premium").
+  function inviteLimitText(root) {
+    const t = ((root && (root.innerText || root.textContent)) || "").toLowerCase();
+    if (!t) return false;
+    return /osi[aą]gni[eę]to.{0,30}limit|wykorzysta[łl]e[śs].{0,20}limit|tygodniowy limit zapros|limit zapros[zeń]*\b|nie mo[żz]esz (teraz )?wys[ył]a[ćc] (wi[eę]cej )?zapros|reached (the |your )?(weekly )?invitation limit|you['’`]?ve reached your (weekly )?(invitation )?limit|invitation limit (for|reached)|try again (later|next week)/.test(t);
+  }
+  // #72 v2.1.0 — DIAGNOSTYKA: krótki opis tego, co realnie jest na stronie w
+  // momencie błędu (ile dialogów, czy shadow-modal, etykiety przycisków
+  // topowego dialogu). Doklejane do error'a → widać PRAWDZIWY markup modala bez
+  // ręcznego dumpu DevTools.
+  function describeDialogs() {
+    try {
+      const ds = Array.from(document.querySelectorAll('[role="dialog"], .artdeco-modal'));
+      const host = document.querySelector('[data-testid="interop-shadowdom"], #interop-outlet');
+      const shadow = host && host.shadowRoot ? 1 : 0;
+      let path = location.pathname;
+      if (!ds.length) return `[dlg=0 shadow=${shadow} path=${path}]`;
+      // Preferuj realny modal zaproszenia (gdy wykryty) zamiast ostatniego
+      // dialogu na stronie (na profilu bywa 8 dialogów: filtry, cookie itd.).
+      const top = findInviteModal() || ds[ds.length - 1];
+      const btns = Array.from(top.querySelectorAll("button")).slice(0, 8)
+        .map((b) => (((b.innerText || b.textContent || "").trim()) || b.getAttribute("aria-label") || "").replace(/\s+/g, " ").slice(0, 22))
+        .filter(Boolean);
+      return `[dlg=${ds.length} shadow=${shadow} btns="${btns.join("|")}" path=${path}]`;
+    } catch (e) { return "[diag_err:" + ((e && e.message) || e) + "]"; }
+  }
+
+  function inviteLimitDetected() {
+    const m = findInviteModal();
+    if (m && inviteLimitText(m)) return true;
+    const dialogs = Array.from(document.querySelectorAll('[role="dialog"], .artdeco-modal'));
+    if (dialogs.some((d) => inviteLimitText(d))) return true;
+    const host = document.querySelector('[data-testid="interop-shadowdom"], #interop-outlet');
+    if (host && host.shadowRoot && inviteLimitText(host.shadowRoot)) return true;
+    return false;
+  }
+
+  async function connectFromProfile(slug, opts) {
+    // opts.dryRun (#72 v2.1.0) — tryb diagnostyczny: przejdź CAŁY flow ale NIE
+    // klikaj finalnego "Wyślij" (zero realnego zaproszenia). Zwraca strukturę
+    // {dryRun, stages...} do podglądu w popupie. Używane przez "Diagnostyka".
+    const dryRun = !!(opts && opts.dryRun);
+    const diag = { slug, url: location.href, path: location.pathname, dryRun };
+
+    // #72 v2.1.0 — wspólna obsługa modala zaproszenia (po kliknięciu "Połącz"
+    // ALBO gdy karta wylądowała wprost na /preload/custom-invite/). Wysyła
+    // "bez notatki" (lub w dryRun tylko raportuje "wouldSend" i zamyka).
+    async function completeInviteModal() {
+      // 9s (karta w tle throttlowana przez Chrome — modal renderuje się wolniej).
+      const modal = await waitFor(() => findInviteModal(), 9000);
+      diag.modalFound = !!modal;
+      if (!modal) {
+        const ok = await waitFor(() => isAlreadyPendingProfile(), 4000);
+        if (ok) return { success: true, modalLess: true, diag };
+        if (inviteLimitDetected()) return { error: "weekly_limit", limit: true, diag };
+        diag.dialogs = describeDialogs();
+        return { success: false, error: "modal_did_not_appear " + diag.dialogs, diag };
+      }
+      // Limit-modal (upsell Premium) zamiast okna "Wyślij" — NIE klikać
+      // fallbackowego primary buttona (to "Wypróbuj Premium").
+      if (inviteLimitText(modal)) return { error: "weekly_limit", limit: true, diag };
+      const sendBtn = findSendWithoutNoteBtn(modal);
+      diag.sendBtnFound = !!sendBtn;
+      diag.dialogs = describeDialogs();
+      if (!sendBtn) {
+        if (inviteLimitDetected()) return { error: "weekly_limit", limit: true, diag };
+        return { success: false, error: "send_button_missing " + diag.dialogs, diag };
+      }
+      if (dryRun) {
+        diag.sendBtnLabel = ((sendBtn.innerText || sendBtn.textContent || "").trim() || sendBtn.getAttribute("aria-label") || "").slice(0, 30);
+        const closeBtn = modal.querySelector('button[data-test-modal-close-btn], button[aria-label="Odrzuć"], button[aria-label="Dismiss"]');
+        if (closeBtn) { try { closeBtn.click(); } catch (_) {} }
+        return { success: true, dryRun: true, wouldSend: true, diag };
+      }
+      try { sendBtn.click(); } catch (err) {
+        return { success: false, error: "send_click_failed: " + ((err && err.message) || err), diag };
+      }
+      await new Promise((r) => setTimeout(r, 1000 + Math.random() * 1000));
+      // Jeśli modal zniknął = LinkedIn zamknął okno po wysłaniu → sukces.
+      const sent = await waitFor(() => isAlreadyPendingProfile() || !findInviteModal(), 6000);
+      diag.pendingVisible = isAlreadyPendingProfile();
+      if (!sent) return { success: false, error: "pending_not_visible " + describeDialogs(), diag };
+      return { success: true, diag };
+    }
+
     let path;
     try { path = decodeURIComponent(location.pathname).toLowerCase(); }
     catch (_) { path = (location.pathname || "").toLowerCase(); }
-    if (!path.includes("/in/")) return { error: "redirected_off_profile" };
-    if (slug && !path.includes(String(slug).toLowerCase())) return { error: "wrong_profile_loaded" };
+
+    // #72 v2.1.0 — KLUCZOWE: na części profili "Połącz" to <a href="/preload/
+    // custom-invite/?vanityName=...">, który W KARCIE W TLE nawiguje CAŁĄ kartę
+    // (zamiast otworzyć modal in-page). Karta ląduje na /preload/custom-invite/
+    // = to JEST strona modala zaproszenia, NIE redirect/limit. Wykryte na żywo
+    // (diag "tomasz-marek": path=/preload/custom-invite/, redirectRetries=2).
+    // Dokończ wysyłkę modala zamiast zgłaszać redirected_off_profile.
+    const isPreloadInvite = path.includes("/preload/custom-invite") || path.includes("/preload/search-custom-invite");
+    if (isPreloadInvite) {
+      diag.preloadInvite = true;
+      return await completeInviteModal();
+    }
+
+    // Strażnik: konto z limitem bywa redirectowane /in/<slug>/ → /mynetwork/
+    // (sugestie "Osoby, które możesz znać") — klik trafiłby w PRZYPADKOWĄ osobę.
+    if (!path.includes("/in/")) return { error: "redirected_off_profile", diag };
+    if (slug && !path.includes(String(slug).toLowerCase())) return { error: "wrong_profile_loaded", diag };
 
     // Poczekaj aż top-card się zrenderuje (SDUI/Ember hydration race).
     await waitFor(() => findConnectEl(document) || isAlreadyPendingProfile(), 8000);
 
-    if (isAlreadyPendingProfile()) return { skip: "already_pending" };
+    if (isAlreadyPendingProfile()) return { skip: "already_pending", diag };
 
     let connectEl = findConnectEl(document);
     if (!connectEl) {
@@ -1878,45 +1988,32 @@
         if (!connectEl && isAlreadyPendingProfile()) {
           // zamknij dropdown
           try { moreBtn.click(); } catch (_) {}
-          return { skip: "already_pending" };
+          return { skip: "already_pending", diag };
         }
       }
     }
+    diag.connectElFound = !!connectEl;
     if (!connectEl) {
       // Brak Connecta — follow-only, 1st degree (już połączeni), albo
       // premium-locked. Nie crash — skip.
       const txt = (document.body.textContent || "").toLowerCase();
       if (/\bobserwuj\b|\bfollow\b/.test(txt) && !/połącz|connect/i.test(txt)) {
-        return { skip: "follow_only" };
+        return { skip: "follow_only", diag };
       }
-      return { skip: "not_connectable" };
+      return { skip: "not_connectable", diag };
     }
 
+    if (dryRun) diag.connectElLabel = ((connectEl.innerText || connectEl.textContent || "").trim() || connectEl.getAttribute("aria-label") || "").slice(0, 30);
+    diag.connectElTag = connectEl.tagName + (connectEl.getAttribute("href") ? " href=" + connectEl.getAttribute("href").slice(0, 40) : "");
     try { connectEl.click(); } catch (err) {
-      return { success: false, error: "connect_click_failed: " + ((err && err.message) || err) };
+      return { success: false, error: "connect_click_failed: " + ((err && err.message) || err), diag };
     }
-    // Symulacja czytania modal'a.
-    await new Promise((r) => setTimeout(r, 400 + Math.random() * 500));
-
-    const modal = await waitFor(() => findInviteModal(), 4000);
-    if (!modal) {
-      // Modal-less flow — niektóre profile LinkedIn wysyła od razu.
-      const ok = await waitFor(() => isAlreadyPendingProfile(), 3000);
-      if (ok) return { success: true, modalLess: true };
-      return { success: false, error: "modal_did_not_appear" };
-    }
-
-    const sendBtn = findSendWithoutNoteBtn(modal);
-    if (!sendBtn) return { success: false, error: "send_button_missing" };
-    try { sendBtn.click(); } catch (err) {
-      return { success: false, error: "send_click_failed: " + ((err && err.message) || err) };
-    }
-    // Symulacja czytania potwierdzenia.
-    await new Promise((r) => setTimeout(r, 1000 + Math.random() * 1000));
-
-    const sent = await waitFor(() => isAlreadyPendingProfile(), 4000);
-    if (!sent) return { success: false, error: "pending_not_visible" };
-    return { success: true };
+    // Symulacja czytania modal'a. Klik mógł: (a) otworzyć modal in-page →
+    // completeInviteModal go znajdzie; (b) nawigować kartę na /preload/custom-
+    // invite/ → kontekst tego skryptu ginie, probeProfileTab re-injektuje i
+    // wywoła connectFromProfile PONOWNIE (gałąź isPreloadInvite wyżej).
+    await new Promise((r) => setTimeout(r, 500 + Math.random() * 600));
+    return await completeInviteModal();
   }
 
   // ── Import kontaktów 1st-degree (#45 v1.14.0) ────────────────────
@@ -2237,8 +2334,9 @@
       }
     } else if (message.action === "connectFromProfile") {
       // ASYNC — klika "Połącz" → "Wyślij bez notatki" na bieżącej stronie
-      // profilu (linkedin.com/in/<slug>/). Patrz connectFromProfile().
-      connectFromProfile(message.slug)
+      // profilu (linkedin.com/in/<slug>/). message.opts.dryRun = diagnostyka
+      // bez wysyłania. Patrz connectFromProfile().
+      connectFromProfile(message.slug, message.opts || {})
         .then((result) => {
           if (!isContextValid()) return;
           if (result && !result.success && !result.skip) {
@@ -2308,8 +2406,78 @@
           error: err && err.message ? err.message : String(err),
         });
       }
+    } else if (message.action === "scrapeAllConnectionsForCampaign") {
+      // Campaign action: scrape connections from My Network page
+      // Uses both Voyager API and DOM fallback. Returns { success, contacts, total }.
+      (async () => {
+        try {
+          const contacts = await scrapeConnectionsForCampaign(message.pageSize || 500);
+          if (isContextValid()) {
+            sendResponse({ success: true, contacts, total: contacts.length });
+          }
+        } catch (err) {
+          if (isContextValid()) {
+            sendResponse({
+              success: false,
+              contacts: [],
+              error: err && err.message ? err.message : String(err),
+            });
+          }
+        }
+      })();
+      return true; // keep channel open for async
     }
   });
+
+  // ── Campaign: scrape connections (reuses battle-tested extractConnectionsList + scroll) ──────────
+
+  async function scrapeConnectionsForCampaign(pageSize = 500) {
+    // Reuse the proven extractConnectionsList which handles both SDUI and Ember layouts.
+    // LinkedIn limits display to ~1000 connections; scroll through all pages.
+    const maxScrolls = Math.ceil(Math.max(pageSize, 1000) / 25); // ~25 cards per viewport, ~40 scrolls for 1000 profiles
+
+    // Wait for initial load
+    const initialOk = await waitFor(() => extractConnectionsList().length > 0, 12000);
+    if (!initialOk) {
+      return [];
+    }
+
+    const seen = new Set();
+    let allContacts = [];
+    let lastCount = 0;
+    let noNewCount = 0;
+
+    for (let i = 0; i < maxScrolls; i++) {
+      const cur = extractConnectionsList();
+      if (cur.length === lastCount) {
+        noNewCount++;
+        if (noNewCount >= 3) break; // no new contacts after 3 scrolls = end
+      } else {
+        noNewCount = 0;
+        lastCount = cur.length;
+      }
+
+      // Deduplicate and add new
+      for (const c of cur) {
+        const slug = (c.slug || "").toLowerCase();
+        if (!slug || seen.has(slug)) continue;
+        seen.add(slug);
+        allContacts.push({
+          contact_id: slug,
+          first_name: (c.name || "Kontakt").split(" ")[0] || c.name || "Kontakt",
+          headline: c.headline || "",
+          profile_url: c.url || `https://www.linkedin.com/in/${slug}/`,
+        });
+      }
+
+      // Scroll to load more
+      window.scrollTo(0, document.body.scrollHeight);
+      await new Promise((r) => setTimeout(r, 1500));
+      await waitFor(() => extractConnectionsList().length > lastCount, 3000).catch(() => {});
+    }
+
+    return allContacts;
+  }
 
   console.log("[LinkedIn MSG] Content script loaded on:", window.location.href);
 

@@ -240,6 +240,62 @@
         </div>
       </section>
 
+      <!-- Section 4: CAMPAIGN — wysyłka masowa do kontaktów -->
+      <section id="campaign-section" class="block block--campaign">
+        <h2>
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          Kampania — informuj kontakty
+        </h2>
+        <p class="hint">Pobierz kontakty ze strony LinkedIn Moja Sieć, a następnie wygeneruj spersonalizowane wiadomości informujące o Twoim nowym programie. Limit: 15 wiadomości dziennie (bezpieczne tempo).</p>
+
+        <div class="campaign-controls">
+          <div class="campaign-fields">
+            <label for="campaign-product">Opis programu <span class="muted">(co oferujesz)</span></label>
+            <textarea id="campaign-product" rows="3" placeholder="Np. Program do tworzenia profesjonalnych zdjęć profilowych na podstawie kilku selfie — polski, autorski, już dostępny."></textarea>
+
+            <label for="campaign-author">Kontekst autora <span class="muted">(kim jesteś, dlaczego to robisz)</span></label>
+            <textarea id="campaign-author" rows="3" placeholder="Np. Jestem autorem tego programu. Moje zdjęcie profilowe jest właśnie z takiej sesji — to działa. Chcę się tym podzielić z osobami, dla których wizerunek zawodowy ma znaczenie."></textarea>
+          </div>
+
+          <div class="campaign-actions">
+            <div class="campaign-csv-row">
+              <label for="campaign-csv-input" class="btn btn--primary btn--file">
+                <svg class="ico ico--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                Wgraj plik Connections.csv
+              </label>
+              <input type="file" id="campaign-csv-input" accept=".csv" class="hidden-file-input" />
+              <span id="campaign-csv-status" class="campaign-csv-status">—</span>
+            </div>
+            <div class="campaign-buttons-row">
+              <button id="btn-campaign-scrape" class="btn btn--ghost btn--sm" title="Alternatywnie: pobierz kontakty bezpośrednio z LinkedIn (max ~1000)">
+                <svg class="ico ico--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                lub pobierz z LinkedIn
+              </button>
+              <button id="btn-campaign-generate" class="btn btn--accent" disabled>
+                <svg class="ico ico--sm" viewBox="0 0 24 24" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                Generuj wiadomości
+              </button>
+            </div>
+          </div>
+
+          <div id="campaign-throttle" class="campaign-throttle">
+            <span class="campaign-throttle__label">Dzisiejszy limit:</span>
+            <span class="campaign-throttle__value">— / 15</span>
+          </div>
+        </div>
+
+        <div id="campaign-status" class="campaign-status hidden"></div>
+
+        <div id="campaign-results" class="campaign-results hidden">
+          <h3>Wygenerowane wiadomości</h3>
+          <div class="campaign-results__toolbar">
+            <button id="btn-campaign-copy-all" class="btn btn--small btn--ghost">Kopiuj wszystkie</button>
+            <button id="btn-campaign-export-csv" class="btn btn--small btn--ghost">Eksportuj CSV</button>
+          </div>
+          <div id="campaign-messages" class="campaign-messages"></div>
+        </div>
+      </section>
+
     </main>
 
     <footer class="ftr">
@@ -248,5 +304,7 @@
 
   </div>
   <script src="dashboard.js"></script>
+  <script src="tools/campaign.js"></script>
+  <script src="dashboard-campaign.js"></script>
 </body>
 </html>

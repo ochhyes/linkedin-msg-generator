@@ -533,7 +533,12 @@ Odpowiedz TYLKO treścią wiadomości, bez komentarzy, cudzysłowów ani wyjaśn
 
 # ── AI providers ─────────────────────────────────────────────────────
 
-async def call_claude(prompt: str, system_prompt: Optional[str] = None) -> str:
+async def call_claude(
+    prompt: str,
+    system_prompt: Optional[str] = None,
+    temperature: float = AI_TEMPERATURE,
+    model: Optional[str] = None,
+) -> str:
     """Call Anthropic Messages API."""
     system = system_prompt or DEFAULT_SYSTEM_PROMPT
     async with httpx.AsyncClient(timeout=30.0) as client:
@@ -545,10 +550,10 @@ async def call_claude(prompt: str, system_prompt: Optional[str] = None) -> str:
                 "content-type": "application/json",
             },
             json={
-                "model": settings.ANTHROPIC_MODEL,
+                "model": model or settings.ANTHROPIC_MODEL,
                 "max_tokens": 1024,
                 "system": system,
-                "temperature": AI_TEMPERATURE,
+                "temperature": temperature,
                 "messages": [{"role": "user", "content": prompt}],
             },
         )
@@ -564,7 +569,12 @@ async def call_claude(prompt: str, system_prompt: Optional[str] = None) -> str:
         return "\n".join(text_parts).strip()
 
 
-async def call_openai(prompt: str, system_prompt: Optional[str] = None) -> str:
+async def call_openai(
+    prompt: str,
+    system_prompt: Optional[str] = None,
+    temperature: float = AI_TEMPERATURE,
+    model: Optional[str] = None,
+) -> str:
     """Call OpenAI Chat Completions API."""
     system = system_prompt or DEFAULT_SYSTEM_PROMPT
     async with httpx.AsyncClient(timeout=30.0) as client:
@@ -575,13 +585,13 @@ async def call_openai(prompt: str, system_prompt: Optional[str] = None) -> str:
                 "Content-Type": "application/json",
             },
             json={
-                "model": settings.OPENAI_MODEL,
+                "model": model or settings.OPENAI_MODEL,
                 "messages": [
                     {"role": "system", "content": system},
                     {"role": "user", "content": prompt},
                 ],
                 "max_tokens": 1024,
-                "temperature": AI_TEMPERATURE,
+                "temperature": temperature,
             },
         )
         resp.raise_for_status()
@@ -604,3 +614,42 @@ async def generate_message(req: GenerateMessageRequest) -> str:
         return await call_openai(prompt, system_prompt=system_prompt)
     else:
         raise ValueError(f"Nieznany AI_PROVIDER: {settings.AI_PROVIDER}")
+
+
+# ── AiService — prosty wrapper z interfejsem chat() dla CampaignService ──
+
+class AiService:
+    """Thin wrapper around the AI providers, exposing a simple chat() method.
+
+    Used by CampaignService (and potentially other services) that need a
+    plain system+user → response interface with temperature and model control.
+    """
+
+    async def chat(
+        self,
+        system_prompt: str,
+        user_message: str,
+        temperature: float = 0.7,
+        model: Optional[str] = None,
+    ) -> str:
+        """Send a system+user prompt to the configured AI provider."""
+        if settings.AI_PROVIDER == "claude":
+            if not settings.ANTHROPIC_API_KEY:
+                raise ValueError("ANTHROPIC_API_KEY nie jest ustawiony")
+            return await call_claude(
+                prompt=user_message,
+                system_prompt=system_prompt,
+                temperature=temperature,
+                model=model or settings.ANTHROPIC_MODEL,
+            )
+        elif settings.AI_PROVIDER == "openai":
+            if not settings.OPENAI_API_KEY:
+                raise ValueError("OPENAI_API_KEY nie jest ustawiony")
+            return await call_openai(
+                prompt=user_message,
+                system_prompt=system_prompt,
+                temperature=temperature,
+                model=model or settings.OPENAI_MODEL,
+            )
+        else:
+            raise ValueError(f"Nieznany AI_PROVIDER: {settings.AI_PROVIDER}")

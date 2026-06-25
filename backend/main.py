@@ -9,6 +9,9 @@ import asyncio
 
 from config import settings
 from models import (
+    CampaignRequest,
+    CampaignResponse,
+    CampaignContact,
     GenerateMessageRequest,
     GenerateMessageResponse,
     HealthResponse,
@@ -22,7 +25,9 @@ from services.ai_service import (
     GOAL_PROMPTS,
     TONE_DEFAULTS,
     generate_message,
+    AiService,
 )
+from services.campaign_service import CampaignService
 from services.diagnostics_logger import log_scrape_failure
 from services.rate_limiter import RateLimiter
 from services.auth import verify_api_key
@@ -32,6 +37,14 @@ rate_limiter = RateLimiter(
     max_requests=settings.RATE_LIMIT_MAX,
     window_seconds=settings.RATE_LIMIT_WINDOW,
 )
+
+# Campaign service – shared instance
+_campaign_service = CampaignService(ai=AiService())
+
+# Campaign daily throttle: max messages per day (across all batches)
+_CAMPAIGN_DAILY_LIMIT = 15  # bezpiecznie, żeby LinkedIn nie flagował
+_campaign_daily_count = 0
+_campaign_day_reset: float = 0.0  # timestamp when the counter resets
 
 
 @asynccontextmanager
@@ -183,6 +196,82 @@ async def report_scrape_failure(
     """
     await log_scrape_failure(report, settings.SCRAPE_FAILURE_LOG_PATH)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ── Campaign — bulk contact messaging ────────────────────────────────
+
+@app.get("/api/campaign/throttle")
+async def campaign_throttle():
+    """
+    Return current daily throttle status so the extension knows how many
+    messages are left today.
+    """
+    import time as _time
+    now = _time.time()
+    global _campaign_daily_count, _campaign_day_reset
+
+    # Reset counter if we crossed midnight
+    if now - _campaign_day_reset > 86400:
+        _campaign_daily_count = 0
+        _campaign_day_reset = now
+
+    remaining = max(0, _CAMPAIGN_DAILY_LIMIT - _campaign_daily_count)
+    return {
+        "daily_limit": _CAMPAIGN_DAILY_LIMIT,
+        "sent_today": _campaign_daily_count,
+        "remaining_today": remaining,
+    }
+
+
+@app.post("/api/campaign/generate", response_model=CampaignResponse)
+async def campaign_generate(
+    req: CampaignRequest,
+    api_key: str = Depends(verify_api_key),
+):
+    """
+    Generate personalised messages for a batch of contacts.
+
+    Throttled globally: max CAMPAIGN_DAILY_LIMIT messages per day across all
+    batches. Each batch can have up to 50 contacts but the daily counter
+    limits total output.
+
+    Returns a CampaignResponse with messages list (each has contact_id,
+    message, hook_category, status).
+    """
+    import time as _time
+    now = _time.time()
+    global _campaign_daily_count, _campaign_day_reset
+
+    # Reset counter if we crossed midnight
+    if now - _campaign_day_reset > 86400:
+        _campaign_daily_count = 0
+        _campaign_day_reset = now
+
+    requested_count = len(req.contacts)
+    remaining = _CAMPAIGN_DAILY_LIMIT - _campaign_daily_count
+
+    if remaining <= 0:
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"Dzienny limit {_CAMPAIGN_DAILY_LIMIT} wiadomości wyczerpany. "
+                "Spróbuj jutro."
+            ),
+        )
+
+    # Trim the batch if it exceeds remaining daily quota
+    if requested_count > remaining:
+        req.contacts = req.contacts[:remaining]
+
+    try:
+        result = await _campaign_service.generate_campaign(req)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Błąd kampanii: {str(e)}")
+
+    # Update daily counter
+    _campaign_daily_count += len(result.messages)
+
+    return result
 
 
 # ── Global error handler ─────────────────────────────────────────────

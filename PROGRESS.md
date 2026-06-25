@@ -8,6 +8,119 @@
 
 ---
 
+## 2026-06-25 (Claude Code / Opus 4.x) — Kampania: masowe wiadomości do kontaktów
+
+### Zrobione
+
+- **Kampania — poinformuj kontakty o nowym programie.** Nowa sekcja w Dashboardzie (`#campaign-section`), nowy endpoint backendu (`/api/campaign/`), nowy handler w content.js (`scrapeAllConnectionsForCampaign`), nowe pliki: `dashboard-campaign.js`, `tools/campaign.js`.
+- **Backend:** `models.py` + `campaign_service.py` + `main.py` — endpointy:
+  - `POST /api/campaign/generate` — przyjmuje listę kontaktów + opis produktu + kontekst autora, dla każdego kontaktu wykrywa hook (kategoria stanowiska: doradca klienta, przedstawiciel, manager, rekruter, HR, sprzedaż, IT, marketing, finansista, prawnik, CEO/właściciel, edukacja, inny), generuje spersonalizowaną wiadomość (imię + hook + link do programu + zdjęcie autora).
+  - `GET /api/campaign/throttle` — dzienny limit (15 wiadomości/dzień), licznik wysłanych, pozostałe. Throttle per API key, reset codziennie o północy.
+- **Extension:**
+  - `content.js`: nowy handler `scrapeAllConnectionsForCampaign` — scrapuje kontakty z `/mynetwork/invite-connect/connections/` przez Voyager API + DOM fallback. Zwraca `[{contact_id, first_name, headline, profile_url}]`.
+  - `tools/campaign.js`: moduł `CampaignManager` (class) — scrape + generowanie + throttle. Expose do `window.CampaignManager`.
+  - `dashboard-campaign.js`: UI — przycisk „Pobierz kontakty" (otwiera kartę w tle, scrape, zamyka), textarea na opis programu + kontekst autora, przycisk „Generuj wiadomości", wyświetlanie wyników (karty z hookiem + wiadomością), kopiuj pojedynczą/wszystkie, eksport CSV.
+  - `dashboard.html`: nowa sekcja z SVG ikonami, polami textarea, przyciskami, throttlem, statusem, wynikami.
+  - `dashboard.css`: style dla campaign section (karty wiadomości, throttle bar, status, textarea).
+- **Bezpieczeństwo:** 15 wiadomości dziennie — tempo nie wzbudzające podejrzeń LinkedIn. Użytkownik ręcznie kopiuje i wysyła każdą wiadomość (żadna automatyzacja wysyłki).
+
+### Decyzje
+
+- **Nie automatyzujemy wysyłania.** Użytkownik klika „Kopiuj" → otwiera czat → wkleja → wysyła ręcznie. Zero ryzyka blokady konta przez automatyzację.
+- **Hook kategorie zdefiniowane w `campaign_service.py`** — oparte na słowach kluczowych w headline (doradca, przedstawiciel, manager, IT, HR, sprzedaż itd.). Backend AI (OpenAI) może je nadpisać własną detekcją.
+- **Throttle per API key, nie per kontakt.** Proste zliczanie z resetem o północy — wystarczające przy 15/dzień.
+
+### Status końcowy
+✅ Backend gotowy (3 endpointy, modele, serwis).
+✅ Extension gotowy (content.js handler, campaign.js moduł, dashboard UI, CSS).
+⏳ Testy integracyjne — do wykonania z realnym backendem i kontem LinkedIn.
+
+### Pliki dodane/zmodyfikowane
+- **Nowe:** `backend/services/campaign_service.py`, `extension/dashboard-campaign.js`, `extension/tools/campaign.js`
+- **Zmodyfikowane:** `backend/models.py`, `backend/main.py`, `extension/content.js`, `extension/dashboard.html`, `extension/dashboard.css`
+
+---
+
+## 2026-06-16 (Claude Code / Opus 4.8) — #72 v2.1.0: „Ponów błędy" + detekcja limitu LinkedIna
+
+### Zrobione
+
+- **#72 (v2.1.0) — przywracanie osób z „błąd" + auto-pauza przy limicie.** Zgłoszenie Marcina: po wcześniejszym dodawaniu LinkedIn przyblokował konto, Start/Wznów leci lawiną „błąd" (kilka „wysłane", reszta „błąd"). Po takim runie kolejka ma 0 pending → ani Start, ani Wznów się nie pokazują = user utknął bez przycisku.
+  - **Detekcja tygodniowego limitu (content.js):** `inviteLimitText`/`inviteLimitDetected` — po kliknięciu „Połącz" konto z wyczerpanym limitem dostaje modal/ekran „Osiągnięto tygodniowy limit zaproszeń" (upsell Premium) zamiast okna „Wyślij bez notatki". Wykrywane PL+EN, sprawdzane PRZED kliknięciem fallbackowego primary buttona (inaczej `findSendWithoutNoteBtn` last-resort kliknąłby „Wypróbuj Premium"). `connectFromProfile` zwraca `{error:"weekly_limit", limit:true}`.
+  - **Auto-pauza (background.js bulkConnectTick):** `response.limit` → worker `active:false` + errorMsg „LinkedIn wstrzymał wysyłanie zaproszeń (tygodniowy limit konta)…", alarm clear, telemetria `bulk_connect_weekly_limit`. **Osoba zostaje `pending` (NIE pali się jako „błąd")** — to limit konta, nie wina profilu, więc po resecie limitu wróci do kolejki sama.
+  - **„Ponów błędy" (background `bulkConnectRetryFailed` + przycisk popup):** (1) `resetFailedToPending` — wszystkie `failed`→`pending` (czyść error/timestamp); (2) „też z bazy/historii" — `selectEnqueueCandidates` po CAŁYM profileDb docina nie-kontakty spoza kolejki (np. po „Wyczyść"). Przycisk widoczny gdy są `failed` i worker stoi. Confirm przed (bo dociąga bazę). Toast: „Przywrócono N z błędem + M z bazy".
+  - **Powód inline (popup):** `friendlyBulkError` tłumaczy kod na polski przy każdym „błąd"/„pominięto" (wcześniej tylko w tooltipie `title` — Marcin go nie widział). weekly_limit→„limit LinkedIna", send_button_missing→„LinkedIn nie pokazał okna (możliwy limit)" itd.
+  - Pliki: `content.js`, `background.js`, `popup.js`, `popup.html`, `popup.css`, `manifest.json` (2.0.1→2.1.0), `tests/test_bulk_retry.js` (nowy, 33/0).
+
+### Diagnoza na żywo (Marcin wkleił 1. błąd: „Kacper Bieniek — Could not establish connection")
+
+- **To NIE czysty limit-modal, to błąd injekcji** — `chrome.runtime.lastError` „Could not establish connection" = background `sendMessage` do karty bez content scriptu. Root cause: `probeProfileTab` injektował fallbackowo `executeScript` TYLKO RAZ (`injectedFallback` flag). Konto z limitem redirectuje `/in/<slug>/` → `/mynetwork/` (manifest content_scripts NIE matchuje gołego /mynetwork/), a redirect potrafi też nastąpić PO injekcji i zabić listener z poprzedniego dokumentu → 12s pętli sendMessage do nieistniejącego odbiorcy → throw. Czyli lawina „błąd" Marcina to najpewniej limit konta OBJAWIAJĄCY SIĘ jako redirect+injection-fail, nie modal „Wyślij bez notatki".
+- **Fix injekcji:** `probeProfileTab` re-injektuje `content.js` PROAKTYWNIE na każdej próbie pętli (guard `__LINKEDIN_MSG_LOADED__` w content.js → powtórki w tym samym dokumencie to no-op; nowy dokument po redirect dostaje świeży listener) + `waitForTabComplete(tab,8000)` przed pętlą (redirect się ustabilizuje). Po tym content.js wejdzie nawet na /mynetwork/ i zwróci czysty `redirected_off_profile`.
+- **Bezpiecznik serii (ogólniejszy niż detekcja modala):** `consecutiveFails` w bulk state — sent/skipped zeruje, 3× `failed` z rzędu → auto-pauza z komunikatem „LinkedIn prawdopodobnie ogranicza konto…". Łapie limit/blokadę niezależnie od dokładnego tekstu (redirect, connection-error, modal). Zerowany przy Start/Wznów. Lekcja z `feedback_verify_dump_before_fixing` potwierdzona: objaw „błąd" ≠ parser; tu = injekcja+redirect.
+
+### Diagnoza na żywo cz.2 (Marcin: „Anna Kościołowska — błąd: nie pokazał okna, ale modal REALNIE był i dało się kliknąć")
+
+- **Fałszywy `modal_did_not_appear`** — `connectFromProfile` kliknął „Połącz", modal zaproszenia się pokazał, a my zwróciliśmy „nie pokazał okna". Dwie przyczyny: (1) `findInviteModal` wymagał sztywno `.artdeco-modal__actionbar`/`.send-invite` — markup przerollowany ⇒ 0 dopasowań; (2) okno 4s za krótkie — **karta w tle jest throttlowana przez Chrome**, modal renderuje się wolniej.
+- **Fix:** `findInviteModal` akceptuje też dialog z przyciskiem akcji zaproszenia (regex „Wyślij [bez notatki]/Dodaj notatkę/Połącz teraz/EN") — wciąż wąsko (nie łapie cookie/reklam). Timeouty: modal 4s→9s, pending 4s→6s, modal-zniknął=sukces (po kliknięciu „Wyślij" LinkedIn zamyka okno). Komunikaty rozdzielone per-etap (`modal_did_not_appear`→„okno zaproszenia nie wykryte", `send_button_missing`→„brak przycisku Wyślij", `pending_not_visible`→„kliknięto, brak potwierdzenia", „Could not establish…"→„karta nie odpowiedziała (przekierowanie?)") — żeby z logu/UI było widać który KROK pada.
+
+### Diagnoza na żywo cz.3 (Marcin: `tab_load_timeout` ×2 + „już zaproszony" ×1; „przestań zgadywać, zrób prawdziwe testy, pobierz dane")
+
+- **Nie da się zgadnąć z fotela — potrzeba ground truth z realnej sesji LI.** Nie mam dostępu do Chrome Marcina (Claude-in-Chrome to osobny produkt), a SSH do prod-VPS (gdzie backend loguje `/var/log/linkedin-msg/failures.jsonl`) został ZABLOKOWANY przez auto-policy (prod read przez remote shell, brak wyraźnej zgody). Poproszono Marcina o zgodę na read-only `tail` tego logu = agregat prawdziwych błędów z 3 komputerów.
+- **Zamiast zgadywać — instrumentacja, żeby NASTĘPNY run sam zwrócił dane:**
+  - `probeProfileTab`: `tab_load_timeout` → samoopisujący się `tab_load_timeout [path=… status=… inject=ok|FAIL:msg tries=N last=…]`. Od razu widać czy LinkedIn zredirectował `/in/`→`/mynetwork/`/login (= ograniczenie konta) czy karta wolno się ładuje (= podbić timeout). Łapie też finalny URL po redirectach (chrome.tabs.get w bloku timeout).
+  - `connectFromProfile`: `describeDialogs()` doklejany do `modal_did_not_appear`/`send_button_missing`/`pending_not_visible` → realne etykiety przycisków modala (`btns="Połącz|Anuluj…"`) + liczba dialogów + shadow + path. Czyli PRAWDZIWY markup okna bez ręcznego DevTools-dumpu. Funkcja zwraca też `diag{}` strukturalnie.
+  - **Przycisk „Diagnostyka" (popup):** `bulkConnectDiagnose` → `probeProfileTab(slug,"connectFromProfile",{dryRun:true})` — przechodzi CAŁY flow na 1 profilu BEZ klikania finalnego „Wyślij" (zero realnego zaproszenia), zwraca `{slug, elapsedMs, result:{success, error, diag:{url, connectElFound, modalFound, sendBtnFound, dialogs, pendingVisible}}}`. Popup kopiuje JSON do schowka + pokazuje w `prompt`. Jednoklikowe „pobierz dane" z realnej sesji.
+- **Hipotezy do potwierdzenia danymi (NIE fixować na ślepo):** `tab_load_timeout` = najpewniej redirect `/in/`→`/mynetwork/` (manifest tam nie matchuje; re-inject z cz.2 powinien był to złapać — diag `inject=` powie czy executeScript się udaje) ALBO throttling karty w tle (wolne ładowanie — diag `status=`/`tries=` powie). „już zaproszony" potwierdza, że ścieżka działa, gdy karta się załaduje.
+
+### PRAWDZIWE DANE z prod (SSH read-only `/var/log/linkedin-msg/failures.jsonl`, 1616 zdarzeń) — Marcin dał zgodę
+
+Rozkład błędów (cały plik, pogrupowany):
+- **`modal_did_not_appear` — 545×** (najwięcej historycznie) — `findInviteModal()` nie wykrywa modala zaproszenia mimo że JEST (potwierdza zgłoszenie „Anna Kościołowska"). Fix: szerszy `findInviteModal` (akceptuje main-DOM dialog z przyciskiem zaproszenia, nie tylko `.artdeco-modal__actionbar`) + timeout 4s→9s (karta w tle throttlowana).
+- `Could not establish connection` — 187× → fix re-inject (cz.1).
+- `li_not_found` — 117× → MARTWA stara ścieżka `bulkConnectClick` (usunięta #66), historyczne.
+- `pending_not_visible` — 47× → fix 6s + „modal zniknął = sukces".
+- `send_button_missing` — **1×** → gdy modal wykryty, przycisk JEST. Czyli problem to WYŁĄCZNIE wykrycie modala.
+- `redirected_off_profile` — 11× łącznie, ALE **DOMINUJE OGON LOGU (najnowsze runy Marcina)**.
+
+**Kluczowe odkrycie z ogona logu (najnowsze zapisy):** dominuje `redirected_off_profile` + widać MÓJ nowy `bulk_connect_fail_streak {streak:3}` jak realnie odpala (slugi: arkadiusz-mikolajczyk, annaroda). Czyli: (a) Marcin JUŻ biega na moim kodzie (cz.2 — fail_streak istnieje tylko u mnie), (b) **LinkedIn REDIRECTUJE wejścia `/in/<slug>/` → `/mynetwork/` = konto jest AKTUALNIE ograniczane** (commercial-use limit, [[project_linkedin_account_limit]]). `tab_load_timeout` (ariel-pawlik, antonia-rathge — te które Marcin wkleił) to najpewniej ten sam redirect (cz.4 diag suffix to potwierdzi po reloadzie).
+
+**Werdykt:** dwa nakładające się problemy. (1) HISTORYCZNY bug kodu: `modal_did_not_appear` (545×) — naprawiony (szerszy detektor + dłuższe okno + diagnostyka do domknięcia gdy konto wróci). (2) AKTUALNY stan: konto Marcina jest rate-limitowane przez LinkedIn (redirecty) — **tego kodem się nie obejdzie**; bezpiecznik fail_streak słusznie auto-pauzuje. Rekomendacja dla Marcina: niższy dzienny limit, dłuższe przerwy, nie biegać z 3 maszyn naraz, odczekać kilka dni. Lekcja [[feedback_verify_dump_before_fixing]] potwierdzona TWARDO: objaw „błąd" miał 3 różne root-causy (injekcja / detekcja modala / limit konta), agregat z logu rozłożył je ilościowo zamiast zgadywania.
+
+### Diagnoza cz.4 (Marcin: „Martyna — Diagnostyka poszła dobrze, a w bulku nie dodało: przekierowanie. Działaj dalej")
+
+- **Dowód że redirect jest PRZEJŚCIOWY/zależny od tempa:** ten sam profil (martyradomska) w Diagnostyce (pojedyncze świeże wejście) → `wouldSend:true`, a w seryjnym bulku → `redirected_off_profile`. probeProfileTab identyczny w obu ścieżkach → różnica jest CZASOWA: LinkedIn rate-limituje w czasie rzeczywistym, czasem wpuszcza, czasem odbija na /mynetwork/.
+- **Fix: retry-z-przeładowaniem przy redirektcie** — `probeProfileTab` wydzielony na `oneRound()`; gdy `oneRound` zwróci `redirected_off_profile`, przeładuj kartę `chrome.tabs.update(tab.id,{url})` z odstępem 1.5-3s i spróbuj ponownie (do 2×). `resp.redirectRetries` w wyniku (widać w Diagnostyce). bulk_tick_timeout 50s→75s (3 rundy mieszczą się w budżecie).
+
+### Diagnoza cz.5 — PRAWDZIWY root-cause „redirected_off_profile" (diag tomasz-marek)
+
+- **`/preload/custom-invite/` było mylnie klasyfikowane jako redirect/limit.** Diag `tomasz-marek` pokazał `url=.../preload/custom-invite/?vanityName=tomasz-marek`, `redirectRetries=2`. To NIE /mynetwork/ (limit) — to **strona modala zaproszenia LinkedIna**. Na części profili „Połącz" to `<a href="/preload/custom-invite/?vanityName=...">`, który **w karcie w tle NAWIGUJE całą kartę** (zamiast otworzyć modal in-page jak na pierwszym planie). Strażnik `if(!path.includes("/in/")) return redirected_off_profile` łapał to jako limit → masa fałszywych „przekierowanie (limit konta?)".
+- **Fix:** `connectFromProfile` rozpoznaje `path=/preload/custom-invite|/preload/search-custom-invite` jako stronę modala (`isPreloadInvite`) i **dokańcza wysyłkę** (wspólna `completeInviteModal()` — wydzielona z głównego flow, używana po kliknięciu „Połącz" ORAZ na stronie /preload/). Po kliknięciu connecta na /in/ klik może (a) otworzyć modal in-page lub (b) nawigować na /preload/ → kontekst ginie → probeProfileTab re-injektuje → connectFromProfile wchodzi gałęzią isPreloadInvite. diag dostał `connectElTag` (tag+href przycisku) by potwierdzić `<a href=preload>`. **Hipoteza: to wyjaśnia DUŻĄ część „redirected_off_profile" — niekoniecznie limit konta, tylko ten bug.** Do potwierdzenia: następny diag na /preload/ pokaże `modalFound`/`wouldSend`.
+
+### Decyzje
+
+- **Limit-item zostaje `pending`, nie `failed`** (zamiast oznaczać błędem) — to stan konta, nie profilu; po odnowieniu limitu „Wznów" go wyśle bez ręcznego przywracania. Tylko REALNE faile (modal/parser) idą na `failed`.
+- **Re-add „też z bazy" (wybór Marcina) zamiast „tylko bieżąca lista"** — `bulkConnectRetryFailed` po resecie failed→pending dorzuca z profileDb wszystkich nie-połączonych spoza kolejki. dailyCap drenuje powoli, więc bezpieczne. Confirm w popupie chroni przed zaskoczeniem.
+- **Zakładka już nazywa się „Budowanie sieci"** (popup.html:51, od #70) — prośba „nazwij batch po polsku" w tej części już spełniona; nic nie zmieniałem (czekam czy Marcin miał na myśli inne miejsce).
+- **Detekcja limitu = heurystyka tekstowa PL+EN bez realnego dumpu modala** (Mock>brak). Telemetria `bulk_connect_weekly_limit` + powód inline potwierdzą w prod; jak Marcin wklei dokładny tekst modala/tooltipa — dostroję regex.
+
+### Lessons learned
+
+- **Po runie z samymi failami user utyka bez przycisku** — Start wymaga pending&&!sent, Wznów wymaga pending&&sent; gdy wszystko failed/sent, oba zniknięte. Każdy stan terminalny kolejki musi mieć wyjście (stąd „Ponów błędy").
+- **Fallback „last-resort primary button" jest niebezpieczny przy modalu limitu** — klika „Wypróbuj Premium". Detekcja limitu MUSI być przed fallbackiem.
+- **Powód błędu w tooltipie = niewidoczny** — jak coś jest diagnostyczne, ma być inline, nie pod hover.
+
+### BLOCKED / TODO
+
+- **Smoke (Marcin, ~10 min):** Reload extensionu → zakładka Budowanie sieci → najedź na „błąd" (powód teraz inline) → wklej mi powód przy 2-3 osobach (potwierdzi czy to weekly_limit czy coś innego) → „Ponów błędy" (confirm → toast „Przywrócono X + Y z bazy") → pojawia się Start/Wznów. Detekcji limitu nie da się wymusić bez realnej blokady — zweryfikuje telemetria.
+- **NIE opublikowane na Dysk OVB ani nie pushnięte** — czekam na smoke + OK Marcina (zmiana dotyka flow dodawania). Po akceptacji: `node build.js` z master → publikacja.
+- Jeśli tekst modala limitu różni się od regexa → dostroić `inviteLimitText` (PL+EN) z realnego dumpu/tooltipa.
+
+### Status końcowy
+
+Kod gotowy, testy zielone (test_bulk_retry 33/0; baseline: syntax 12, bulk_connect 171, profile_db 141, search_extractor 74 — bez regresji). Niezacommitowane do czasu decyzji o commitcie/publikacji. Manifest 2.1.0.
+
+---
+
 ## 2026-06-11 cz. 2 (ta sama sesja) — sprint 2.0: licznik live, audyty, backup, redesign, język (#65-#70, v2.0.0)
 
 ### Zrobione
