@@ -3550,7 +3550,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             .filter((p) => p && p.slug)
             .map((p) => {
               const fullName = (p.name || "").trim();
-              const firstName = fullName.split(" ")[0] || fullName;
+              const firstName =
+                fullName.split(" ")[0] ||
+                fullName ||
+                (p.slug || "").split("-")[0] ||
+                p.slug;
               return {
                 contact_id: p.slug,
                 first_name: firstName,
@@ -3559,8 +3563,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 location: p.location || null,
                 company: p.company || null,
               };
-            })
-            .filter((c) => c.first_name);
+            });
           return { success: true, contacts };
         }
         case "getCampaigns":
