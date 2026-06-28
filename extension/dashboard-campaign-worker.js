@@ -22,6 +22,7 @@
   const contactsCountEl = document.getElementById("cw-contacts-count");
   const btnSave = document.getElementById("cw-save-campaign");
   const briefEl = document.getElementById("cw-brief");
+  const briefPresetsEl = document.getElementById("cw-brief-presets");
   const goalEl = document.getElementById("cw-goal");
   const productEl = document.getElementById("cw-product");
   const authorEl = document.getElementById("cw-author");
@@ -510,6 +511,43 @@
     briefEl.classList.toggle("hidden", !anyAiStep());
   }
 
+  // Gotowe briefy — klik wypelnia cel/opis/kontekst/notke. Dopisz wlasne tutaj.
+  const CAMPAIGN_PRESETS = [
+    {
+      label: "Profilówka",
+      goal: "info",
+      product: "profilowka.pl — autorski, polski portal, który z kilku selfie tworzy profesjonalne zdjęcie profilowe, bez fotografa i sesji, w kilkanaście minut. Już dostępny: https://profilowka.pl",
+      author: "Jestem autorem profilowka.pl. Moje obecne zdjęcie profilowe na LinkedIn jest właśnie z takiej sesji — to działa. Dzielę się tym z osobami, dla których zawodowy wizerunek ma znaczenie.",
+      note: "moje zdjęcie profilowe na LinkedIn jest właśnie z profilowka.pl",
+    },
+    {
+      label: "Rekrutacja OVB",
+      goal: "recruitment",
+      product: "Współpraca w OVB Allfinanz — niezależne doradztwo finansowe jako własny biznes: elastyczny czas, pełne szkolenia i ścieżka rozwoju, dochód oparty na efektach, wsparcie zespołu od pierwszego dnia.",
+      author: "Buduję zespół w OVB. Szukam osób, które chcą rozwijać się w doradztwie finansowym — niekoniecznie z branży; liczy się kontakt z ludźmi, ambicja i otwartość na naukę.",
+      note: "",
+    },
+  ];
+
+  function applyPreset(p) {
+    if (!p) return;
+    if (goalEl) goalEl.value = p.goal || "info";
+    if (productEl) productEl.value = p.product || "";
+    if (authorEl) authorEl.value = p.author || "";
+    if (noteEl) noteEl.value = p.note || "";
+    checkSaveEnabled();
+  }
+
+  function renderBriefPresets() {
+    if (!briefPresetsEl) return;
+    briefPresetsEl.innerHTML = CAMPAIGN_PRESETS
+      .map((p, i) => `<button type="button" class="btn btn--sm btn--ghost cw-preset" data-i="${i}">${escHtml(p.label)}</button>`)
+      .join("");
+    briefPresetsEl.querySelectorAll(".cw-preset").forEach((btn) => {
+      btn.addEventListener("click", () => applyPreset(CAMPAIGN_PRESETS[parseInt(btn.dataset.i, 10)]));
+    });
+  }
+
   function briefValid() {
     if (!anyAiStep()) return true; // brief niewymagany gdy zero krokow AI
     return (productEl.value || "").trim().length >= 10 && (authorEl.value || "").trim().length >= 10;
@@ -704,6 +742,7 @@
 
   // ── Init ──────────────────────────────────────────────────────────────
   // Domyslnie 1 krok (szablon) zeby formularz nie byl pusty.
+  renderBriefPresets();
   addStepToUI(1, "", 0, "template");
   syncStepsFromUI();
   updateBriefVisibility();

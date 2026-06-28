@@ -849,6 +849,8 @@ button .ico, .btn .ico { margin-right: 2px; }
 .cw-sendmode label { font-weight: 400; display: flex; gap: 6px; align-items: baseline; font-size: 0.88rem; }
 .cw-brief { border: 1px dashed var(--border-strong); border-radius: 8px; padding: 12px; background: var(--bg-main); display: flex; flex-direction: column; gap: 10px; }
 .cw-brief__intro { margin: 0; font-size: 0.82rem; }
+.cw-brief-presets { display: flex; gap: 8px; flex-wrap: wrap; }
+.cw-brief-presets:empty { display: none; }
 .cw-step__mode { display: inline-flex; gap: 8px; font-weight: 400; font-size: 0.82rem; color: var(--text-secondary); }
 .cw-step__mode label { font-weight: 400; display: inline-flex; gap: 3px; align-items: center; }
 .cw-step__ai-hint { margin: 6px 0 0; font-size: 0.82rem; }
