@@ -211,11 +211,13 @@ class CampaignService:
             author_note=author_note,
         )
         try:
+            # Model z konfiguracji (settings.ANTHROPIC_MODEL) — jak normalna
+            # generacja. Hardkod 'claude-sonnet-4-20250514' (stary Sonnet 4) byl
+            # wycofany → AI zwracalo pustke mimo dzialajacego klucza i normalnej sciezki.
             raw = await self.ai.chat(
                 system_prompt=_CAMPAIGN_SYSTEM,
                 user_message=user_msg,
                 temperature=0.85,
-                model='claude-sonnet-4-20250514',
             )
             cleaned = re.sub(
                 r'^(Wiadomosc|Message|Tresc|Tekst)\s*[:]?\s*', '', raw, flags=re.I
