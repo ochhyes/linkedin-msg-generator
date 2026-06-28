@@ -248,6 +248,11 @@ class CampaignContact(BaseModel):
     first_name: str = Field(..., description="Imię (pierwszy człon imienia i nazwiska)")
     headline: Optional[str] = Field(None, description="Nagłówek profilu (stanowisko, firma)")
     profile_url: Optional[str] = Field(None, description="URL profilu LinkedIn")
+    location: Optional[str] = Field(None, description="Lokalizacja (miasto / region)")
+    company: Optional[str] = Field(None, description="Aktualna firma")
+
+
+ALLOWED_CAMPAIGN_GOALS = {"info", "recruitment", "sales"}
 
 
 class CampaignRequest(BaseModel):
@@ -265,6 +270,27 @@ class CampaignRequest(BaseModel):
         ..., min_length=10, max_length=500,
         description="Kontekst autora — kim jestem, dlaczego robię ten program"
     )
+    campaign_goal: str = Field(
+        default="info",
+        description="Cel kampanii: info (poinformowanie o portalu/produkcie) | recruitment | sales",
+    )
+    author_note: Optional[str] = Field(
+        None,
+        max_length=200,
+        description=(
+            "Opcjonalna notka osobista nadawcy (np. 'moje zdjęcie na LI jest właśnie z tej akcji'). "
+            "Jeśli podana, AI wplata ją naturalnie w wiadomość."
+        ),
+    )
+
+    @field_validator("campaign_goal")
+    @classmethod
+    def _validate_campaign_goal(cls, v: str) -> str:
+        if v not in ALLOWED_CAMPAIGN_GOALS:
+            raise ValueError(
+                f"Nieznany cel kampanii: '{v}'. Dozwolone: {', '.join(sorted(ALLOWED_CAMPAIGN_GOALS))}"
+            )
+        return v
 
 
 class HookInfo(BaseModel):

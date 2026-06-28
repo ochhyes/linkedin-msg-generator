@@ -99,173 +99,60 @@
         </div>
       </section>
 
-      <!-- Section 4: ALL CONTACTS (#38 v1.11.0) -->
-      <section id="contacts-list-section" class="block block--contacts">
-        <h2>
-          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          Wszystkie osoby
-          <span id="contacts-count" class="count-badge">0</span>
-        </h2>
-        <p class="hint">Każda osoba z Twojej listy zaproszeń i wiadomości. Gdy ktoś Ci odpisze — kliknij „Odpisał" w jego wierszu, a wyniki wyżej policzą się same. Kliknięcie imienia otwiera profil.</p>
-        <div class="table-wrapper">
-          <table id="contacts-table" class="contacts-table">
-            <thead>
-              <tr>
-                <th>Imię</th>
-                <th title="Status zaproszenia">Status</th>
-                <th title="Zaproszenie wysłane">Zapr.</th>
-                <th title="Zaproszenie przyjęte">Przyj.</th>
-                <th title="Pierwsza wiadomość wysłana">Wiad.</th>
-                <th title="Odpowiedź na pierwszą wiadomość">Odp.</th>
-                <th title="Przypomnienie 1 wysłane">P1</th>
-                <th title="Odpowiedź na przypomnienie 1">O1</th>
-                <th title="Przypomnienie 2 wysłane">P2</th>
-                <th title="Odpowiedź na przypomnienie 2">O2</th>
-                <th>Akcje</th>
-              </tr>
-            </thead>
-            <tbody id="contacts-tbody"></tbody>
-          </table>
-          <p id="contacts-empty" class="empty-state hidden">Pusto. Zacznij od zakładki „Budowanie sieci" w okienku rozszerzenia.</p>
-        </div>
-      </section>
-
-      <!-- Section 5: PROFILE DB (#45 v1.14.0) -->
-      <section id="profiledb-section" class="block block--profiledb">
-        <h2>
-          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>
-          Baza osób
-          <span id="profiledb-count" class="count-badge">0</span>
-          <button id="btn-refresh-profiledb" class="btn btn--ghost btn--sm" title="Odśwież bazę">
-            <svg class="ico ico--sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-          </button>
-        </h2>
-        <p class="hint">Wszystkie osoby, które przewinęły się przez rozszerzenie (wyszukiwarka, profile, importy) — niezależnie od listy zaproszeń. Codziennie zapisuje się kopia do pliku — to jedyna rzecz, która przetrwa usunięcie rozszerzenia.</p>
-
-        <div id="backup-banner" class="backup-banner">
-          <span id="backup-banner-text">Sprawdzam stan kopii zapasowej…</span>
-          <button id="btn-backup-now" class="btn btn--small btn--primary">
-            <svg class="ico ico--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            Zapisz kopię teraz
-          </button>
-        </div>
-
-        <div class="profiledb-actions">
-          <button id="btn-export-csv" class="btn btn--small btn--outline">Zapisz jako CSV (Excel)</button>
-          <button id="btn-export-json" class="btn btn--small btn--outline">Zapisz pełną kopię (JSON)</button>
-          <label class="btn btn--small btn--outline file-btn">Wczytaj kopię / plik<input type="file" id="import-file" accept=".json,.csv" hidden></label>
-          <label class="profiledb-restore-queue"><input type="checkbox" id="import-restore-queue"> przy wczytywaniu pełnej kopii przywróć też listę zaproszeń</label>
-          <button id="btn-import-connections" class="btn btn--small btn--primary">
-            <svg class="ico ico--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            Pobierz moje kontakty z LinkedIn
-          </button>
-          <label class="btn btn--small btn--primary file-btn" title="Wczytaj oficjalny plik z LinkedIn (Ustawienia → Prywatność danych → Pobierz kopię swoich danych → tylko Kontakty). Z paczki potrzebny jest plik Connections.csv.">
-            Wczytaj plik Connections.csv<input type="file" id="import-linkedin-export-file" accept=".csv,text/csv" hidden></label>
-          <label class="profiledb-restore-queue" title="Zaznacz, gdy plik zawiera osoby DO zaproszenia (nie Twoje obecne kontakty). Trafią do bazy jako „jeszcze nie w kontaktach" — gotowe do dodania na listę zaproszeń."><input type="checkbox" id="import-linkedin-export-as-prospects"> to osoby do zaproszenia (nie moje obecne kontakty)</label>
-          <span id="profiledb-status" class="profiledb-status"></span>
-        </div>
-
-        <div class="profiledb-filters">
-          <input type="text" id="profiledb-search" placeholder="Szukaj osoby (imię, stanowisko)…">
-          <select id="profiledb-source-filter">
-            <option value="">Wszystkie źródła</option>
-            <option value="search">Z wyszukiwarki</option>
-            <option value="profile_scrape">Z profilu</option>
-            <option value="connections_import">Z kontaktów LinkedIn</option>
-            <option value="linkedin_export">Z pliku Connections.csv</option>
-            <option value="manual">Dodane ręcznie</option>
-            <option value="bulk">Z listy zaproszeń</option>
-          </select>
-          <select id="profiledb-conn-filter">
-            <option value="">Wszyscy</option>
-            <option value="yes">Już w moich kontaktach</option>
-            <option value="no">Jeszcze nie w kontaktach</option>
-          </select>
-        </div>
-
-        <div class="profiledb-bulkbar">
-          <label class="profiledb-bulkbar__check"><input type="checkbox" id="profiledb-select-all"> Zaznacz wszystkie widoczne</label>
-          <button id="btn-enqueue-selected" class="btn btn--small btn--primary" disabled title="Dodaj zaznaczone osoby do listy zaproszeń. Osoby już w kontaktach albo już na liście są pomijane. Zaproszenia wychodzą powoli, w ramach dziennego limitu.">
-            <svg class="ico ico--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
-            Dodaj do zaproszeń (<span id="profiledb-enqueue-count">0</span>)
-          </button>
-          <button id="btn-delete-selected" class="btn btn--small btn--danger" disabled>
-            <svg class="ico ico--sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-            Usuń zaznaczone (<span id="profiledb-selected-count">0</span>)
-          </button>
-          <button id="btn-delete-filtered" class="btn btn--small btn--danger" disabled title="Usuń wszystkie osoby pasujące do aktualnego filtru (szukajka/źródło/kontakty) — ze wszystkich stron. Przed usunięciem zapisze się kopia zapasowa.">
-            <svg class="ico ico--sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-            Usuń wszystkie z filtru (<span id="profiledb-filtered-count">0</span>)
-          </button>
-        </div>
-
-        <div class="table-wrapper">
-          <table id="profiledb-table" class="contacts-table">
-            <thead>
-              <tr>
-                <th class="profiledb-th-check" title="Zaznacz wiersz"></th>
-                <th class="col-name">Imię</th>
-                <th class="col-headline">Stanowisko</th>
-                <th title="Skąd osoba trafiła do bazy">Źródło</th>
-                <th title="Czy jest już w Twoich kontaktach LinkedIn">W kontaktach</th>
-                <th title="Czy jest na liście zaproszeń">Na liście</th>
-                <th title="Czy mamy pełne dane profilu (o mnie / doświadczenie)">Pełne dane</th>
-                <th>Ostatnio</th>
-              </tr>
-            </thead>
-            <tbody id="profiledb-tbody"></tbody>
-          </table>
-          <p id="profiledb-empty" class="empty-state hidden">Baza pusta. Otwórz wyszukiwarkę LinkedIn albo kliknij „Pobierz moje kontakty z LinkedIn".</p>
-        </div>
-
-        <div class="profiledb-pagination">
-          <button id="profiledb-page-prev" class="btn btn--small btn--ghost" disabled>
-            <svg class="ico ico--sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
-            Poprzednia
-          </button>
-          <span class="profiledb-pagination__info">
-            Strona <span id="profiledb-page-current">1</span> z <span id="profiledb-page-total">1</span>
-            <span class="profiledb-pagination__total">(<span id="profiledb-pagination-shown">0</span> / <span id="profiledb-pagination-filtered">0</span> pasujących)</span>
-          </span>
-          <button id="profiledb-page-next" class="btn btn--small btn--ghost" disabled>
-            Następna
-            <svg class="ico ico--sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
-          </button>
-          <select id="profiledb-page-size" class="select" title="Wierszy na stronę">
-            <option value="100">100 / stronę</option>
-            <option value="200" selected>200 / stronę</option>
-            <option value="500">500 / stronę</option>
-            <option value="1000">1000 / stronę</option>
-          </select>
-        </div>
-      </section>
-
-      <!-- Section 4: CAMPAIGN — wysyłka masowa do kontaktów -->
+      <!-- Section 4: KAMPANIA — scalony system (auto-wysylka + AI + follow-upy) -->
       <section id="campaign-worker-section" class="block block--campaign-worker">
         <h2>
           <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-          Kampania sekwencyjna
+          Kampania
         </h2>
-        <p class="hint">Auto-wysylka wieloetapowych wiadomosci z szablonu [Imie]. Jitter 45-120s, max 20/dzien, godziny 9-18. Mutex z "Dodaj automatycznie".</p>
+        <p class="hint">Wieloetapowe wiadomości do kontaktów: treść z szablonu [Imię] albo generowana przez AI. Wysyłka automatyczna (jitter 45-120s, max 20/dzień, godziny 9-18) albo ręczna (generuj i kopiuj). Mutex z „Dodaj automatycznie".</p>
 
         <div id="cw-campaigns-list" class="cw-campaigns-list"></div>
 
         <details id="cw-new-campaign" class="cw-new-campaign">
           <summary class="btn btn--primary btn--sm">+ Nowa kampania</summary>
           <div class="cw-new-inner">
-            <label>Nazwa kampanii
+            <label class="cw-field">Nazwa kampanii
               <input id="cw-name" type="text" placeholder="Np. Rekrutacja OVB — czerwiec" />
             </label>
+
+            <fieldset class="cw-sendmode">
+              <legend>Sposób wysyłki</legend>
+              <label><input type="radio" name="cw-sendmode" value="auto" checked /> <strong>Automatyczna</strong> <span class="muted">— rozszerzenie wysyła samo przez LinkedIn (jitter, limit dzienny, godziny 9-18)</span></label>
+              <label><input type="radio" name="cw-sendmode" value="manual" /> <strong>Ręczna</strong> <span class="muted">— generuj treści, kopiuj i wysyłaj samodzielnie (bezpieczniejsze dla konta)</span></label>
+            </fieldset>
+
+            <div id="cw-brief" class="cw-brief hidden">
+              <p class="cw-brief__intro muted">Brief dla AI — używany przez kroki w trybie „AI".</p>
+              <label class="cw-field">Cel kampanii
+                <select id="cw-goal">
+                  <option value="info">Poinformowanie o produkcie / portalu</option>
+                  <option value="recruitment">Rekrutacja</option>
+                  <option value="sales">Sprzedaż / współpraca</option>
+                </select>
+              </label>
+              <label class="cw-field">Opis programu / oferty <span class="muted">(co oferujesz)</span>
+                <textarea id="cw-product" rows="2" placeholder="Np. Program do tworzenia profesjonalnych zdjęć profilowych z kilku selfie — polski, autorski, już dostępny."></textarea>
+              </label>
+              <label class="cw-field">Kontekst autora <span class="muted">(kim jesteś, dlaczego to robisz)</span>
+                <textarea id="cw-author" rows="2" placeholder="Np. Jestem autorem tego programu. Moje zdjęcie profilowe jest właśnie z takiej sesji — to działa."></textarea>
+              </label>
+              <label class="cw-field">Notka osobista <span class="muted">(opcjonalnie, max 200 zn.)</span>
+                <input id="cw-note" type="text" maxlength="200" placeholder="Np. moje zdjęcie na LI jest właśnie z tej akcji" />
+              </label>
+            </div>
 
             <div id="cw-steps-list" class="cw-steps-list"></div>
             <button id="cw-add-step" class="btn btn--ghost btn--sm">+ Dodaj krok</button>
 
             <div class="cw-import-row">
-              <button id="cw-import-from-db" class="btn btn--ghost btn--sm">Zaladuj z bazy profili</button>
-              <span id="cw-contacts-count" class="muted">0 kontaktow</span>
+              <label for="cw-csv-input" class="btn btn--ghost btn--sm btn--file">Wgraj Connections.csv</label>
+              <input type="file" id="cw-csv-input" accept=".csv" class="hidden-file-input" />
+              <button id="cw-import-from-db" class="btn btn--ghost btn--sm">Załaduj z bazy profili</button>
+              <span id="cw-contacts-count" class="muted">0 kontaktów</span>
             </div>
 
-            <button id="cw-save-campaign" class="btn btn--accent" disabled>Zapisz kampanie</button>
+            <button id="cw-save-campaign" class="btn btn--accent" disabled>Zapisz kampanię</button>
           </div>
         </details>
 
@@ -276,66 +163,13 @@
           </div>
           <div class="cw-worker-actions">
             <button id="cw-btn-dryrun" class="btn btn--ghost btn--sm">Podgląd (dry-run)</button>
-            <button id="cw-btn-start" class="btn btn--accent btn--sm">Start</button>
+            <button id="cw-btn-generate" class="btn btn--accent btn--sm hidden">Generuj wiadomości</button>
+            <button id="cw-btn-start" class="btn btn--accent btn--sm">Start auto-wysyłki</button>
             <button id="cw-btn-stop" class="btn btn--ghost btn--sm hidden">Stop</button>
           </div>
           <div id="cw-dryrun-result" class="cw-dryrun-result hidden"></div>
+          <div id="cw-manual-result" class="cw-manual-result hidden"></div>
           <div id="cw-error-msg" class="cw-error-msg hidden"></div>
-        </div>
-      </section>
-
-      <section id="campaign-section" class="block block--campaign">
-        <h2>
-          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-          Kampania — informuj kontakty
-        </h2>
-        <p class="hint">Pobierz kontakty ze strony LinkedIn Moja Sieć, a następnie wygeneruj spersonalizowane wiadomości informujące o Twoim nowym programie. Limit: 15 wiadomości dziennie (bezpieczne tempo).</p>
-
-        <div class="campaign-controls">
-          <div class="campaign-fields">
-            <label for="campaign-product">Opis programu <span class="muted">(co oferujesz)</span></label>
-            <textarea id="campaign-product" rows="3" placeholder="Np. Program do tworzenia profesjonalnych zdjęć profilowych na podstawie kilku selfie — polski, autorski, już dostępny."></textarea>
-
-            <label for="campaign-author">Kontekst autora <span class="muted">(kim jesteś, dlaczego to robisz)</span></label>
-            <textarea id="campaign-author" rows="3" placeholder="Np. Jestem autorem tego programu. Moje zdjęcie profilowe jest właśnie z takiej sesji — to działa. Chcę się tym podzielić z osobami, dla których wizerunek zawodowy ma znaczenie."></textarea>
-          </div>
-
-          <div class="campaign-actions">
-            <div class="campaign-csv-row">
-              <label for="campaign-csv-input" class="btn btn--primary btn--file">
-                <svg class="ico ico--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                Wgraj plik Connections.csv
-              </label>
-              <input type="file" id="campaign-csv-input" accept=".csv" class="hidden-file-input" />
-              <span id="campaign-csv-status" class="campaign-csv-status">—</span>
-            </div>
-            <div class="campaign-buttons-row">
-              <button id="btn-campaign-scrape" class="btn btn--ghost btn--sm" title="Alternatywnie: pobierz kontakty bezpośrednio z LinkedIn (max ~1000)">
-                <svg class="ico ico--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                lub pobierz z LinkedIn
-              </button>
-              <button id="btn-campaign-generate" class="btn btn--accent" disabled>
-                <svg class="ico ico--sm" viewBox="0 0 24 24" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                Generuj wiadomości
-              </button>
-            </div>
-          </div>
-
-          <div id="campaign-throttle" class="campaign-throttle">
-            <span class="campaign-throttle__label">Dzisiejszy limit:</span>
-            <span class="campaign-throttle__value">— / 15</span>
-          </div>
-        </div>
-
-        <div id="campaign-status" class="campaign-status hidden"></div>
-
-        <div id="campaign-results" class="campaign-results hidden">
-          <h3>Wygenerowane wiadomości</h3>
-          <div class="campaign-results__toolbar">
-            <button id="btn-campaign-copy-all" class="btn btn--small btn--ghost">Kopiuj wszystkie</button>
-            <button id="btn-campaign-export-csv" class="btn btn--small btn--ghost">Eksportuj CSV</button>
-          </div>
-          <div id="campaign-messages" class="campaign-messages"></div>
         </div>
       </section>
 
@@ -347,8 +181,6 @@
 
   </div>
   <script src="dashboard.js"></script>
-  <script src="tools/campaign.js"></script>
-  <script src="dashboard-campaign.js"></script>
   <script src="dashboard-campaign-worker.js"></script>
 </body>
 </html>

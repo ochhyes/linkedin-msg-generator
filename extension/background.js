@@ -2275,32 +2275,92 @@ function buildCampaignMessage(template, firstName) {
   return (template || "").replace(/\[Imi[eę]\]/gi, firstName || "");
 }
 
+// Rozwiazuje tekst wiadomosci dla (kontakt, krok). Priorytet: zapisana
+// wiadomosc (np. wygenerowana AI) > szablon z podmiana [Imie].
+function resolveCampaignMessage(contact, step) {
+  const stored = ((contact && contact.steps) || {})[String(step && step.stepNum)] || {};
+  if (stored.message && String(stored.message).trim()) return String(stored.message);
+  return buildCampaignMessage((step && step.template) || "", contact && contact.firstName);
+}
+
+// Krok w trybie AI bez gotowej wiadomosci => trzeba wygenerowac przed wyslaniem.
+function campaignStepNeedsAi(contact, step) {
+  if (!step || step.mode !== "ai") return false;
+  const stored = ((contact && contact.steps) || {})[String(step.stepNum)] || {};
+  return !(stored.message && String(stored.message).trim());
+}
+
+// Wola backend /api/campaign/generate dla listy kontaktow.
+// Zwraca { success, messages } albo { success:false, error }.
+async function generateCampaignMessages(campaign, contacts, step) {
+  const settings = await getSettings();
+  const apiKey = settings.apiKey;
+  if (!apiKey) return { success: false, error: "no_api_key" };
+  try { assertApiKeyHeaderSafe(apiKey); } catch (e) { return { success: false, error: e.message }; }
+  const apiUrl = (settings.apiUrl || DEFAULT_SETTINGS.apiUrl).replace(/\/+$/, "");
+  const brief = (campaign && campaign.brief) || {};
+  const payload = {
+    batch_id: "camp-" + (campaign && campaign.id) + "-s" + (step && step.stepNum) + "-" + Date.now(),
+    contacts: (contacts || []).map((c) => ({
+      contact_id: c.slug,
+      first_name: c.firstName || "",
+      headline: c.headline || "",
+      profile_url: c.profileUrl || ("https://www.linkedin.com/in/" + c.slug + "/"),
+      location: c.location || null,
+      company: c.company || null,
+    })),
+    product_description: brief.productDescription || "",
+    author_context: brief.authorContext || "",
+    campaign_goal: brief.campaignGoal || "info",
+  };
+  if (brief.authorNote && brief.authorNote.trim()) payload.author_note = brief.authorNote.trim();
+  let resp;
+  try {
+    resp = await fetch(apiUrl + "/api/campaign/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
+      body: JSON.stringify(payload),
+    });
+  } catch (e) {
+    return { success: false, error: "network_error: " + ((e && e.message) || e) };
+  }
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({ detail: "HTTP " + resp.status }));
+    return { success: false, error: err.detail || ("HTTP " + resp.status) };
+  }
+  const data = await resp.json().catch(() => ({}));
+  return { success: true, messages: data.messages || [] };
+}
+
+// Najblizszy gotowy krok DLA JEDNEGO kontaktu (zwraca stepNum) albo null.
+function findContactNextStep(campaign, contact, nowMs) {
+  if (!campaign || !Array.isArray(campaign.steps)) return null;
+  if (!contact || contact.status === "replied" || contact.status === "done") return null;
+  for (let si = 0; si < campaign.steps.length; si++) {
+    const step = campaign.steps[si];
+    const stepState = (contact.steps || {})[String(step.stepNum)] || { status: "pending" };
+    if (stepState.status === "sent") continue;
+    if (stepState.status === "failed") continue; // pominiety po failach — czekaj na reset
+    if (si > 0) {
+      const prevStep = campaign.steps[si - 1];
+      const prevState = (contact.steps || {})[String(prevStep.stepNum)] || {};
+      if (prevState.status !== "sent") break; // poprzedni jeszcze nie wyslany
+      const delayMs = (step.delayDays || 0) * 24 * 60 * 60 * 1000;
+      if ((prevState.sentAt || 0) + delayMs > nowMs) break; // za wczesnie na follow-up
+    }
+    if (stepState.status === "pending" || !stepState.status || stepState.status === "draft") {
+      return step.stepNum;
+    }
+  }
+  return null;
+}
+
 // Zwraca { contactIdx, stepNum } następnego do wysłania albo null.
 function findNextCampaignStep(campaign, nowMs) {
   if (!campaign || !Array.isArray(campaign.contacts) || !Array.isArray(campaign.steps)) return null;
   for (let ci = 0; ci < campaign.contacts.length; ci++) {
-    const contact = campaign.contacts[ci];
-    if (!contact || contact.status === "replied" || contact.status === "done") continue;
-    for (let si = 0; si < campaign.steps.length; si++) {
-      const step = campaign.steps[si];
-      const stepKey = String(step.stepNum);
-      const stepState = (contact.steps || {})[stepKey] || { status: "pending" };
-      if (stepState.status === "sent") continue;
-      if (stepState.status === "failed") continue; // pominiety po failach — czekaj na reset
-      // Krok > 1: sprawdz czy poprzedni krok wysłany i delay minął.
-      if (si > 0) {
-        const prevStep = campaign.steps[si - 1];
-        const prevKey = String(prevStep.stepNum);
-        const prevState = (contact.steps || {})[prevKey] || {};
-        if (prevState.status !== "sent") break; // poprzedni jeszcze nie wysłany
-        const delayMs = (step.delayDays || 0) * 24 * 60 * 60 * 1000;
-        if ((prevState.sentAt || 0) + delayMs > nowMs) break; // za wczesnie
-      }
-      // Ten krok jest pending i gotowy.
-      if (stepState.status === "pending" || !stepState.status) {
-        return { contactIdx: ci, stepNum: step.stepNum };
-      }
-    }
+    const stepNum = findContactNextStep(campaign, campaign.contacts[ci], nowMs);
+    if (stepNum != null) return { contactIdx: ci, stepNum: stepNum };
   }
   return null;
 }
@@ -2402,17 +2462,32 @@ async function campaignWorkerTick() {
 
   const contact = campaign.contacts[next.contactIdx];
   const stepDef = campaign.steps.find((s) => s.stepNum === next.stepNum);
-  const msgText = buildCampaignMessage(stepDef ? stepDef.template : "", contact.firstName);
   const stepKey = String(next.stepNum);
 
-  let response;
-  try {
-    response = await Promise.race([
-      probeMsgComposeTab(contact.slug, msgText),
-      new Promise((_, rej) => setTimeout(() => rej(new Error("tick_timeout")), CAMPAIGN_MSG_TIMEOUT_MS + 15000)),
-    ]);
-  } catch (err) {
-    response = { success: false, error: (err && err.message) || "tick_error" };
+  // Krok AI bez gotowej wiadomosci -> wygeneruj teraz (1 call/tick, respektuje jitter/cap).
+  let msgText = null;
+  let response = null;
+  if (campaignStepNeedsAi(contact, stepDef)) {
+    const gen = await generateCampaignMessages(campaign, [contact], stepDef);
+    const m = gen.success && gen.messages && gen.messages[0];
+    if (m && m.status !== "error" && m.message) {
+      msgText = m.message;
+    } else {
+      response = { success: false, error: "ai_generate_fail: " + (gen.error || (m && m.error) || "unknown") };
+    }
+  } else {
+    msgText = resolveCampaignMessage(contact, stepDef);
+  }
+
+  if (response == null && msgText != null) {
+    try {
+      response = await Promise.race([
+        probeMsgComposeTab(contact.slug, msgText),
+        new Promise((_, rej) => setTimeout(() => rej(new Error("tick_timeout")), CAMPAIGN_MSG_TIMEOUT_MS + 15000)),
+      ]);
+    } catch (err) {
+      response = { success: false, error: (err && err.message) || "tick_error" };
+    }
   }
 
   const nowMs = Date.now();
@@ -2424,7 +2499,7 @@ async function campaignWorkerTick() {
   let consecutiveFails = worker.consecutiveFails || 0;
 
   if (response && response.success) {
-    uc.steps[stepKey] = { status: "sent", sentAt: nowMs, error: null };
+    uc.steps[stepKey] = { status: "sent", sentAt: nowMs, error: null, message: msgText };
     uc.status = "active";
     consecutiveFails = 0;
     await setCampaignWorkerState({ sentToday: worker.sentToday + 1, consecutiveFails: 0, lastTickAt: nowMs });
@@ -2464,6 +2539,7 @@ async function startCampaignWorker(campaignId) {
   if (bulk.active) return { success: false, error: "bulk_connect_active" };
   const campaign = await getCampaignById(campaignId);
   if (!campaign) return { success: false, error: "campaign_not_found" };
+  if ((campaign.config || {}).sendMode === "manual") return { success: false, error: "manual_mode" };
   const next = findNextCampaignStep(campaign, Date.now());
   if (!next) return { success: false, error: "no_pending_steps" };
   await setCampaignWorkerState({
@@ -3573,6 +3649,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             id: "camp-" + Date.now(),
             name: message.name || "Kampania",
             createdAt: Date.now(),
+            brief: message.brief || null,
             steps: message.steps || [],
             config: message.config || {},
             contacts: message.contacts || [],
@@ -3611,16 +3688,77 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case "campaignDryRun": {
           const camp3 = await getCampaignById(message.campaignId);
           if (!camp3) return { success: false, error: "not_found" };
-          const preview = (camp3.contacts || []).slice(0, 3).map((contact) => {
-            const step = (camp3.steps || [])[0] || {};
-            return {
+          const step = (camp3.steps || [])[0] || {};
+          const sample = (camp3.contacts || []).slice(0, 3);
+          if (step.mode === "ai") {
+            const gen = await generateCampaignMessages(camp3, sample, step);
+            if (!gen.success) return { success: false, error: gen.error };
+            const byId = {};
+            (gen.messages || []).forEach((m) => { byId[m.contact_id] = m; });
+            const previewAi = sample.map((contact) => ({
               slug: contact.slug,
               firstName: contact.firstName,
-              message: buildCampaignMessage(step.template || "", contact.firstName),
+              message: (byId[contact.slug] && byId[contact.slug].message) || "(AI nie zwrocilo tresci)",
               stepNum: step.stepNum || 1,
-            };
-          });
+            }));
+            return { success: true, preview: previewAi };
+          }
+          const preview = sample.map((contact) => ({
+            slug: contact.slug,
+            firstName: contact.firstName,
+            message: resolveCampaignMessage(contact, step),
+            stepNum: step.stepNum || 1,
+          }));
           return { success: true, preview };
+        }
+        case "campaignGenerateBatch": {
+          const cg = await getCampaignById(message.campaignId);
+          if (!cg) return { success: false, error: "not_found" };
+          const limit = Math.max(1, Math.min(parseInt(message.count, 10) || 25, 100));
+          const now = Date.now();
+          const dueByStep = {};
+          let total = 0;
+          for (let ci = 0; ci < cg.contacts.length && total < limit; ci++) {
+            const sn = findContactNextStep(cg, cg.contacts[ci], now);
+            if (sn == null) continue;
+            (dueByStep[String(sn)] = dueByStep[String(sn)] || []).push(ci);
+            total++;
+          }
+          if (!total) return { success: true, generated: [] };
+          const upd = JSON.parse(JSON.stringify(cg));
+          const out = [];
+          for (const sn of Object.keys(dueByStep)) {
+            const step = cg.steps.find((s) => String(s.stepNum) === sn) || {};
+            const idxs = dueByStep[sn];
+            let resolved = {};
+            if (step.mode === "ai") {
+              const gen = await generateCampaignMessages(cg, idxs.map((ci) => cg.contacts[ci]), step);
+              if (!gen.success) return { success: false, error: gen.error };
+              (gen.messages || []).forEach((m) => { if (m.status !== "error" && m.message) resolved[m.contact_id] = m.message; });
+            }
+            idxs.forEach((ci) => {
+              const c = cg.contacts[ci];
+              const txt = step.mode === "ai" ? (resolved[c.slug] || "") : resolveCampaignMessage(c, step);
+              if (!txt) return;
+              if (!upd.contacts[ci].steps) upd.contacts[ci].steps = {};
+              upd.contacts[ci].steps[sn] = Object.assign({}, upd.contacts[ci].steps[sn] || {}, { status: "draft", message: txt });
+              out.push({ slug: c.slug, firstName: c.firstName, stepNum: Number(sn), message: txt });
+            });
+          }
+          await updateCampaignInList(upd);
+          return { success: true, generated: out };
+        }
+        case "campaignMarkStepSent": {
+          const cm = await getCampaignById(message.campaignId);
+          if (!cm) return { success: false, error: "not_found" };
+          const cidx = cm.contacts.findIndex((c) => c.slug === message.slug);
+          if (cidx < 0) return { success: false, error: "contact_not_found" };
+          const sk = String(message.stepNum);
+          if (!cm.contacts[cidx].steps) cm.contacts[cidx].steps = {};
+          cm.contacts[cidx].steps[sk] = Object.assign({}, cm.contacts[cidx].steps[sk] || {}, { status: "sent", sentAt: Date.now() });
+          cm.contacts[cidx].status = "active";
+          await updateCampaignInList(cm);
+          return { success: true };
         }
         case "backupNow":
           return await doAutoBackup(true);

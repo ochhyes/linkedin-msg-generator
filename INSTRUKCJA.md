@@ -200,6 +200,24 @@ Model pracy jak w Octopusie: **najpierw zbierasz dużą pulę osób do bazy, pot
 3. Pulpit → „Baza osób" → zaznacz osoby → **„Dodaj do zaproszeń (N)"** (już połączeni i już dodani są pomijani automatycznie).
 4. Okienko → **Start**. Zaproszenia wychodzą powoli (limit dzienny!) — 1000 osób rozłoży się na tygodnie. **To celowe** — LinkedIn ma twardy limit ~100-200 zaproszeń tygodniowo i przekraczanie go kończy się blokadą konta.
 
+### 3.11 Kampania — wieloetapowe wiadomości do kontaktów
+
+Pulpit → sekcja **„Kampania"**. Jeden system do wysyłania serii wiadomości (np. info o nowym programie + follow-up po kilku dniach) do już połączonych kontaktów.
+
+1. **„+ Nowa kampania"** → nazwa.
+2. **Sposób wysyłki:**
+   - **Automatyczna** — rozszerzenie samo wysyła wiadomości przez LinkedIn (powoli: max 20/dzień, godziny 9-18). Wygodne, ale obciąża konto.
+   - **Ręczna** *(bezpieczniejsze)* — rozszerzenie generuje treści, Ty kopiujesz i wysyłasz sam.
+3. **Kroki.** Każdy krok to jedna wiadomość. Krok 2+ wychodzi po N dniach (follow-up). Dla każdego kroku wybierasz treść:
+   - **Szablon** — piszesz tekst, `[Imię]` podmienia się na imię odbiorcy.
+   - **AI** — treść pisze AI osobno dla każdej osoby. Wtedy wypełnij **brief** (cel + opis programu + kontekst autora — min. 10 znaków).
+4. **Kontakty:** **„Wgraj Connections.csv"** (eksport z LinkedIn — pełna lista) albo **„Załaduj z bazy profili"**.
+5. **„Zapisz kampanię"** → wybierz ją z listy → **„Podgląd (dry-run)"** pokazuje 3 przykładowe wiadomości.
+6. **Tryb auto:** **„Start auto-wysyłki"**. **Tryb ręczny:** **„Generuj wiadomości"** → kopiuj każdą (lub „Kopiuj wszystkie" / „Eksportuj CSV") → wyślij → **„Oznacz wysłane"**.
+7. **Odpowiedź = stop.** Gdy ktoś odpisze, kliknij **„Oznacz"** w wierszu kontaktu — kolejne kroki dla niego nie pójdą.
+
+> Kampania nie chodzi równocześnie z „Dodaj automatycznie" — najpierw zatrzymaj jedno.
+
 ### 3.9 Tryb ciemny
 
 Rozszerzenie samo dopasowuje się do trybu jasny/ciemny z systemu — nic nie klikasz.

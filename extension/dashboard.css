@@ -840,3 +840,18 @@ button .ico, .btn .ico { margin-right: 2px; }
 .cw-preview-card__name { font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; color: var(--text-secondary); }
 .cw-preview-card__msg { font-size: 0.9rem; white-space: pre-wrap; color: var(--text); }
 .cw-error-msg { margin-top: 10px; padding: 8px 10px; border-radius: 6px; background: rgba(200,0,0,0.08); color: #c62828; font-size: 0.88rem; }
+
+/* Scalony system kampanii (#75 v2.3.0) — sendmode, brief AI, tryb kroku, reczne wyniki */
+.cw-field { display: block; }
+.cw-new-inner textarea, .cw-new-inner select { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.92rem; background: var(--bg-card); color: var(--text); font-family: inherit; resize: vertical; box-sizing: border-box; }
+.cw-sendmode { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.cw-sendmode legend { font-weight: 700; font-size: 0.82rem; color: var(--text-secondary); padding: 0 4px; }
+.cw-sendmode label { font-weight: 400; display: flex; gap: 6px; align-items: baseline; font-size: 0.88rem; }
+.cw-brief { border: 1px dashed var(--border-strong); border-radius: 8px; padding: 12px; background: var(--bg-main); display: flex; flex-direction: column; gap: 10px; }
+.cw-brief__intro { margin: 0; font-size: 0.82rem; }
+.cw-step__mode { display: inline-flex; gap: 8px; font-weight: 400; font-size: 0.82rem; color: var(--text-secondary); }
+.cw-step__mode label { font-weight: 400; display: inline-flex; gap: 3px; align-items: center; }
+.cw-step__ai-hint { margin: 6px 0 0; font-size: 0.82rem; }
+.cw-manual-result { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 12px; }
+.cw-manual-result .campaign-results__toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.cw-manual-msg { width: 100%; border: 1px solid var(--border); border-radius: 6px; padding: 8px; font-size: 0.88rem; background: var(--bg-card); color: var(--text); resize: vertical; box-sizing: border-box; font-family: inherit; }
