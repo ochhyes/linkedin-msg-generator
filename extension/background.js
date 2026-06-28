@@ -3799,6 +3799,38 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           await updateCampaignInList(cr);
           return { success: true, message: rtext };
         }
+        case "campaignSendOne": {
+          const cs = await getCampaignById(message.campaignId);
+          if (!cs) return { success: false, error: "not_found" };
+          const sci = cs.contacts.findIndex((c) => c.slug === message.slug);
+          if (sci < 0) return { success: false, error: "contact_not_found" };
+          const stext = (message.text || "").trim();
+          if (!stext) return { success: false, error: "empty_text" };
+          const sbulk = await getBulkState();
+          if (sbulk.active) return { success: false, error: "bulk_connect_active" };
+          const sworker = await getCampaignWorkerState();
+          if (sworker.active) return { success: false, error: "worker_active" };
+          let sresp;
+          try {
+            sresp = await probeMsgComposeTab(message.slug, stext);
+          } catch (e) {
+            sresp = { success: false, error: (e && e.message) || "send_error" };
+          }
+          if (!sresp || !sresp.success) {
+            reportScrapeFailure({
+              event_type: "campaign_manual_send_fail",
+              error_message: (sresp && sresp.error) || "unknown",
+              diagnostics: { slug: message.slug, stepNum: message.stepNum, campaignId: cs.id },
+            });
+            return { success: false, error: (sresp && sresp.error) || "send_failed" };
+          }
+          const ssk = String(message.stepNum);
+          if (!cs.contacts[sci].steps) cs.contacts[sci].steps = {};
+          cs.contacts[sci].steps[ssk] = Object.assign({}, cs.contacts[sci].steps[ssk] || {}, { status: "sent", sentAt: Date.now(), error: null, message: stext });
+          cs.contacts[sci].status = "active";
+          await updateCampaignInList(cs);
+          return { success: true };
+        }
         case "backupNow":
           return await doAutoBackup(true);
         case "getBackupStatus": {

@@ -851,6 +851,8 @@ button .ico, .btn .ico { margin-right: 2px; }
 .cw-brief__intro { margin: 0; font-size: 0.82rem; }
 .cw-brief-presets { display: flex; gap: 8px; flex-wrap: wrap; }
 .cw-brief-presets:empty { display: none; }
+.cw-gen-count { font-size: 0.85rem; color: var(--text-secondary); display: inline-flex; align-items: center; gap: 4px; }
+.cw-gen-count input { width: 56px; padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-card); color: var(--text); }
 .cw-step__mode { display: inline-flex; gap: 8px; font-weight: 400; font-size: 0.82rem; color: var(--text-secondary); }
 .cw-step__mode label { font-weight: 400; display: inline-flex; gap: 3px; align-items: center; }
 .cw-step__ai-hint { margin: 6px 0 0; font-size: 0.82rem; }
