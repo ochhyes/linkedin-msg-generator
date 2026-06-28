@@ -195,11 +195,11 @@ Uruchom testy automatyczne (pytest backend + jsdom extension). Wykonaj kroki man
 # CURRENT STATE
 
 ```
-Sprint:        2.2 — #74 READY FOR TEST. Otwarte: #72 v2.1.0 niezacommitowany (czeka smoke Marcina), #53 (contact-info), #56B (BLOCKED).
-Phase:         Tester — smoke #74 (Marcin). Jeśli PASS → Commit.
-Active task:   #74 — kampania sekwencyjna (v2.2.0 ZAIMPLEMENTOWANE).
-Repo state:    worktree nostalgic-ptolemy-7edc10; #72 NIEZACOMMITOWANY na master.
-Last commit:   ca211ee — feat: ikona 2.0 (#71 v2.0.1)
+Sprint:        2.3 — #75 (scalenie kampanii) READY FOR TEST. Otwarte: #53 (contact-info), #56B (BLOCKED). Backend #72/#74 zacommitowane w worktree.
+Phase:         Tester — smoke #75 (Marcin, realne konto LI). Jeśli PASS → merge worktree do master + deploy backendu.
+Active task:   #75 — JEDEN system kampanii (AI + CSV + auto/ręczna) ZAIMPLEMENTOWANE (v2.3.1).
+Repo state:    worktree nostalgic-ptolemy-7edc10 — commity b086fd7 (hotfix klucza), 6a1811d (scalenie), 0634367 (self-review). NIEzmergowane do master.
+Last commit:   0634367 — fix: czysta pauza limit AI + dedup CSV (#75 v2.3.1)
 Updated:       2026-06-28
 ```
 
@@ -211,7 +211,7 @@ Updated:       2026-06-28
 
 ## TODO (priorytet od góry)
 
-1. **#74** — Kampania sekwencyjna (Meet Alfred flow) — P0, patrz IN PROGRESS + PROGRESS.md 2026-06-28.
+1. **#75** — Scalenie kampanii (#74 + informuj) — ZAIMPLEMENTOWANE (v2.3.1), READY FOR TEST (smoke Marcina). Patrz IN PROGRESS.
 2. **#53** — Scraper contact-info (Sprint #10, P1) — patrz IN PROGRESS.
 3. **#56B** — Auto reply-tracker (Sprint #11, P0) — BLOCKED na dump `/messaging/`, patrz BLOCKED.
 3. **#22 reszta** — master-select zrobiony (v1.14.6); zostaje: DOM dump paginacji → fix selektorów `bulkAutoExtract` → checkboxy "2nd-only"/"unselect Pending" → "Stop after N pages". Częściowo zablokowane (potrzeba dumpu).
@@ -220,21 +220,9 @@ Updated:       2026-06-28
 
 ## IN PROGRESS
 
-- **#74** (Sprint #12, P0) — **Kampania sekwencyjna: auto-wysyłka + follow-upy (Meet Alfred flow)**. Worker w `background.js` (jak bulkConnect) otwiera hidden tab `linkedin.com/messaging/thread/new/?recipients=<slug>`, wpisuje wiadomość z szablonu `[Imię]`, klika Wyślij, zamyka tab. Jitter 45-120s, cap 20/dzień, godziny 9-18. Mutex z bulkConnect (jedno albo drugie). State per kontakt per kampania w `chrome.storage.local`. Multi-step: N kroków + delay w dniach między nimi (definiowane przez użytkownika). Dry-run gate przed startem. Pełne decyzje: PROGRESS.md 2026-06-28.
+- **#75** (Sprint 2.3, P0) — **JEDEN system kampanii (scalenie #74 + „informuj kontakty")** — ZAIMPLEMENTOWANE, czeka smoke Marcina. Jedna sekcja „Kampania" w dashboardzie: kontakty z Connections.csv ALBO bazy profili; krok = szablon `[Imię]` ALBO AI (brief cel/produkt/autor → `/api/campaign/generate`); wysyłka **auto** (worker DOM, jitter/cap/godziny) ALBO **ręczna** (generuj→kopiuj/eksport→„Oznacz wysłane"); follow-upy + stop-przy-odpowiedzi w obu trybach. Usunięte: `dashboard-campaign.js` + `tools/campaign.js`. Backend: `campaign_goal`/`author_note`/`location`/`company` (stary backend ignoruje → degradacja łagodna). Commity: b086fd7 (hotfix klucza), 6a1811d (scalenie), 0634367 (self-review). Decyzje: PROGRESS.md 2026-06-28.
 
-  **Acceptance criteria:**
-  - [x] Import kontaktów z profileDb / Connections.csv → lista kampanii
-  - [x] Dry-run: preview szablonu dla 3 kontaktów, kampania NIE startuje bez OK
-  - [x] Worker wysyła wiadomości przez LinkedIn DOM (messaging compose URL), jitter, cap, godziny
-  - [x] Mutex: Start kampanii przy aktywnym bulkConnect → toast błąd (i odwrotnie)
-  - [x] State w storage: `campaigns[].contacts[].steps.{N}.{status, sentAt}` — idempotentne
-  - [x] Follow-upy: krok N wysyła się po N dniach od kroku N-1 jeśli `status ≠ replied`
-  - [x] Przycisk "Oznacz jako odpowiedź" w dashboardzie → zatrzymuje dalsze kroki kontaktu
-  - [x] Circuit breaker: 3 consecutive failures → auto-pauza, powód inline
-  - [x] `manifest.json` bump → 2.2.0; `test_campaign_worker.js` 12 asercji PASS
-  - [ ] Smoke (Marcin): 2 kontakty, krok 1 → wyślij → sprawdź w LI messaging → krok 2 po N dniach (lub force-trigger) → reply detection ręczne → stop
-
-  **Pliki:** `extension/background.js`, `extension/tools/campaign.js`, `extension/dashboard.html/js/css`, `extension/manifest.json`. Backend: opcjonalnie dla logowania.
+  **AC:** [x] import CSV+profileDb · [x] krok szablon/AI · [x] wysyłka auto/ręczna · [x] AI w dry-run · [x] follow-upy + reply-stop · [x] mutex z bulkConnect · [x] circuit breaker + **czysta pauza przy limicie AI (429)** · [x] bump 2.3.1; test_campaign_worker 23/0, smoke jsdom 9/0, backend pytest 56/0 · [ ] **Smoke (Marcin, realne konto LI):** kampania CSV + 1 krok AI w trybie ręcznym → Generuj → sprawdź treść → „Oznacz wysłane"; potem 2 kontakty tryb auto → Start → sprawdź w LI messaging → reply → Oznacz → stop
 
 - **#53** (Sprint #10, P1) — **Scraper contact info + About z `/in/<slug>/overlay/contact-info/`**. Worker analogiczny do `bulkConnect`, tickujący po slugach z `profileDb` filtrowanych "brak/stale contactInfo". Otwiera overlay w karcie w tle, parse modal, zapis `contactInfo + about`, jitter, loop. Ember-only na MVP (SDUI variant nie zaobserwowany — telemetria `contact_info_modal_not_found` wystrzeli gdy LinkedIn przerolluje). DOM/mapowanie headerów PL/EN → patrz "Contact-info overlay" w DOM facts. Pełna decompozycja (8 kroków, ryzyka): `git show` ostatniego PM-a #53 / PROGRESS.md.
 
@@ -253,7 +241,7 @@ Updated:       2026-06-28
 
 ## READY FOR TEST
 
-(none)
+- **#75 v2.3.1** — scalony system kampanii (AI + CSV + auto/reczna). Smoke Marcina na realnym koncie LI -> jesli PASS: merge worktree do master + git push + deploy backendu (VPS: cd deploy && docker compose up -d --build).
 
 ## BLOCKED
 
@@ -264,6 +252,9 @@ Updated:       2026-06-28
 
 > 1 linia per release (sha, opis, bump). Pełne treści: `git show <sha>` + `PROGRESS.md`.
 
+- **v2.3.1** (0634367) — fix: czysta pauza przy dziennym limicie AI (429, nie circuit-breaker) + dedup kontaktów z CSV (#75)
+- **v2.3.0** (6a1811d) — feat: JEDEN system kampanii — scalenie #74 + „informuj kontakty" (kontakty CSV/profileDb, krok szablon/AI, wysyłka auto/ręczna, follow-upy); backend cele/notka/lokalizacja; OUT dashboard-campaign.js+tools/campaign.js (#75)
+- **v2.2.1** (b086fd7) — fix: kampania czyta hasło dostępu z chrome.storage zamiast martwego localStorage — gasi „Brak klucza API" (#75)
 - **v2.1.0** (uncommitted, ZWALIDOWANE na żywo) — feat: „Ponów błędy" + auto-pauza przy limicie (weekly_limit modal + bezpiecznik 3 faili) + fix injekcji `probeProfileTab` (re-inject każda próba + waitForTabComplete) + szersze wykrywanie modala (naprawia hist. 545× `modal_did_not_appear`) + dłuższe timeouty + INSTRUMENTACJA (samoopisujący `tab_load_timeout`, `describeDialogs`, przycisk „Diagnostyka" dryRun) + powód inline. Diagnostyka u Marcina potwierdziła: flow działa end-to-end gdy profil się ładuje (`wouldSend:true`); reszta błędów = `redirected_off_profile` (LIMIT KONTA, nie kod) (#72)
 - **v2.0.1** (ca211ee) — feat: ikona rozszerzenia = brandowy monogram „in" navy+złoto, generator `tools/make_icons.js`, build EXCLUDE tools (#71)
 - **v2.0.0** (42601dd) — feat: ikony SVG zamiast emoji + język nie-techniczny (Pulpit/Przypomnienia/Lista zaproszeń/„Dodaj automatycznie") + manifest name→"Outreach" + INSTRUKCJA 2.0 (#70)

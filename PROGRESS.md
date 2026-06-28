@@ -8,6 +8,49 @@
 
 ---
 
+## 2026-06-28 (Claude Code / Opus 4.8) — #75 scalenie kampanii w JEDEN system (v2.3.1)
+
+> Sesja na zgłoszenie Marcina: „nie da się dodać kampanii / pobiera zły klucz API" oraz „informuj kontakty" → „Brak klucza API" mimo wpisanego hasła. Diagnoza → konsolidacja dwóch systemów kampanii w jeden (wybór Marcina przez AskUserQuestion: „połącz w jeden bogatszy").
+
+### Diagnoza (root cause)
+- **„Brak klucza API"**: `dashboard-campaign.js` `getConfig()` czytał `localStorage.getItem("lmg_api_key")` / `lmg_api_base_url` — klucze, których NIC nigdy nie zapisywało. Hasło dostępu żyje w `chrome.storage.local` 'settings' (popup → `settings.apiKey`). Komentarz „set by options.js" był nieprawdziwy (options.js zapisuje tylko personalizację AI do `storage.sync`). Zawsze "" → błąd niezależnie od wpisanego hasła.
+- **„Nie da się dodać kampanii" (sekwencyjna)**: „Zapisz" wyszarzony, bo `checkSaveEnabled` wymaga `pendingContacts.length>0`, a ten system bierze kontakty TYLKO z profileDb („Załaduj z bazy"). CSV (4680) Marcina wpadał do `contactsCache` DRUGIEGO systemu („informuj") — rozłączne pule kontaktów.
+- Dwa nakładające się systemy kampanii (informuj `86a6498` vs sekwencyjna `c8c2051` #74) = źródło chaosu.
+
+### Zrobione
+- **Hotfix (b086fd7, v2.2.1):** `getConfig()` czyta `settings` przez `getSettings` (prod URL fallback). Natychmiast gasi „Brak klucza API". Siatka bezpieczeństwa przed scaleniem.
+- **Scalenie (6a1811d, v2.3.0):** bazą kampania sekwencyjna; wchłania AI + CSV; usunięte `dashboard-campaign.js` + `tools/campaign.js`.
+  - `background.js`: `resolveCampaignMessage` (zapisana > szablon), `campaignStepNeedsAi`, `generateCampaignMessages` (POST /api/campaign/generate, czyta settings), `findContactNextStep` (per-kontakt; `findNextCampaignStep` zrefaktorowany na niego), worker tick generuje AI leniwie (1 call/tick) i zapisuje `message` w kroku, `createCampaign` zapisuje `brief`, dryRun pokazuje realne AI, `startCampaignWorker` blokuje tryb manual, akcje `campaignGenerateBatch` (manual, status `draft`) + `campaignMarkStepSent`.
+  - `dashboard-campaign-worker.js` (rewrite): sendMode auto/manual, brief (cel/produkt/autor/notka, pokazywany gdy jakiś krok=AI), step toggle szablon/AI, import CSV (parser + dedup po slug), tryb manual: generuj→karty→kopiuj/„Kopiuj wszystkie"/eksport CSV→„Oznacz wysłane", AI w dry-run, tabela kontaktów capped 50 wierszy.
+  - `dashboard.html`: dwie sekcje → jedna „Kampania"; usunięte martwe `<script>` (tools/campaign.js, dashboard-campaign.js). `dashboard.css`: +sendmode/brief/step-mode/manual.
+  - backend `models.py`/`campaign_service.py` (były uncommitted z poprzedniej sesji): `campaign_goal` (info/recruitment/sales) + `author_note` + `location`/`company`; prompty reużywają `DEFAULT_SYSTEM_PROMPT`+rytm/otwarcia.
+- **Self-review (0634367, v2.3.1):** worker traktuje backendowy limit AI (429) jako czystą pauzę z czytelnym powodem zamiast circuit-breaker („sprawdź połączenie z LinkedIn" było mylące); CSV dedup po slug (brak podwójnej wysyłki).
+
+### Decyzje
+- **Konsolidacja w jeden system (zamiast naprawy obu / wyboru jednego), bo** Marcin wybrał „połącz w bogatszy" — dwa systemy = chaos; jeden spójny flow lepszy długoterminowo.
+- **AI leniwie w workerze (1 call/tick) zamiast generacji 4680 naraz, bo** respektuje jitter/cap i nie pali setek calli; tryb manual generuje batch 25/klik.
+- **Hotfix najpierw osobnym commitem (mimo że scalenie usuwa ten plik), bo** natychmiast odblokowuje Marcina i jest checkpointem, gdyby scalenie się przeciągnęło.
+- **Worker NIE sprawdza backendowego /throttle (tylko własny cap), bo** auto-cap 20 governuje; backend 429 łapany jako pauza. Efektywny limit AI-auto = backendowe ~15/d.
+- **`tools/campaign.js` (CampaignManager) usunięty, bo** nieużywany po scaleniu (poza usuniętym dashboard-campaign.js nic go nie importowało — zweryfikowane grep).
+
+### Lessons learned
+- **Weryfikuj ŹRÓDŁO stanu, nie tylko parser.** „Brak klucza API" wyglądał na backend/hasło, a był `localStorage` vs `chrome.storage`. Dwa magazyny storage w jednym repo = pułapka — patrz [[feedback_verify_dump_before_fixing]].
+- **`*/` w stringu zamyka blok-komentarz** (`chrome.*/fetch` w teście) i **literalny `"` w double-quoted JS stringu** (smart-quote `„...""`) wysadza parser — przy generowaniu JS/skryptów Node trzymać Polish quotes z dala od delimiterów albo czytać treść z plików.
+- **CRLF (background.js) vs LF (dashboard-*.js)** — skrypty patchujące muszą wykrywać EOL; Edit toola na wielkich CRLF blokach unikać (Node slice z asercjami pewniejszy) — patrz [[feedback_edit_tool_incident]].
+- jsdom boot-smoke kontrolera (mock `chrome.*`) łapie błędy wiringu UI bez realnej przeglądarki — warto powtarzać.
+
+### BLOCKED / TODO
+- **Smoke Marcina (realne konto LI)** — jedyne otwarte AC #75. Scenariusz w CLAUDE.md IN PROGRESS.
+- Po PASS: merge worktree → master, `git push`, deploy backendu (VPS) — żeby `campaign_goal`/`author_note` działały (stary backend ignoruje nowe pola → degraduje do generycznego promptu, nie psuje).
+- Efektywny limit AI-auto = ~15/d (backend `_CAMPAIGN_DAILY_LIMIT`). Jeśli za mało: podnieść w backendzie.
+
+### Status końcowy
+- 3 commity w worktree (b086fd7, 6a1811d, 0634367), NIEzmergowane do master.
+- Testy: extension 16/16 suite, test_campaign_worker 23/0, smoke jsdom 9/0, backend pytest 56/0. Build `Outreach-2.3.1.zip` OK (`--no-publish` — NIE wysłane na Dysk OVB, czeka smoke).
+- manifest 2.3.1; CLAUDE.md + INSTRUKCJA (sekcja 3.11 „Kampania") zaktualizowane.
+
+---
+
 ## 2026-06-28 (Claude Code / Sonnet 4.6) — #74 implementacja: kampania sekwencyjna v2.2.0
 
 ### Zrobione
