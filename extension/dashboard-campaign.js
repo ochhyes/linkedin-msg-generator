@@ -29,11 +29,18 @@
   let messagesCache = [];
   let isGenerating = false;
 
-  // ── Backend config (from localStorage, set by options.js) ──
-  function getConfig() {
+  // ── Backend config ────────────────────────────────────────────────
+  // FIX: hasło dostępu + URL trzymane są w chrome.storage.local ('settings',
+  // ustawiane w popupie), NIE w window.localStorage. Stary kod czytał
+  // localStorage.getItem("lmg_api_key"), którego nic nigdy nie zapisywało →
+  // zawsze "" → "Brak klucza API" mimo poprawnie wpisanego hasła.
+  async function getConfig() {
+    const settings = await new Promise((res) =>
+      chrome.runtime.sendMessage({ action: "getSettings" }, (r) => res(r || {}))
+    );
     return {
-      apiBaseUrl: localStorage.getItem("lmg_api_base_url") || "http://localhost:8000",
-      apiKey: localStorage.getItem("lmg_api_key") || "",
+      apiBaseUrl: settings.apiUrl || "https://linkedin-api.szmidtke.pl",
+      apiKey: settings.apiKey || "",
     };
   }
 
@@ -152,7 +159,7 @@
   }
 
   async function updateThrottle() {
-    const { apiBaseUrl, apiKey } = getConfig();
+    const { apiBaseUrl, apiKey } = await getConfig();
     if (!apiKey) {
       throttleValue.textContent = "— / 15";
       return;
@@ -246,7 +253,7 @@
 
   // ── Generate: wysyła kontakty + opisy do backendu, odbiera wiadomości ──
   async function generateMessages() {
-    const { apiBaseUrl, apiKey } = getConfig();
+    const { apiBaseUrl, apiKey } = await getConfig();
     const productDesc = productEl.value.trim();
     const authorDesc = authorEl.value.trim();
 
