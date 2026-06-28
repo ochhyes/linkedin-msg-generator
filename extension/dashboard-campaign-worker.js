@@ -535,6 +535,7 @@
   function parseConnectionsCsv(text) {
     const lines = text.split(/\r?\n/);
     const contacts = [];
+    const seen = new Set(); // dedup po slug — nie wysylaj dwa razy do tej samej osoby
     let headerFound = false;
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
@@ -552,6 +553,8 @@
       if (!firstName || !url) continue;
       const slugMatch = url.match(/\/in\/([^/?#]+)/);
       const slug = slugMatch ? slugMatch[1].toLowerCase() : url.replace(/[^a-zA-Z0-9-]/g, "-").toLowerCase();
+      if (seen.has(slug)) continue;
+      seen.add(slug);
       const headline = [position, company].filter(Boolean).join(" — ") || position || company || "";
       contacts.push({
         slug,

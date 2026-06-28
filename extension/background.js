@@ -2326,7 +2326,7 @@ async function generateCampaignMessages(campaign, contacts, step) {
   }
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({ detail: "HTTP " + resp.status }));
-    return { success: false, error: err.detail || ("HTTP " + resp.status) };
+    return { success: false, error: err.detail || ("HTTP " + resp.status), throttled: resp.status === 429 };
   }
   const data = await resp.json().catch(() => ({}));
   return { success: true, messages: data.messages || [] };
@@ -2469,6 +2469,12 @@ async function campaignWorkerTick() {
   let response = null;
   if (campaignStepNeedsAi(contact, stepDef)) {
     const gen = await generateCampaignMessages(campaign, [contact], stepDef);
+    if (gen.throttled) {
+      // Dzienny limit AI po stronie backendu — czysta pauza (nie liczy sie do faili).
+      await setCampaignWorkerState({ active: false, errorMsg: gen.error || "Dzienny limit AI wyczerpany. Wznów jutro.", nextTickAt: null });
+      await chrome.alarms.clear(CAMPAIGN_ALARM_NAME);
+      return;
+    }
     const m = gen.success && gen.messages && gen.messages[0];
     if (m && m.status !== "error" && m.message) {
       msgText = m.message;
