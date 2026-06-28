@@ -136,6 +136,22 @@
     campaignsList.querySelectorAll(".cw-mark-written").forEach((btn) => {
       btn.addEventListener("click", () => markWritten(btn.dataset.campaign, btn.dataset.slug));
     });
+    campaignsList.querySelectorAll(".cw-contacts-search").forEach((inp) => {
+      inp.addEventListener("input", () => {
+        const q = inp.value.toLowerCase().trim();
+        const wrap = inp.closest(".cw-contacts-table-wrap");
+        if (!wrap) return;
+        const rows = wrap.querySelectorAll("tbody tr");
+        let visible = 0;
+        rows.forEach((tr) => {
+          const match = !q || (tr.dataset.search || "").includes(q);
+          tr.hidden = !match;
+          if (match) visible++;
+        });
+        const countEl = inp.parentElement.querySelector(".cw-contacts-search-count");
+        if (countEl) countEl.textContent = q ? `${visible} z ${rows.length}` : "";
+      });
+    });
   }
 
   function renderContactsTable(campaign) {
@@ -143,8 +159,8 @@
     if (!contacts.length) return '<p class="muted" style="margin-top:8px">Brak kontaktów w kampanii.</p>';
     const steps = campaign.steps || [];
     const stepHeaders = steps.map((s) => `<th>Krok ${s.stepNum}<br><span class="muted">${s.delayDays ? "+" + s.delayDays + "d" : "start"}${s.mode === "ai" ? " · AI" : ""}</span></th>`).join("");
-    // Pokazuj max 50 wierszy w tabeli (przy 4680 kontaktach DOM by sie zatkal).
-    const shown = contacts.slice(0, 50);
+    const LIMIT = 500;
+    const shown = contacts.slice(0, LIMIT);
     const rows = shown.map((c) => {
       const stepCells = steps.map((s) => {
         const st = (c.steps || {})[String(s.stepNum)] || {};
@@ -163,11 +179,19 @@
       const writtenBtn = hasPending
         ? ` <button class="btn btn--sm btn--ghost cw-mark-written" data-campaign="${escHtml(campaign.id)}" data-slug="${escHtml(c.slug)}" title="Napisałem ręcznie — pomiń w generacji">napisane ✓</button>`
         : "";
-      return `<tr><td><a href="${escHtml(purl)}" target="_blank" rel="noopener">${escHtml(c.firstName || c.slug)}</a>${writtenBtn}</td>${stepCells}${repliedCell}</tr>`;
+      const fullName = [c.firstName, c.lastName].filter(Boolean).join(" ");
+      const headline = c.headline || c.position || "";
+      const searchVal = `${fullName} ${headline} ${c.company || ""}`.toLowerCase();
+      const nameCell = `<td class="col-name"><a href="${escHtml(purl)}" target="_blank" rel="noopener">${escHtml(fullName || c.slug)}</a>${headline ? `<span class="cw-contact-headline">${escHtml(headline)}</span>` : ""}${writtenBtn}</td>`;
+      return `<tr data-search="${escHtml(searchVal)}">${nameCell}${stepCells}${repliedCell}</tr>`;
     }).join("");
-    const more = contacts.length > shown.length ? `<p class="muted" style="margin-top:6px">…i ${contacts.length - shown.length} więcej (tabela pokazuje pierwsze 50).</p>` : "";
+    const more = contacts.length > shown.length ? `<p class="muted cw-contacts-more" style="margin-top:6px">…i ${contacts.length - shown.length} więcej (tabela pokazuje pierwsze ${LIMIT}).</p>` : "";
     return `
       <div class="cw-contacts-table-wrap">
+        <div class="cw-contacts-search-wrap">
+          <input type="search" class="cw-contacts-search" placeholder="Szukaj po nazwisku, stanowisku, firmie…" data-campaign="${escHtml(campaign.id)}" />
+          <span class="cw-contacts-search-count muted"></span>
+        </div>
         <table class="contacts-table cw-contacts-table">
           <thead><tr><th>Kontakt</th>${stepHeaders}<th>Odpowiedź</th></tr></thead>
           <tbody>${rows}</tbody>
@@ -648,7 +672,7 @@
     setPendingContacts(dbResp.contacts.map((c) => ({
       slug: c.contact_id,
       firstName: c.first_name || "Kontakt",
-      lastName: "",
+      lastName: c.last_name || "",
       headline: c.headline || "",
       company: c.company || "",
       position: c.headline || "",

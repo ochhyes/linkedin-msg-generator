@@ -828,6 +828,9 @@ button .ico, .btn .ico { margin-right: 2px; }
 .cw-campaign-card__actions { display: flex; gap: 6px; margin-bottom: 8px; }
 .cw-contacts-table-wrap { overflow-x: auto; margin-top: 8px; }
 .cw-contacts-table { font-size: 0.8rem; }
+.cw-contacts-search-wrap { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.cw-contacts-search { padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.82rem; min-width: 220px; background: var(--bg-card); color: var(--text); }
+.cw-contact-headline { display: block; font-size: 0.73rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; margin-top: 1px; }
 .cw-sent { color: #2e7d32; }
 .cw-failed { color: #c62828; }
 .cw-replied { color: var(--accent-gold); font-weight: 600; }

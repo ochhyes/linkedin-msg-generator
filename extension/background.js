@@ -3639,14 +3639,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             .filter((p) => p && p.slug)
             .map((p) => {
               const fullName = (p.name || "").trim();
-              const firstName =
-                fullName.split(" ")[0] ||
-                fullName ||
-                (p.slug || "").split("-")[0] ||
-                p.slug;
+              const nameParts = fullName.split(" ");
+              const firstName = nameParts[0] || (p.slug || "").split("-")[0] || p.slug;
+              const lastName = nameParts.slice(1).join(" ");
               return {
                 contact_id: p.slug,
                 first_name: firstName,
+                last_name: lastName,
                 headline: p.headline || "",
                 profile_url: p.profileUrl || `https://www.linkedin.com/in/${p.slug}/`,
                 location: p.location || null,
