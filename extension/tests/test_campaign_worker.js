@@ -25,14 +25,19 @@ function assertEqual(a, b, label) {
 
 // ── Port funkcji z background.js (pure logic, no chrome.* deps) ────────
 
-function buildCampaignMessage(template, firstName) {
-  return (template || "").replace(/\[Imi[eę]\]/gi, firstName || "");
+function buildCampaignMessage(template, contact) {
+  const c = (contact && typeof contact === "object") ? contact : { firstName: contact };
+  return (template || "")
+    .replace(/\[Imi[eę]\]/gi, c.firstName || "")
+    .replace(/\[Nazwisko\]/gi, c.lastName || "")
+    .replace(/\[Firma\]/gi, c.company || "")
+    .replace(/\[Stanowisko\]/gi, c.position || "");
 }
 
 function resolveCampaignMessage(contact, step) {
   const stored = ((contact && contact.steps) || {})[String(step && step.stepNum)] || {};
   if (stored.message && String(stored.message).trim()) return String(stored.message);
-  return buildCampaignMessage((step && step.template) || "", contact && contact.firstName);
+  return buildCampaignMessage((step && step.template) || "", contact);
 }
 
 function campaignStepNeedsAi(contact, step) {
@@ -81,6 +86,13 @@ assert(buildCampaignMessage("Brak podstawienia tutaj.", "Jan") === "Brak podstaw
 assert(buildCampaignMessage("Hej [Imię], [Imie] czy interesujesz sie?", "Marta") === "Hej Marta, Marta czy interesujesz sie?", "podstawia wielokrotne wystapienie [Imie]");
 assert(buildCampaignMessage("", "Jan") === "", "pusty szablon zwraca pusty string");
 assert(buildCampaignMessage("Czesc [IMIE]!", "Piotr") === "Czesc Piotr!", "case-insensitive: [IMIE] zostaje podstawiony");
+
+// tokeny z Connections.csv (firstName/lastName/company/position)
+const kontaktCsv = { firstName: "Jan", lastName: "Kowalski", company: "OVB", position: "Doradca" };
+assert(buildCampaignMessage("Czesc [Imie] [Nazwisko]", kontaktCsv) === "Czesc Jan Kowalski", "[Imie] + [Nazwisko] podstawione");
+assert(buildCampaignMessage("Pracujesz w [Firma] jako [Stanowisko]?", kontaktCsv) === "Pracujesz w OVB jako Doradca?", "[Firma] + [Stanowisko] podstawione");
+assert(buildCampaignMessage("[Firma]", { firstName: "X" }) === "", "brak danych dla tokenu -> pusty string");
+assert(buildCampaignMessage("Czesc [Imie]", "Anna") === "Czesc Anna", "wsteczna kompatybilnosc: string jako 2. arg dziala jak firstName");
 
 // ── Tests: findNextCampaignStep ────────────────────────────────────────
 

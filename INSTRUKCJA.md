@@ -209,7 +209,7 @@ Pulpit → sekcja **„Kampania"**. Jeden system do wysyłania serii wiadomości
    - **Automatyczna** — rozszerzenie samo wysyła wiadomości przez LinkedIn (powoli: max 20/dzień, godziny 9-18). Wygodne, ale obciąża konto.
    - **Ręczna** *(bezpieczniejsze)* — rozszerzenie generuje treści, Ty kopiujesz i wysyłasz sam.
 3. **Kroki.** Każdy krok to jedna wiadomość. Krok 2+ wychodzi po N dniach (follow-up). Dla każdego kroku wybierasz treść:
-   - **Szablon** — piszesz tekst, `[Imię]` podmienia się na imię odbiorcy.
+   - **Szablon** — piszesz tekst, a podstawienia z Connections.csv wskakują automatycznie: `[Imię]`, `[Nazwisko]`, `[Firma]`, `[Stanowisko]` (puste, jeśli dany kontakt nie ma tej danej w pliku).
    - **AI** — treść pisze AI osobno dla każdej osoby. Wtedy wypełnij **brief** (cel + opis programu + kontekst autora — min. 10 znaków).
 4. **Kontakty:** **„Wgraj Connections.csv"** (eksport z LinkedIn — pełna lista) albo **„Załaduj z bazy profili"**.
 5. **„Zapisz kampanię"** → wybierz ją z listy → **„Podgląd (dry-run)"** pokazuje 3 przykładowe wiadomości.

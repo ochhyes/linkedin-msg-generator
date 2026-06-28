@@ -424,6 +424,7 @@
         <button class="btn btn--sm btn--ghost cw-remove-step" data-step="${stepNum}">Usuń</button>
       </div>
       <textarea class="cw-template ${isAi ? "hidden" : ""}" rows="3" placeholder="Cześć [Imię], chciałem/am się podzielić...">${escHtml(template || "")}</textarea>
+      <p class="cw-step__tokens muted ${isAi ? "hidden" : ""}">Podstawienia z Connections.csv: <code>[Imię]</code> <code>[Nazwisko]</code> <code>[Firma]</code> <code>[Stanowisko]</code> — puste, jeśli brak danych dla kontaktu.</p>
       <p class="cw-step__ai-hint muted ${isAi ? "" : "hidden"}">Treść wygeneruje AI z briefu powyżej (Cel + Opis + Kontekst), osobno dla każdego kontaktu.</p>`;
     stepsListEl.appendChild(div);
     div.querySelector(".cw-remove-step").addEventListener("click", () => {
@@ -436,6 +437,8 @@
         const ai = div.querySelector(`input[name="cw-mode-${stepNum}"][value="ai"]`).checked;
         div.querySelector(".cw-template").classList.toggle("hidden", ai);
         div.querySelector(".cw-step__ai-hint").classList.toggle("hidden", !ai);
+        const tk = div.querySelector(".cw-step__tokens");
+        if (tk) tk.classList.toggle("hidden", ai);
         updateBriefVisibility();
         checkSaveEnabled();
       });
@@ -509,8 +512,10 @@
     setPendingContacts(dbResp.contacts.map((c) => ({
       slug: c.contact_id,
       firstName: c.first_name || "Kontakt",
+      lastName: "",
       headline: c.headline || "",
       company: c.company || "",
+      position: c.headline || "",
       location: c.location || "",
       profileUrl: c.profile_url || "",
       status: "pending",
@@ -547,6 +552,7 @@
       const fields = parseCsvLine(line);
       if (fields.length < 3) continue;
       const firstName = (fields[0] || "").trim();
+      const lastName = (fields[1] || "").trim();
       const url = (fields[2] || "").trim();
       const company = (fields[4] || "").trim();
       const position = (fields[5] || "").trim();
@@ -559,8 +565,10 @@
       contacts.push({
         slug,
         firstName,
+        lastName,
         headline,
         company,
+        position,
         location: "",
         profileUrl: url,
         status: "pending",

@@ -2270,9 +2270,16 @@ async function updateCampaignInList(updated) {
   await saveCampaigns(list);
 }
 
-// Buduje wiadomosc z szablonu: [Imie] -> firstName.
-function buildCampaignMessage(template, firstName) {
-  return (template || "").replace(/\[Imi[eę]\]/gi, firstName || "");
+// Buduje wiadomosc z szablonu. Tokeny z Connections.csv:
+// [Imie]/[Imię], [Nazwisko], [Firma], [Stanowisko]. Brak danych -> pusty string.
+// Wstecznie kompatybilne: 2. arg moze byc obiektem kontaktu ALBO samym imieniem (string).
+function buildCampaignMessage(template, contact) {
+  const c = (contact && typeof contact === "object") ? contact : { firstName: contact };
+  return (template || "")
+    .replace(/\[Imi[eę]\]/gi, c.firstName || "")
+    .replace(/\[Nazwisko\]/gi, c.lastName || "")
+    .replace(/\[Firma\]/gi, c.company || "")
+    .replace(/\[Stanowisko\]/gi, c.position || "");
 }
 
 // Rozwiazuje tekst wiadomosci dla (kontakt, krok). Priorytet: zapisana
@@ -2280,7 +2287,7 @@ function buildCampaignMessage(template, firstName) {
 function resolveCampaignMessage(contact, step) {
   const stored = ((contact && contact.steps) || {})[String(step && step.stepNum)] || {};
   if (stored.message && String(stored.message).trim()) return String(stored.message);
-  return buildCampaignMessage((step && step.template) || "", contact && contact.firstName);
+  return buildCampaignMessage((step && step.template) || "", contact);
 }
 
 // Krok w trybie AI bez gotowej wiadomosci => trzeba wygenerowac przed wyslaniem.
