@@ -2297,6 +2297,36 @@ function campaignStepNeedsAi(contact, step) {
   return !(stored.message && String(stored.message).trim());
 }
 
+// Wzbogaca kontakt kampanii: sprawdza profileDb, jesli brakuje headline — scrape.
+// Zapisuje do profileDb po scrapie (cache dla przyszlych generacji).
+async function enrichCampaignContact(contact) {
+  if (contact.headline && contact.headline.trim()) return contact;
+  const db = await getProfileDb();
+  const dbp = (db.profiles || {})[contact.slug];
+  if (dbp && dbp.headline) {
+    return {
+      ...contact,
+      headline: dbp.headline || "",
+      company: contact.company || dbp.company || "",
+      location: contact.location || dbp.location || "",
+    };
+  }
+  try {
+    const resp = await probeProfileTab(contact.slug, "scrapeProfile");
+    if (resp && resp.success && resp.profile) {
+      const p = resp.profile;
+      upsertProfilesToDb([{ slug: contact.slug, ...p }], "profile_scrape").catch(() => {});
+      return {
+        ...contact,
+        headline: p.headline || "",
+        company: contact.company || p.company || "",
+        location: contact.location || p.location || "",
+      };
+    }
+  } catch (_) {}
+  return contact;
+}
+
 // Wola backend /api/campaign/generate dla listy kontaktow.
 // Zwraca { success, messages } albo { success:false, error }.
 async function generateCampaignMessages(campaign, contacts, step) {
@@ -2305,10 +2335,17 @@ async function generateCampaignMessages(campaign, contacts, step) {
   if (!apiKey) return { success: false, error: "no_api_key" };
   try { assertApiKeyHeaderSafe(apiKey); } catch (e) { return { success: false, error: e.message }; }
   const apiUrl = (settings.apiUrl || DEFAULT_SETTINGS.apiUrl).replace(/\/+$/, "");
+
+  // Wzbogac kontakty z brakujacym headline (profileDb -> scrape)
+  const enriched = [];
+  for (const c of (contacts || [])) {
+    enriched.push(await enrichCampaignContact(c));
+  }
+
   const brief = (campaign && campaign.brief) || {};
   const payload = {
     batch_id: "camp-" + (campaign && campaign.id) + "-s" + (step && step.stepNum) + "-" + Date.now(),
-    contacts: (contacts || []).map((c) => ({
+    contacts: enriched.map((c) => ({
       contact_id: c.slug,
       first_name: c.firstName || "",
       headline: c.headline || "",
