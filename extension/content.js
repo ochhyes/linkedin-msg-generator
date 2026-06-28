@@ -2426,8 +2426,58 @@
         }
       })();
       return true; // keep channel open for async
+    } else if (message.action === "sendLinkedInMessage") {
+      // #74: Wpisuje i wysyla wiadomosc w compose form messaging.
+      // Dziala na linkedin.com/messaging/thread/new/?recipients=<slug>
+      // i na istniejacych watkach /messaging/thread/<id>/.
+      (async () => {
+        try {
+          const result = await sendLinkedInMessage(message.text || "");
+          if (isContextValid()) sendResponse(result);
+        } catch (err) {
+          if (isContextValid()) sendResponse({ success: false, error: (err && err.message) || String(err) });
+        }
+      })();
+      return true;
     }
   });
+
+  // #74: Wpisuje tekst w LinkedIn compose form i klika Wyslij.
+  async function sendLinkedInMessage(text) {
+    if (!text || !text.trim()) return { success: false, error: "empty_message" };
+    // Czekaj az form sie wyrenderuje (SPA moze potrzebowac chwili po load).
+    const editable = await waitFor(
+      () => document.querySelector(".msg-form__contenteditable"),
+      10000
+    );
+    if (!editable) return { success: false, error: "compose_form_not_found" };
+    // Focus i wpisz tekst przez execCommand (dziala cross-framework Ember/React).
+    editable.focus();
+    document.execCommand("selectAll", false, null);
+    document.execCommand("insertText", false, text);
+    // Fallback: jesli execCommand nie odpal eventu — dispatchuj InputEvent.
+    editable.dispatchEvent(new InputEvent("input", { bubbles: true, data: text }));
+    // Czekaj az przycisk Wyslij zostanie odblokowany.
+    const sendEnabled = await waitFor(
+      () => {
+        const btn = document.querySelector(".msg-form__send-button");
+        return btn && !btn.disabled;
+      },
+      6000
+    );
+    if (!sendEnabled) return { success: false, error: "send_button_still_disabled" };
+    const sendBtn = document.querySelector(".msg-form__send-button");
+    sendBtn.click();
+    // Czekaj az form sie wyczyci (potwierdzenie ze wiadomosc poszla).
+    await waitFor(
+      () => {
+        const el = document.querySelector(".msg-form__contenteditable");
+        return !el || !(el.textContent || "").trim();
+      },
+      8000
+    );
+    return { success: true };
+  }
 
   // ── Campaign: scrape connections (reuses battle-tested extractConnectionsList + scroll) ──────────
 

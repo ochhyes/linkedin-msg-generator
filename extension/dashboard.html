@@ -241,6 +241,49 @@
       </section>
 
       <!-- Section 4: CAMPAIGN — wysyłka masowa do kontaktów -->
+      <section id="campaign-worker-section" class="block block--campaign-worker">
+        <h2>
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          Kampania sekwencyjna
+        </h2>
+        <p class="hint">Auto-wysylka wieloetapowych wiadomosci z szablonu [Imie]. Jitter 45-120s, max 20/dzien, godziny 9-18. Mutex z "Dodaj automatycznie".</p>
+
+        <div id="cw-campaigns-list" class="cw-campaigns-list"></div>
+
+        <details id="cw-new-campaign" class="cw-new-campaign">
+          <summary class="btn btn--primary btn--sm">+ Nowa kampania</summary>
+          <div class="cw-new-inner">
+            <label>Nazwa kampanii
+              <input id="cw-name" type="text" placeholder="Np. Rekrutacja OVB — czerwiec" />
+            </label>
+
+            <div id="cw-steps-list" class="cw-steps-list"></div>
+            <button id="cw-add-step" class="btn btn--ghost btn--sm">+ Dodaj krok</button>
+
+            <div class="cw-import-row">
+              <button id="cw-import-from-db" class="btn btn--ghost btn--sm">Zaladuj z bazy profili</button>
+              <span id="cw-contacts-count" class="muted">0 kontaktow</span>
+            </div>
+
+            <button id="cw-save-campaign" class="btn btn--accent" disabled>Zapisz kampanie</button>
+          </div>
+        </details>
+
+        <div id="cw-worker-panel" class="cw-worker-panel hidden">
+          <div class="cw-worker-status">
+            <span id="cw-worker-badge" class="count-badge">—</span>
+            <span id="cw-worker-line"></span>
+          </div>
+          <div class="cw-worker-actions">
+            <button id="cw-btn-dryrun" class="btn btn--ghost btn--sm">Podgląd (dry-run)</button>
+            <button id="cw-btn-start" class="btn btn--accent btn--sm">Start</button>
+            <button id="cw-btn-stop" class="btn btn--ghost btn--sm hidden">Stop</button>
+          </div>
+          <div id="cw-dryrun-result" class="cw-dryrun-result hidden"></div>
+          <div id="cw-error-msg" class="cw-error-msg hidden"></div>
+        </div>
+      </section>
+
       <section id="campaign-section" class="block block--campaign">
         <h2>
           <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
@@ -306,5 +349,6 @@
   <script src="dashboard.js"></script>
   <script src="tools/campaign.js"></script>
   <script src="dashboard-campaign.js"></script>
+  <script src="dashboard-campaign-worker.js"></script>
 </body>
 </html>

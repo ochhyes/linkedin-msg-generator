@@ -9,6 +9,10 @@
  *  - Daily throttle (15 msgs/day) to avoid LinkedIn flags
  *
  * This is a standalone module consumed by dashboard.js.
+ *
+ * NOTE: scrapeConnections() delegates to background.js via chrome.runtime.sendMessage
+ * so it can reuse the battle-tested extractConnectionsList() from content.js (SDUI + Ember).
+ * The old in-file DOM scraper and the fake Voyager queryId have been removed.
  */
 export class CampaignManager {
   constructor(apiBaseUrl, apiKey) {
@@ -20,96 +24,40 @@ export class CampaignManager {
    * Scrape all connections from the LinkedIn "My Network" page.
    * The user must be on: https://www.linkedin.com/mynetwork/invite-connect/connections/
    *
-   * Returns an array of { contact_id, first_name, headline, profile_url }.
+   * Delegates to background.js → content.js extractConnectionsList() which handles
+   * both the classic Ember layout and the SDUI variant (data-rehydrated="true").
+   *
+   * Returns an array of { contact_id, first_name, headline, profile_url, location, company }.
    */
-  static async scrapeConnections(pageSize = 500) {
-    // We use LinkedIn's Voyager API if available, otherwise fall back to DOM scraping
-    const contacts = [];
-
-    // Try Voyager API first (authenticated, same origin)
-    try {
-      const voyagerData = await CampaignManager._fetchVoyagerConnections(pageSize);
-      if (voyagerData && voyagerData.length > 0) {
-        return voyagerData;
-      }
-    } catch (e) {
-      console.warn("[Campaign] Voyager fallback failed, trying DOM scrape:", e.message);
-    }
-
-    // DOM fallback – iterate visible connection cards
-    const cards = document.querySelectorAll(
-      ".mn-connection-card, li.mn-connection-card, .mn-connection-card__details"
-    );
-    if (cards.length === 0) {
-      console.warn("[Campaign] No connection cards found in DOM");
-      return [];
-    }
-
-    for (const card of cards) {
-      const nameEl = card.querySelector(
-        ".mn-connection-card__name, .mn-connection-card__link, a.mn-connection-card__name"
+  static async scrapeConnections() {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(
+        { action: "campaignScrapeConnections" },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
+          if (response && response.error) {
+            reject(new Error(response.error));
+            return;
+          }
+          resolve(response && response.contacts ? response.contacts : []);
+        }
       );
-      const headlineEl = card.querySelector(
-        ".mn-connection-card__occupation, .mn-connection-card__headline"
-      );
-      const linkEl = card.querySelector("a.mn-connection-card__link, a[href*='/in/']");
-
-      const fullName = nameEl ? nameEl.textContent.trim() : "";
-      const firstName = fullName.split(" ")[0] || fullName;
-      const headline = headlineEl ? headlineEl.textContent.trim() : "";
-      const profileUrl = linkEl ? linkEl.href : "";
-
-      if (!firstName) continue;
-
-      contacts.push({
-        contact_id: profileUrl.split("/in/")[1]?.replace(/\/$/, "") || `dom-${Date.now()}-${contacts.length}`,
-        first_name: firstName,
-        headline: headline,
-        profile_url: profileUrl,
-      });
-    }
-
-    return contacts;
-  }
-
-  /**
-   * Try to fetch connections via LinkedIn's internal Voyager API.
-   * This provides more complete data than DOM scraping.
-   */
-  static async _fetchVoyagerConnections(count = 500) {
-    const url = `https://www.linkedin.com/voyager/api/graphql?variables=(start:0,count:${count})&queryId=voyagerIdentityDashConnections.1d1e9c3f3e1c2c3f8e1c2c3f8e1c2c3f`;
-    const resp = await fetch(url, { credentials: "include" });
-    if (!resp.ok) throw new Error(`Voyager HTTP ${resp.status}`);
-    const json = await resp.json();
-
-    const elements =
-      json?.included ||
-      json?.data?.identityDashConnectionsByMemberDistance?.elements ||
-      [];
-
-    return elements.map((el) => {
-      const fullName =
-        el.title ||
-        el.name ||
-        el.firstName + " " + el.lastName ||
-        "";
-      return {
-        contact_id: el.entityUrn || el.publicIdentifier || `voyager-${Date.now()}`,
-        first_name: fullName.split(" ")[0] || fullName,
-        headline: el.occupation || el.headline || "",
-        profile_url: el.navigationUrl || el.profileUrl || "",
-      };
     });
   }
 
   /**
    * Generate a batch of campaign messages via the backend.
    * @param {Array} contacts - from scrapeConnections()
-   * @param {string} productDescription - opis programu
+   * @param {string} productDescription - opis programu / portalu
    * @param {string} authorContext - kontekst autora
+   * @param {string} campaignGoal - "info" | "recruitment" | "sales"
+   * @param {string|null} authorNote - opcjonalna notka osobista (np. "moje zdjecie na LI jest z akcji")
    * @returns {Promise<Object>} CampaignResponse from backend
    */
-  async generateBatch(contacts, productDescription, authorContext) {
+  async generateBatch(contacts, productDescription, authorContext, campaignGoal = "info", authorNote = null) {
     const batchId = `batch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     const payload = {
@@ -117,7 +65,11 @@ export class CampaignManager {
       contacts: contacts,
       product_description: productDescription,
       author_context: authorContext,
+      campaign_goal: campaignGoal,
     };
+    if (authorNote && authorNote.trim()) {
+      payload.author_note = authorNote.trim();
+    }
 
     const resp = await fetch(`${this.apiBaseUrl}/api/campaign/generate`, {
       method: "POST",
