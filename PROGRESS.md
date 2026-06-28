@@ -8,6 +8,43 @@
 
 ---
 
+## 2026-06-28 (Claude Code / Sonnet 4.6 → Opus 4.8) — wyszukiwarka kampanii v2.4.3 + nowy sprint „Niezawodna wysyłka" (root-cause DM przez Claude in Chrome)
+
+> Dwie rzeczy: (a) drobny feature do tabeli kontaktów kampanii; (b) brainstorm → /agentic-loop-dod → diagnoza na żywo (Claude in Chrome) DLACZEGO wysyłka DM nigdy nie działała → plan sprintu. Implementacja → nowa sesja (decyzja Marcina).
+
+### Zrobione
+- **v2.4.3 (cec776a):** wyszukiwarka w tabeli kontaktów kampanii (filtr DOM po nazwisku/stanowisku/firmie, bez reloadu) + pełne imię+nazwisko i headline w kolumnie Kontakt; limit wierszy 50→500; `background.js campaignScrapeConnections` zwraca `last_name`.
+- **(1831e35):** enrichment kontaktu kampanii — przed generacją AI, gdy headline puste: profileDb (bezpłatnie) → scrape `/in/<slug>/` → zapis do profileDb (cache). Auto (1/tick) + ręczny (batch).
+- **Nowy sprint „Niezawodna wysyłka" (`docs/SPRINT-wysylka-DoD.md`)** — rama /agentic-loop-dod: dwie pętle-workflowy (enrichment + wysyłka), DoD jako obserwowalny stan, HITL przed nieodwracalnym, stop=ukończenie∨cap. Zadania T0-T5 + przejście czerwonych flag.
+- **T0 (diagnoza + fixture) ZROBIONE na żywo (Claude in Chrome, konto Marcina):** root-cause czemu DM nie wychodzą; fixture `extension/tests/fixtures/messaging_composer_sdui.html` (full body /messaging/, zawiera też sidebar do #56B).
+
+### Diagnoza wysyłki (root-cause — CZTERY niezależne bugi)
+1. **Killer: zły URL.** Kod buduje `messaging/thread/new/?recipients=<slug>` (l.mn.+vanity slug). Poprawnie `recipient=<member-URN ACoAA…>` (l.**poj.**). Slug NIE ustawia odbiorcy → composer pusty → „otwiera wiadomości, nie ma osoby, nic nie wpisane, zamyka" (dokładny objaw Marcina). Potwierdzone: z URN „Jola Rybicka" się ustawiła.
+2. **URN trzeba zdobyć** — jest w `href` przycisku „Message" na profilu (`/messaging/compose/?recipient=ACoAA…`).
+3. **Modale zasłaniają** — Premium upsell + cookie nakładają się na composer.
+4. **Brama 1°** — darmowy composer renderuje się TYLKO dla kontaktu 1°; nie-kontakt → ściana Premium, ZERO pola (0 pól nawet w shadow DOM).
+- Composer = Classic Ember (`.msg-form__contenteditable` + `.msg-form__send-button`) — **selektory obecnego kodu POPRAWNE**, manipulacja DOM OK.
+
+### Decyzje
+- **Podejście 1 (profil→Message), bo** thread/new wymaga member-URN którego nie mamy ze sluga; profil rozwiązuje odbiorcę jednoznacznie. (Marcin potwierdził objaw pustego odbiorcy + dał URL-e par profil↔thread.)
+- **Tryb ręczny domyślny, auto opt-in (Marcin przez AskUserQuestion), bo** ryzyko bana rozszerzeń (23%/90 dni z researchu); ręczny = zero powierzchni detekcji.
+- **Implementację przeniesiono do NOWEJ sesji (Marcin), bo** to długi sprint; ta sesja = diagnoza + plan + drobny feature.
+
+### Lessons learned
+- **„Verify dump before fixing" zadziałało nawet na żywo:** w trakcie debugowania w Chrome ogłosiłem „composer to SDUI, zły selektor" — fixture Marcina udowodnił że composer to Ember, selektory OK. Objaw (0 pól) = ściana Premium na nie-kontakcie + zamrożony renderer, NIE parsowanie. Live-debugging myli tak samo jak ręczny dump; fixture rozstrzyga.
+- **Renderer messagingu (ciężki SPA + Grammarly) zamarza** przy intensywnym sondowaniu JS/screenshot — czysty `copy(outerHTML)` od człowieka pewniejszy niż walka z żywym DOM.
+- Konto Marcina: chrome strony SDUI, ale **widget composera pozostaje Ember** (jak overlay „Połącz" w shadow DOM — osobny stack od page chrome).
+
+### BLOCKED / TODO (nowa sesja)
+- Sprint Wysyłka-DoD: **T1** odsprzęgnij enrichment↔wysyłka (osobny wolny worker, mutex). **T2** naprawa wysyłki (URL recipient=URN + zamknij modale + brama 1° + weryfikuj dostawę + realny test DOM na fixture — dziś jest ZERO testu wysyłki). **T3** bramka anty-halucynacja (deterministyczna, osobno od generacji). **T4** stop/idempotencja(campaignId,slug,stepNum)/log. **T5** ręczny domyślny + warm-up. Sekwencja T0→T2→T4→T5, równolegle T1‖T3. Pełne DoD: `docs/SPRINT-wysylka-DoD.md`.
+- #75 smoke (Marcin) + deploy backendu VPS — bez zmian, wciąż otwarte.
+- #56B: `messaging_composer_sdui.html` zawiera sidebar /messaging/ z prefiksem „Ty:" — może odblokować reply-tracker bez osobnego dumpu.
+
+### Status końcowy
+v2.4.3 + enrichment scommitowane (cec776a, 1831e35) na worktree, NIE zmergowane do master (origin/master=7219325). `docs/SPRINT-wysylka-DoD.md` + fixture + CLAUDE/PROGRESS do commitu w tej sesji. Implementacja wysyłki → nowa sesja od T2 (lub T1).
+
+---
+
 ## 2026-06-28 (Claude Code / Opus 4.8) — #75 scalenie kampanii w JEDEN system (v2.3.1)
 
 > Sesja na zgłoszenie Marcina: „nie da się dodać kampanii / pobiera zły klucz API" oraz „informuj kontakty" → „Brak klucza API" mimo wpisanego hasła. Diagnoza → konsolidacja dwóch systemów kampanii w jeden (wybór Marcina przez AskUserQuestion: „połącz w jeden bogatszy").

@@ -160,6 +160,8 @@ Pagination URL-based (`?page=N` przez `searchParams.set`).
 
 **Contact-info overlay (`/in/<slug>/overlay/contact-info/`) — Ember variant** (dump `contact_only_email.html`): modal `[role="dialog"][data-test-modal]`, top marker `<h2>Informacje kontaktowe</h2>` (PL) / `Contact info` (EN). Sekcje `section.pv-contact-info__contact-type` — CSS classes hashowane (NIE używać jako selektor). Najstabilniejszy key typu = `data-test-icon`: `envelope-medium`→email, `phone-medium`→phone, `link-medium`→website, `home-medium`→address, `birthday-medium`→birthday, `people-medium`→connectedOn lub identifier. Fallback po `<h3 class="pv-contact-info__header">` text. Close: `button[data-test-modal-close-btn]`. SDUI variant contact-info jeszcze nie zaobserwowany.
 
+**Wysyłka wiadomości (DM) — profil→Message, NIE `thread/new?recipients=slug` (zweryfikowane 2026-06-28 przez Claude in Chrome, `messaging_composer_sdui.html`)** — przycisk „Message <Imię>"/„Wyślij wiadomość" na profilu to `<a href="/messaging/compose/…?recipient=<member-URN ACoAA…>&screenContext=NON_SELF_PROFILE_VIEW">` — **`recipient` l.poj. + member-URN**, NIE `recipients`+slug (slug NIE ustawia odbiorcy → composer pusty → send disabled; to root-cause „DM nie wychodzą"). Klik NAWIGUJE (nie overlay). Klasy przycisku hashowane (SDUI) + `componentkey` dynamiczny → lokalizuj po `href*="/messaging/compose"` lub tekście. **Composer pozostaje Classic Ember** mimo SDUI-chrome strony: `.msg-form__contenteditable` (Draft.js, `notranslate`) + `.msg-form__send-button.artdeco-button[type=submit]` (startuje disabled) — selektory `sendLinkedInMessage` POPRAWNE. **Darmowy composer TYLKO dla kontaktu 1°** — nie-kontakt → ściana Premium/InMail, ZERO pola. Modale (Premium upsell, cookie) zasłaniają — zamykać Escape (X bez aria-label). Obecny `probeMsgComposeTab` używa złego `recipients=slug` → NIGDY nie wysłał. Pełna analiza + plan naprawy (T0-T5): `docs/SPRINT-wysylka-DoD.md`.
+
 **Service worker MV3 idle kill po 30s** — mitygacja: `chrome.alarms` keep-alive (24s) w worker loop.
 
 **Orphan extension context** (po reload) — LinkedIn'owy bundle cache'uje stare extension URL'e → flood `chrome-extension://invalid/`. Mitygacja: content.js poll co 3s `isContextValid()` → `location.reload()` jednorazowy (v1.2.1) + `fetch_patch.js` patchuje `window.fetch` w MAIN world (v1.11.2).
@@ -195,15 +197,15 @@ Uruchom testy automatyczne (pytest backend + jsdom extension). Wykonaj kroki man
 # CURRENT STATE
 
 ```
-Sprint:        2.3 — #75 (scalenie kampanii) v2.3.2 ZMERGOWANE+PUSH do origin/master. Blokada AI = deploy backendu na VPS (Marcin). #53/#56B dalej otwarte.
-Phase:         Tester — smoke #75 (Marcin). AI dziala dopiero po deployu backendu (endpointy /api/campaign/* sa juz na origin/master; prod jeszcze ich nie ma → 404).
-Active task:   #75 — JEDEN system kampanii + personalizacja szablonu [Imię]/[Nazwisko]/[Firma]/[Stanowisko] (v2.3.2).
-Repo state:    master = origin/master = 7219325 (push OK — 29 commitow backlogu + #75 poszło). worktree na tym samym commicie.
-Last commit:   7219325 — feat: personalizacja szablonu kampanii z Connections.csv (#75 v2.3.2)
+Sprint:        Wysyłka-DoD (nowy, /agentic-loop-dod) — niezawodna wysyłka DM. T0 (diagnoza+fixture) ZROBIONE; T1-T5 → nowa sesja. Plan: docs/SPRINT-wysylka-DoD.md. Domknięte obok: kampania v2.4.3 (wyszukiwarka+nazwisko+headline+enrichment).
+Phase:         PM→Developer (nowa sesja). Wejście: T2 (naprawa wysyłki) albo T1 (odsprzęgnięcie enrichment↔wysyłka).
+Active task:   Sprint Wysyłka-DoD T2 — naprawa wysyłki: URL recipient=<member-URN> (NIE recipients=slug) + zamknij modale + brama 1° + weryfikuj dostawę. Fixture: extension/tests/fixtures/messaging_composer_sdui.html.
+Repo state:    worktree (claude/nostalgic-ptolemy-7edc10) = 1831e35; NIE zmergowane do master (origin/master=7219325). manifest 2.4.3.
+Last commit:   1831e35 — feat: enrichment profilu kampanii (profileDb + scrape gdy brak headline)
 Updated:       2026-06-28
 ```
 
-**Pending operacyjne (Marcin):** (1) **Deploy backendu na VPS** (blokuje AI w kampanii — prod nie ma `/api/campaign/*` → 404): `cd ~/linkedin-msg-generator && git pull` → `cd deploy && docker compose up -d --build`; upewnij się `API_KEYS=DreamComeTrue!` w prod `.env`; weryfikacja `curl 127.0.0.1:8321/api/campaign/throttle` = 401 (nie 404). (2) Smoke #75 na realnym koncie. (3) Ogłoszenie 2.x zespołowi — `outreach/` / `Outreach-2.3.2.zip` (Reload, dane zostają). `git push` ✅ zrobiony (origin/master = 7219325).
+**Pending operacyjne (Marcin):** (1) **Implementacja wysyłki w nowej sesji** — od T2 (lub T1), pełny plan + DoD w `docs/SPRINT-wysylka-DoD.md`. (2) **Deploy backendu na VPS** (blokuje AI w kampanii — prod nie ma `/api/campaign/*` → 404): `git pull` → `cd deploy && docker compose up -d --build`; `API_KEYS=DreamComeTrue!` w prod `.env`; weryfikacja `curl 127.0.0.1:8321/api/campaign/throttle` = 401 (nie 404). (3) Smoke #75 na realnym koncie. (4) Merge worktree→master gdy wysyłka gotowa + `node build.js` (release `outreach/`).
 
 ---
 
@@ -211,6 +213,7 @@ Updated:       2026-06-28
 
 ## TODO (priorytet od góry)
 
+0. **Sprint Wysyłka-DoD** (P0, NOWY) — niezawodna wysyłka DM, T1-T5 (T0 done). Patrz IN PROGRESS + `docs/SPRINT-wysylka-DoD.md`.
 1. **#75** — Scalenie kampanii (#74 + informuj) — ZAIMPLEMENTOWANE (v2.3.1), READY FOR TEST (smoke Marcina). Patrz IN PROGRESS.
 2. **#53** — Scraper contact-info (Sprint #10, P1) — patrz IN PROGRESS.
 3. **#56B** — Auto reply-tracker (Sprint #11, P0) — BLOCKED na dump `/messaging/`, patrz BLOCKED.
@@ -219,6 +222,9 @@ Updated:       2026-06-28
 5. **#6** — self-test scraper widget w popup (settings → diagnostyka). Mały.
 
 ## IN PROGRESS
+
+- **Sprint Wysyłka-DoD** (nowy, P0) — **niezawodna wysyłka DM wg /agentic-loop-dod**. Pełny plan, DoD per zadanie, bezpieczniki i wyniki T0: `docs/SPRINT-wysylka-DoD.md`. Skrót root-cause: send nigdy nie działał bo `recipients=<slug>` nie ustawia odbiorcy (poprawnie `recipient=<member-URN>`) + modale zasłaniają + brama 1° + zero weryfikacji dostawy. Composer = Classic Ember, selektory OK. **T0 ✅** (root-cause + fixture `messaging_composer_sdui.html`).
+  **TODO (nowa sesja):** T1 odsprzęgnij enrichment↔wysyłka (osobny worker, mutex) · T2 naprawa wysyłki (URL recipient=URN + zamknij modale + brama 1° + weryfikuj dostawę + **realny test DOM** — dziś ZERO) · T3 bramka anty-halucynacja (deterministyczna, osobno od generacji) · T4 stop/idempotencja(campaignId,slug,stepNum)/log · T5 ręczny domyślny + warm-up. Sekwencja T0→T2→T4→T5, równolegle T1‖T3.
 
 - **#75** (Sprint 2.3, P0) — **JEDEN system kampanii (scalenie #74 + „informuj kontakty")** — ZAIMPLEMENTOWANE, czeka smoke Marcina. Jedna sekcja „Kampania" w dashboardzie: kontakty z Connections.csv ALBO bazy profili; krok = szablon `[Imię]` ALBO AI (brief cel/produkt/autor → `/api/campaign/generate`); wysyłka **auto** (worker DOM, jitter/cap/godziny) ALBO **ręczna** (generuj→kopiuj/eksport→„Oznacz wysłane"); follow-upy + stop-przy-odpowiedzi w obu trybach. Usunięte: `dashboard-campaign.js` + `tools/campaign.js`. Backend: `campaign_goal`/`author_note`/`location`/`company` (stary backend ignoruje → degradacja łagodna). Commity: b086fd7 (hotfix klucza), 6a1811d (scalenie), 0634367 (self-review). Decyzje: PROGRESS.md 2026-06-28.
 
@@ -252,6 +258,7 @@ Updated:       2026-06-28
 
 > 1 linia per release (sha, opis, bump). Pełne treści: `git show <sha>` + `PROGRESS.md`.
 
+- **v2.4.3** (cec776a) — feat: wyszukiwarka w tabeli kontaktów kampanii (filtr DOM nazwisko/stanowisko/firma, bez reloadu) + pełne imię+nazwisko+headline w kolumnie Kontakt; `campaignScrapeConnections` zwraca `last_name`; limit 50→500. +enrichment kontaktu przed AI (profileDb→scrape gdy brak headline, 1831e35) [v2.4.0-2.4.2 = git log]
 - **v2.3.2** (7219325) — feat: personalizacja szablonu kampanii z Connections.csv — tokeny [Nazwisko]/[Firma]/[Stanowisko] obok [Imię]; merge master + push origin (29 commitów backlogu) (#75)
 - **v2.3.1** (0634367) — fix: czysta pauza przy dziennym limicie AI (429, nie circuit-breaker) + dedup kontaktów z CSV (#75)
 - **v2.3.0** (6a1811d) — feat: JEDEN system kampanii — scalenie #74 + „informuj kontakty" (kontakty CSV/profileDb, krok szablon/AI, wysyłka auto/ręczna, follow-upy); backend cele/notka/lokalizacja; OUT dashboard-campaign.js+tools/campaign.js (#75)
