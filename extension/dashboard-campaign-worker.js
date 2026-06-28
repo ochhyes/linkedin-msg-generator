@@ -205,11 +205,12 @@
     const resp = await msg("getCampaignWorkerState");
     const worker = resp.worker || {};
     workerPanel.classList.remove("hidden");
+    // "Generuj wiadomości" + licznik dostepne w KAZDYM trybie (przeglad + reczna wysylka).
+    btnGenerate.classList.remove("hidden");
+    if (genCountWrap) genCountWrap.classList.remove("hidden");
 
-    // Tryb reczny: pokaz "Generuj", ukryj Start/Stop.
+    // Tryb reczny: ukryj Start/Stop.
     if (sendMode === "manual") {
-      btnGenerate.classList.remove("hidden");
-      if (genCountWrap) genCountWrap.classList.remove("hidden");
       btnStart.classList.add("hidden");
       btnStop.classList.add("hidden");
       workerBadge.textContent = "Ręczna";
@@ -219,9 +220,7 @@
       return;
     }
 
-    // Tryb auto.
-    btnGenerate.classList.add("hidden");
-    if (genCountWrap) genCountWrap.classList.add("hidden");
+    // Tryb auto (Generuj zostaje widoczny — mozesz przegladac i wysylac recznie takze tu).
     if (worker.active && worker.activeCampaignId === activeCampaignId) {
       workerBadge.textContent = "Aktywna";
       workerBadge.className = "count-badge count-badge--active";
