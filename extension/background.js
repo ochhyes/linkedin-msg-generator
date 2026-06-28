@@ -3831,6 +3831,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           await updateCampaignInList(cs);
           return { success: true };
         }
+        case "campaignMarkWritten": {
+          // Oznacz kontakt jako "napisany recznie": pierwszy NIE-wyslany krok -> sent,
+          // ignoruje delay (user wlasnie napisal). Pomija go w generacji/wysylce.
+          const cw = await getCampaignById(message.campaignId);
+          if (!cw) return { success: false, error: "not_found" };
+          const wi = cw.contacts.findIndex((c) => c.slug === message.slug);
+          if (wi < 0) return { success: false, error: "contact_not_found" };
+          let wsn = null;
+          for (const s of (cw.steps || [])) {
+            const st = (cw.contacts[wi].steps || {})[String(s.stepNum)] || {};
+            if (st.status !== "sent") { wsn = s.stepNum; break; }
+          }
+          if (wsn == null) return { success: false, error: "no_due_step" };
+          const wsk = String(wsn);
+          if (!cw.contacts[wi].steps) cw.contacts[wi].steps = {};
+          cw.contacts[wi].steps[wsk] = Object.assign({}, cw.contacts[wi].steps[wsk] || {}, { status: "sent", sentAt: Date.now() });
+          cw.contacts[wi].status = "active";
+          await updateCampaignInList(cw);
+          return { success: true, stepNum: wsn };
+        }
         case "backupNow":
           return await doAutoBackup(true);
         case "getBackupStatus": {

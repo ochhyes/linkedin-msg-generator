@@ -133,6 +133,9 @@
     campaignsList.querySelectorAll(".cw-btn-mark-replied").forEach((btn) => {
       btn.addEventListener("click", () => markReplied(btn.dataset.campaign, btn.dataset.slug));
     });
+    campaignsList.querySelectorAll(".cw-mark-written").forEach((btn) => {
+      btn.addEventListener("click", () => markWritten(btn.dataset.campaign, btn.dataset.slug));
+    });
   }
 
   function renderContactsTable(campaign) {
@@ -156,7 +159,11 @@
         ? `<td class="cw-replied">Tak (${formatDate(c.repliedAt)})</td>`
         : `<td><button class="btn btn--sm btn--ghost cw-btn-mark-replied" data-campaign="${escHtml(campaign.id)}" data-slug="${escHtml(c.slug)}">Oznacz</button></td>`;
       const purl = c.profileUrl || profileUrlFor(c.slug);
-      return `<tr><td><a href="${escHtml(purl)}" target="_blank" rel="noopener">${escHtml(c.firstName || c.slug)}</a></td>${stepCells}${repliedCell}</tr>`;
+      const hasPending = c.status !== "replied" && steps.some((s) => ((c.steps || {})[String(s.stepNum)] || {}).status !== "sent");
+      const writtenBtn = hasPending
+        ? ` <button class="btn btn--sm btn--ghost cw-mark-written" data-campaign="${escHtml(campaign.id)}" data-slug="${escHtml(c.slug)}" title="Napisałem ręcznie — pomiń w generacji">napisane ✓</button>`
+        : "";
+      return `<tr><td><a href="${escHtml(purl)}" target="_blank" rel="noopener">${escHtml(c.firstName || c.slug)}</a>${writtenBtn}</td>${stepCells}${repliedCell}</tr>`;
     }).join("");
     const more = contacts.length > shown.length ? `<p class="muted" style="margin-top:6px">…i ${contacts.length - shown.length} więcej (tabela pokazuje pierwsze 50).</p>` : "";
     return `
@@ -191,6 +198,15 @@
 
   async function markReplied(campaignId, slug) {
     await msg("campaignMarkReplied", { campaignId, slug });
+    await loadCampaigns();
+  }
+
+  // Oznacz kontakt jako napisany recznie -> wypada z generacji/wysylki (krok = sent).
+  async function markWritten(campaignId, slug) {
+    const resp = await msg("campaignMarkWritten", { campaignId, slug });
+    if (!resp.success && resp.error !== "no_due_step") {
+      showError(humanizeError(resp.error) || "Nie udało się oznaczyć.");
+    }
     await loadCampaigns();
   }
 
