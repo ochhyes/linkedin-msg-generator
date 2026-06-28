@@ -42,7 +42,7 @@ rate_limiter = RateLimiter(
 _campaign_service = CampaignService(ai=AiService())
 
 # Campaign daily throttle: max messages per day (across all batches)
-_CAMPAIGN_DAILY_LIMIT = 15  # bezpiecznie, żeby LinkedIn nie flagował
+_CAMPAIGN_DAILY_LIMIT = 25  # spójnie z capem bulk/klasycznych wiadomości
 _campaign_daily_count = 0
 _campaign_day_reset: float = 0.0  # timestamp when the counter resets
 

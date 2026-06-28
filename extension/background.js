@@ -2449,7 +2449,7 @@ async function campaignWorkerTick() {
   }
 
   const cfg = campaign.config || {};
-  const dailyCap = cfg.dailyCap || 20;
+  const dailyCap = cfg.dailyCap || 25;
   if (worker.sentToday >= dailyCap) {
     await setCampaignWorkerState({
       active: false,

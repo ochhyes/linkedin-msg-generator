@@ -659,7 +659,7 @@
       brief,
       steps: pendingSteps,
       contacts: pendingContacts,
-      config: { dailyCap: 20, delayMin: 45, delayMax: 120, workingHoursStart: 9, workingHoursEnd: 18, sendMode },
+      config: { dailyCap: 25, delayMin: 45, delayMax: 120, workingHoursStart: 9, workingHoursEnd: 18, sendMode },
     });
     btnSave.disabled = false;
     if (!resp.success) {
