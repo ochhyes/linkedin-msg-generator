@@ -103,6 +103,32 @@ _CAMPAIGN_GOAL_AVOID = {
     ),
 }
 
+# Globalne zakazy — przeciw "syfowi": meta-komentarz, metryki proznosci, narratowanie
+# wlasnego procesu, oklepane metafory. Dopisywane do CZEGO NIE PISAC dla KAZDEGO celu.
+_CAMPAIGN_GLOBAL_AVOID = (
+    "NIGDY nie komentuj profilu odbiorcy ani tego, JAK piszesz — zakaz fraz typu: "
+    "'profil jest zbyt ogolny', 'pisze wprost', 'trudno nawiazac', 'skoro nie wiem', "
+    "'profil nie mowi wiele'. "
+    "NIE odwoluj sie do liczby obserwujacych / polubien / zasiegu ani innych metryk proznosci. "
+    "NIE uzywaj oklepanych metafor ('CV bez naglowka', 'wizytowka', 'pierwsze wrazenie decyduje'). "
+    "Jesli brak konkretnego haka z roli lub firmy — po prostu zacznij od wartosci oferty, "
+    "naturalnie, BEZ tlumaczenia sie dlaczego piszesz ogolnie."
+)
+
+# Smieciowe "imiona" z bledow scrapera — nie traktuj jako imienia odbiorcy.
+_JUNK_FIRST_NAMES = {
+    "organizacja", "linkedin member", "uzytkownik linkedin", "użytkownik linkedin",
+    "uzytkownik", "użytkownik", "profil", "kontakt", "firma", "company", "member",
+}
+
+
+def _clean_first_name(name: Optional[str]) -> str:
+    """Zwraca imie albo '' jesli to znany artefakt scrapera / pusta wartosc."""
+    n = (name or "").strip()
+    if not n or n.lower() in _JUNK_FIRST_NAMES:
+        return ""
+    return n
+
 
 def _build_campaign_system_prompt() -> str:
     """Build campaign system prompt reusing the core DEFAULT_SYSTEM_PROMPT rules."""
@@ -132,8 +158,12 @@ def _build_campaign_user_message(
     goal_do = _CAMPAIGN_GOAL_INSTRUCTIONS.get(campaign_goal, _CAMPAIGN_GOAL_INSTRUCTIONS["info"])
     goal_avoid = _CAMPAIGN_GOAL_AVOID.get(campaign_goal, "")
 
-    # Build contact context block
-    contact_parts = [f"- Imie: {first_name}"]
+    # Build contact context block (smieciowe imie -> nie podawaj; AI ma pisac Pan/Pani)
+    clean_first = _clean_first_name(first_name)
+    if clean_first:
+        contact_parts = [f"- Imie: {clean_first}"]
+    else:
+        contact_parts = ["- Imie: (nieznane — NIE zgaduj imienia, pisz przez Pan/Pani)"]
     contact_parts.append(f"- Rola / hook-kategoria: {hook_category}")
     if company:
         contact_parts.append(f"- Firma: {company}")
@@ -155,7 +185,7 @@ def _build_campaign_user_message(
         f"KONTEKST NADAWCY:\n{author_context}\n"
         f"{author_note_block}\n"
         f"CO PISAC:\n{goal_do}\n\n"
-        f"CZEGO NIE PISAC:\n{goal_avoid}\n\n"
+        f"CZEGO NIE PISAC:\n{goal_avoid}\n{_CAMPAIGN_GLOBAL_AVOID}\n\n"
         f"Odpowiedz TYLKO trescia wiadomosci, bez komentarzy, cudzyslowow ani wyjasnien."
     )
 

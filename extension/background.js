@@ -3776,6 +3776,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           await updateCampaignInList(cm);
           return { success: true };
         }
+        case "campaignRegenerateOne": {
+          const cr = await getCampaignById(message.campaignId);
+          if (!cr) return { success: false, error: "not_found" };
+          const rci = cr.contacts.findIndex((c) => c.slug === message.slug);
+          if (rci < 0) return { success: false, error: "contact_not_found" };
+          const rstep = cr.steps.find((s) => String(s.stepNum) === String(message.stepNum));
+          if (!rstep) return { success: false, error: "step_not_found" };
+          let rtext;
+          if (rstep.mode === "ai") {
+            const rgen = await generateCampaignMessages(cr, [cr.contacts[rci]], rstep);
+            if (!rgen.success) return { success: false, error: rgen.error };
+            const rm = (rgen.messages || [])[0];
+            if (!rm || rm.status === "error" || !rm.message) return { success: false, error: (rm && rm.error) || "empty" };
+            rtext = rm.message;
+          } else {
+            rtext = resolveCampaignMessage(cr.contacts[rci], rstep);
+          }
+          const rsk = String(message.stepNum);
+          if (!cr.contacts[rci].steps) cr.contacts[rci].steps = {};
+          cr.contacts[rci].steps[rsk] = Object.assign({}, cr.contacts[rci].steps[rsk] || {}, { status: "draft", message: rtext });
+          await updateCampaignInList(cr);
+          return { success: true, message: rtext };
+        }
         case "backupNow":
           return await doAutoBackup(true);
         case "getBackupStatus": {

@@ -255,12 +255,14 @@
     if (!resp.preview.length) {
       dryRunResult.innerHTML = '<p class="muted">Brak kontaktów do podglądu.</p>';
     } else {
-      dryRunResult.innerHTML = `<p><strong>Podgląd krok 1 dla ${resp.preview.length} kontaktów:</strong></p>` +
+      dryRunResult.innerHTML = `<p><strong>Podgląd dla ${resp.preview.length} kontaktów</strong> <span class="muted">— możesz regenerować i edytować; zapisana wersja zostanie użyta przy wysyłce</span></p>` +
         resp.preview.map((p) => `
-          <div class="cw-preview-card">
+          <div class="cw-preview-card" data-slug="${escHtml(p.slug)}" data-step="${p.stepNum || 1}">
             <div class="cw-preview-card__name">${escHtml(p.firstName)} (${escHtml(p.slug)})</div>
-            <div class="cw-preview-card__msg">${escHtml(p.message)}</div>
+            <textarea class="cw-preview-card__msg cw-manual-msg" rows="4">${escHtml(p.message)}</textarea>
+            <div class="campaign-message-card__actions"><button class="btn btn--sm btn--ghost cw-regen">Regeneruj</button></div>
           </div>`).join("");
+      wireRegen(dryRunResult);
     }
     dryRunResult.classList.remove("hidden");
   }
@@ -314,14 +316,42 @@
     await loadCampaigns();
   }
 
+  // Podpina "Regeneruj" do kart w kontenerze (dry-run i tryb reczny wspoldziela).
+  // Karta = najblizszy [data-slug], ma <textarea> + data-step.
+  function wireRegen(container) {
+    container.querySelectorAll(".cw-regen").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const card = btn.closest("[data-slug]");
+        const ta = card && card.querySelector("textarea");
+        if (!ta) return;
+        btn.disabled = true;
+        const orig = btn.textContent;
+        btn.textContent = "Generuję…";
+        const resp = await msg("campaignRegenerateOne", {
+          campaignId: activeCampaignId,
+          slug: card.dataset.slug,
+          stepNum: parseInt(card.dataset.step, 10),
+        });
+        btn.disabled = false;
+        btn.textContent = orig;
+        if (resp.success && resp.message) {
+          ta.value = resp.message;
+        } else {
+          showError(humanizeError(resp.error) || "Nie udało się zregenerować.");
+        }
+      });
+    });
+  }
+
   function renderManualResults(items) {
     const rows = items.map((m, i) => `
       <div class="campaign-message-card" data-slug="${escHtml(m.slug)}" data-step="${m.stepNum}" data-index="${i}">
         <div class="campaign-message-card__header">
           <span><strong>${escHtml(m.firstName || m.slug)}</strong> <span class="muted">· krok ${m.stepNum}</span></span>
         </div>
-        <div class="campaign-message-card__body"><textarea class="cw-manual-msg" rows="4" readonly>${escHtml(m.message)}</textarea></div>
+        <div class="campaign-message-card__body"><textarea class="cw-manual-msg" rows="4">${escHtml(m.message)}</textarea></div>
         <div class="campaign-message-card__actions">
+          <button class="btn btn--sm btn--ghost cw-regen">Regeneruj</button>
           <button class="btn btn--sm btn--ghost cw-manual-copy">Kopiuj</button>
           <a class="btn btn--sm btn--ghost cw-manual-open" href="https://www.linkedin.com/messaging/thread/new/?recipients=${encodeURIComponent(m.slug)}" target="_blank" rel="noopener">Otwórz czat</a>
           <button class="btn btn--sm btn--accent cw-manual-sent">Oznacz wysłane</button>
@@ -359,6 +389,7 @@
     });
     const exportBtn = document.getElementById("cw-manual-export");
     if (exportBtn) exportBtn.addEventListener("click", () => exportManualCsv(items));
+    wireRegen(manualResult);
   }
 
   function copyText(text, btn) {
