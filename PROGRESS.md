@@ -45,9 +45,11 @@
 - Efektywny limit AI-auto = ~15/d (backend `_CAMPAIGN_DAILY_LIMIT`). Jeśli za mało: podnieść w backendzie.
 
 ### Status końcowy
-- 3 commity w worktree (b086fd7, 6a1811d, 0634367), NIEzmergowane do master.
-- Testy: extension 16/16 suite, test_campaign_worker 23/0, smoke jsdom 9/0, backend pytest 56/0. Build `Outreach-2.3.1.zip` OK (`--no-publish` — NIE wysłane na Dysk OVB, czeka smoke).
-- manifest 2.3.1; CLAUDE.md + INSTRUKCJA (sekcja 3.11 „Kampania") zaktualizowane.
+- Zmergowane do `master` + **push do origin** (29 commitów backlogu #61→#75; origin/master był ~rok wstecz, v1.25.2). origin/master = 7219325.
+- Dołożone w tej samej sesji: **v2.3.2** — personalizacja szablonu (`[Imię]`/`[Nazwisko]`/`[Firma]`/`[Stanowisko]` z Connections.csv) + scalony master-fix `7883fa0` (zaladuj z bazy 0 kontaktów).
+- **AI w kampanii zwraca 404** — prod-backend nie ma jeszcze `/api/campaign/*` (curl: health 200, campaign 404). Deploy na VPS odblokuje AI (patrz Pending operacyjne). Szablon dziala bez backendu (potwierdzone przez Marcina).
+- Testy: extension 16/16 suite, test_campaign_worker 27/0, smoke jsdom 9/0, backend pytest 56/0. Build `Outreach-2.3.2.zip` OK (`--no-publish`).
+- manifest 2.3.2; CLAUDE.md + INSTRUKCJA (3.11 „Kampania") zaktualizowane.
 
 ---
 

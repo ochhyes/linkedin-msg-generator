@@ -195,15 +195,15 @@ Uruchom testy automatyczne (pytest backend + jsdom extension). Wykonaj kroki man
 # CURRENT STATE
 
 ```
-Sprint:        2.3 — #75 (scalenie kampanii) READY FOR TEST. Otwarte: #53 (contact-info), #56B (BLOCKED). Backend #72/#74 zacommitowane w worktree.
-Phase:         Tester — smoke #75 (Marcin, realne konto LI). Jeśli PASS → merge worktree do master + deploy backendu.
-Active task:   #75 — JEDEN system kampanii (AI + CSV + auto/ręczna) ZAIMPLEMENTOWANE (v2.3.1).
-Repo state:    worktree nostalgic-ptolemy-7edc10 — commity b086fd7 (hotfix klucza), 6a1811d (scalenie), 0634367 (self-review). NIEzmergowane do master.
-Last commit:   0634367 — fix: czysta pauza limit AI + dedup CSV (#75 v2.3.1)
+Sprint:        2.3 — #75 (scalenie kampanii) v2.3.2 ZMERGOWANE+PUSH do origin/master. Blokada AI = deploy backendu na VPS (Marcin). #53/#56B dalej otwarte.
+Phase:         Tester — smoke #75 (Marcin). AI dziala dopiero po deployu backendu (endpointy /api/campaign/* sa juz na origin/master; prod jeszcze ich nie ma → 404).
+Active task:   #75 — JEDEN system kampanii + personalizacja szablonu [Imię]/[Nazwisko]/[Firma]/[Stanowisko] (v2.3.2).
+Repo state:    master = origin/master = 7219325 (push OK — 29 commitow backlogu + #75 poszło). worktree na tym samym commicie.
+Last commit:   7219325 — feat: personalizacja szablonu kampanii z Connections.csv (#75 v2.3.2)
 Updated:       2026-06-28
 ```
 
-**Pending operacyjne (Marcin):** (1) Ogłoszenie 2.0 zespołowi — Dysk ma już 2.0.1, każdy robi tylko Reload (dane zostają). (2) `git push` — lokalny `master` przed origin. (3) VPS: `API_KEYS=DreamComeTrue!` w prod `.env` → `cd deploy && docker compose up -d --build`.
+**Pending operacyjne (Marcin):** (1) **Deploy backendu na VPS** (blokuje AI w kampanii — prod nie ma `/api/campaign/*` → 404): `cd ~/linkedin-msg-generator && git pull` → `cd deploy && docker compose up -d --build`; upewnij się `API_KEYS=DreamComeTrue!` w prod `.env`; weryfikacja `curl 127.0.0.1:8321/api/campaign/throttle` = 401 (nie 404). (2) Smoke #75 na realnym koncie. (3) Ogłoszenie 2.x zespołowi — `outreach/` / `Outreach-2.3.2.zip` (Reload, dane zostają). `git push` ✅ zrobiony (origin/master = 7219325).
 
 ---
 
@@ -252,6 +252,7 @@ Updated:       2026-06-28
 
 > 1 linia per release (sha, opis, bump). Pełne treści: `git show <sha>` + `PROGRESS.md`.
 
+- **v2.3.2** (7219325) — feat: personalizacja szablonu kampanii z Connections.csv — tokeny [Nazwisko]/[Firma]/[Stanowisko] obok [Imię]; merge master + push origin (29 commitów backlogu) (#75)
 - **v2.3.1** (0634367) — fix: czysta pauza przy dziennym limicie AI (429, nie circuit-breaker) + dedup kontaktów z CSV (#75)
 - **v2.3.0** (6a1811d) — feat: JEDEN system kampanii — scalenie #74 + „informuj kontakty" (kontakty CSV/profileDb, krok szablon/AI, wysyłka auto/ręczna, follow-upy); backend cele/notka/lokalizacja; OUT dashboard-campaign.js+tools/campaign.js (#75)
 - **v2.2.1** (b086fd7) — fix: kampania czyta hasło dostępu z chrome.storage zamiast martwego localStorage — gasi „Brak klucza API" (#75)
