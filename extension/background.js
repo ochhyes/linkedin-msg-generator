@@ -2191,6 +2191,8 @@ async function startBulkConnect() {
   // wyszukiwania. Wystarczy że są pending items w kolejce. Każdy tick otwiera
   // linkedin.com/in/<slug>/ w karcie w tle i tam klika "Połącz". To
   // jednocześnie naprawia stary "Resume wymaga otwartej karty search".
+  const cw = await getCampaignWorkerState();
+  if (cw.active) return { success: false, error: "campaign_worker_active" };
   const state = await getBulkState();
   const hasPending = (state.queue || []).some((q) => q.status === "pending");
   if (!hasPending) {
@@ -2216,6 +2218,273 @@ async function stopBulkConnect() {
   return { success: true };
 }
 
+// ── Campaign Worker (#74 v2.2.0) ─────────────────────────────────────────────
+// Sekwencyjna kampania wiadomosci: auto-send przez LinkedIn DOM, multi-step,
+// szablony [Imie], follow-upy w dniach, mutex z bulkConnect, dry-run gate.
+
+const CAMPAIGN_ALARM_NAME = "campaignKeepAlive";
+const CAMPAIGN_MSG_TIMEOUT_MS = 25000;
+
+const CAMPAIGN_WORKER_DEFAULTS = {
+  active: false,
+  activeCampaignId: null,
+  nextTickAt: null,
+  lastTickAt: null,
+  errorMsg: null,
+  consecutiveFails: 0,
+  sentToday: 0,
+  lastResetDate: "",
+};
+
+async function getCampaignWorkerState() {
+  const d = await chrome.storage.local.get("campaignWorker");
+  return { ...CAMPAIGN_WORKER_DEFAULTS, ...(d.campaignWorker || {}) };
+}
+
+async function setCampaignWorkerState(patch) {
+  const cur = await getCampaignWorkerState();
+  const next = { ...cur, ...patch };
+  await chrome.storage.local.set({ campaignWorker: next });
+  return next;
+}
+
+async function getCampaigns() {
+  const d = await chrome.storage.local.get("campaigns");
+  return Array.isArray(d.campaigns) ? d.campaigns : [];
+}
+
+async function saveCampaigns(list) {
+  await chrome.storage.local.set({ campaigns: list });
+}
+
+async function getCampaignById(id) {
+  const list = await getCampaigns();
+  return list.find((c) => c.id === id) || null;
+}
+
+async function updateCampaignInList(updated) {
+  const list = await getCampaigns();
+  const idx = list.findIndex((c) => c.id === updated.id);
+  if (idx < 0) return;
+  list[idx] = updated;
+  await saveCampaigns(list);
+}
+
+// Buduje wiadomosc z szablonu: [Imie] -> firstName.
+function buildCampaignMessage(template, firstName) {
+  return (template || "").replace(/\[Imi[eę]\]/gi, firstName || "");
+}
+
+// Zwraca { contactIdx, stepNum } następnego do wysłania albo null.
+function findNextCampaignStep(campaign, nowMs) {
+  if (!campaign || !Array.isArray(campaign.contacts) || !Array.isArray(campaign.steps)) return null;
+  for (let ci = 0; ci < campaign.contacts.length; ci++) {
+    const contact = campaign.contacts[ci];
+    if (!contact || contact.status === "replied" || contact.status === "done") continue;
+    for (let si = 0; si < campaign.steps.length; si++) {
+      const step = campaign.steps[si];
+      const stepKey = String(step.stepNum);
+      const stepState = (contact.steps || {})[stepKey] || { status: "pending" };
+      if (stepState.status === "sent") continue;
+      if (stepState.status === "failed") continue; // pominiety po failach — czekaj na reset
+      // Krok > 1: sprawdz czy poprzedni krok wysłany i delay minął.
+      if (si > 0) {
+        const prevStep = campaign.steps[si - 1];
+        const prevKey = String(prevStep.stepNum);
+        const prevState = (contact.steps || {})[prevKey] || {};
+        if (prevState.status !== "sent") break; // poprzedni jeszcze nie wysłany
+        const delayMs = (step.delayDays || 0) * 24 * 60 * 60 * 1000;
+        if ((prevState.sentAt || 0) + delayMs > nowMs) break; // za wczesnie
+      }
+      // Ten krok jest pending i gotowy.
+      if (stepState.status === "pending" || !stepState.status) {
+        return { contactIdx: ci, stepNum: step.stepNum };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Otwiera background tab z messaging compose URL, injectuje content.js,
+ * wywoluje sendLinkedInMessage, zamyka tab. Wzorzec jak probeProfileTab.
+ */
+async function probeMsgComposeTab(slug, msgText) {
+  const url = `https://www.linkedin.com/messaging/thread/new/?recipients=${encodeURIComponent(slug)}`;
+  let tab = null;
+  try {
+    tab = await chrome.tabs.create({ url, active: false });
+    await waitForTabComplete(tab.id, 10000);
+    // Dodatkowy delay na hydration SPA (messaging page to Ember SPA).
+    await new Promise((r) => setTimeout(r, 2000));
+    let lastErr = null;
+    const deadline = Date.now() + CAMPAIGN_MSG_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      try {
+        await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content.js"] });
+      } catch (_) {}
+      try {
+        const resp = await Promise.race([
+          chrome.tabs.sendMessage(tab.id, { action: "sendLinkedInMessage", text: msgText }),
+          new Promise((_, rej) => setTimeout(() => rej(new Error("msg_send_timeout")), 12000)),
+        ]);
+        if (resp && resp.success) return { success: true };
+        if (resp && resp.error === "compose_form_not_found") {
+          // Czekaj chwile i sprobuj ponownie — SPA moze jeszcze renderowac.
+          await new Promise((r) => setTimeout(r, 1500));
+          lastErr = resp.error;
+          continue;
+        }
+        return resp || { success: false, error: "no_response" };
+      } catch (err) {
+        lastErr = (err && err.message) || String(err);
+        await new Promise((r) => setTimeout(r, 800));
+      }
+    }
+    return { success: false, error: lastErr || "msg_compose_timeout" };
+  } finally {
+    if (tab && tab.id) {
+      try { await chrome.tabs.remove(tab.id); } catch (_) {}
+    }
+  }
+}
+
+async function resetCampaignDailyIfNeeded() {
+  const state = await getCampaignWorkerState();
+  const today = todayDateString();
+  if (state.lastResetDate !== today) {
+    await setCampaignWorkerState({ sentToday: 0, lastResetDate: today });
+  }
+}
+
+async function campaignWorkerTick() {
+  await resetCampaignDailyIfNeeded();
+  const worker = await getCampaignWorkerState();
+  if (!worker.active) return;
+
+  if (!inWorkingHours({ workingHoursStart: 9, workingHoursEnd: 18 })) {
+    await setCampaignWorkerState({
+      active: false,
+      errorMsg: "Poza godzinami pracy (9:00-18:00). Wznow recznie.",
+      nextTickAt: null,
+    });
+    await chrome.alarms.clear(CAMPAIGN_ALARM_NAME);
+    return;
+  }
+
+  const campaign = worker.activeCampaignId
+    ? await getCampaignById(worker.activeCampaignId)
+    : null;
+  if (!campaign) {
+    await setCampaignWorkerState({ active: false, errorMsg: "Nie znaleziono kampanii.", nextTickAt: null });
+    await chrome.alarms.clear(CAMPAIGN_ALARM_NAME);
+    return;
+  }
+
+  const cfg = campaign.config || {};
+  const dailyCap = cfg.dailyCap || 20;
+  if (worker.sentToday >= dailyCap) {
+    await setCampaignWorkerState({
+      active: false,
+      errorMsg: `Dzienny limit osiagniety (${dailyCap}). Resetuje o polnocy.`,
+      nextTickAt: null,
+    });
+    await chrome.alarms.clear(CAMPAIGN_ALARM_NAME);
+    return;
+  }
+
+  const next = findNextCampaignStep(campaign, Date.now());
+  if (!next) {
+    await setCampaignWorkerState({ active: false, errorMsg: null, nextTickAt: null });
+    await chrome.alarms.clear(CAMPAIGN_ALARM_NAME);
+    return;
+  }
+
+  const contact = campaign.contacts[next.contactIdx];
+  const stepDef = campaign.steps.find((s) => s.stepNum === next.stepNum);
+  const msgText = buildCampaignMessage(stepDef ? stepDef.template : "", contact.firstName);
+  const stepKey = String(next.stepNum);
+
+  let response;
+  try {
+    response = await Promise.race([
+      probeMsgComposeTab(contact.slug, msgText),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("tick_timeout")), CAMPAIGN_MSG_TIMEOUT_MS + 15000)),
+    ]);
+  } catch (err) {
+    response = { success: false, error: (err && err.message) || "tick_error" };
+  }
+
+  const nowMs = Date.now();
+  const updated = JSON.parse(JSON.stringify(campaign)); // deep copy
+  const uc = updated.contacts[next.contactIdx];
+  if (!uc.steps) uc.steps = {};
+
+  const FAIL_STREAK = 3;
+  let consecutiveFails = worker.consecutiveFails || 0;
+
+  if (response && response.success) {
+    uc.steps[stepKey] = { status: "sent", sentAt: nowMs, error: null };
+    uc.status = "active";
+    consecutiveFails = 0;
+    await setCampaignWorkerState({ sentToday: worker.sentToday + 1, consecutiveFails: 0, lastTickAt: nowMs });
+  } else {
+    uc.steps[stepKey] = { status: "failed", sentAt: null, error: (response && response.error) || "unknown" };
+    consecutiveFails += 1;
+    await setCampaignWorkerState({ consecutiveFails, lastTickAt: nowMs });
+    reportScrapeFailure({
+      event_type: "campaign_send_fail",
+      error_message: (response && response.error) || "unknown",
+      diagnostics: { slug: contact.slug, stepNum: next.stepNum, campaignId: campaign.id },
+    });
+  }
+
+  await updateCampaignInList(updated);
+
+  if (consecutiveFails >= FAIL_STREAK) {
+    await setCampaignWorkerState({
+      active: false,
+      consecutiveFails: 0,
+      errorMsg: `${FAIL_STREAK} bledy z rzedu — kampania wstrzymana. Sprawdz polaczenie z LinkedIn.`,
+      nextTickAt: null,
+    });
+    await chrome.alarms.clear(CAMPAIGN_ALARM_NAME);
+    return;
+  }
+
+  const delayMin = cfg.delayMin || 45;
+  const delayMax = cfg.delayMax || 120;
+  const delay = (delayMin + Math.random() * (delayMax - delayMin)) * 1000;
+  await setCampaignWorkerState({ nextTickAt: Date.now() + delay });
+  setTimeout(campaignWorkerTick, delay);
+}
+
+async function startCampaignWorker(campaignId) {
+  const bulk = await getBulkState();
+  if (bulk.active) return { success: false, error: "bulk_connect_active" };
+  const campaign = await getCampaignById(campaignId);
+  if (!campaign) return { success: false, error: "campaign_not_found" };
+  const next = findNextCampaignStep(campaign, Date.now());
+  if (!next) return { success: false, error: "no_pending_steps" };
+  await setCampaignWorkerState({
+    active: true,
+    activeCampaignId: campaignId,
+    errorMsg: null,
+    consecutiveFails: 0,
+    nextTickAt: Date.now() + 500,
+    lastTickAt: null,
+  });
+  await chrome.alarms.create(CAMPAIGN_ALARM_NAME, { periodInMinutes: 0.4 });
+  campaignWorkerTick();
+  return { success: true };
+}
+
+async function stopCampaignWorker() {
+  await setCampaignWorkerState({ active: false, errorMsg: null, nextTickAt: null });
+  await chrome.alarms.clear(CAMPAIGN_ALARM_NAME);
+  return { success: true };
+}
+
 // Dummy listener — sam fakt registracji + alarm trzyma MV3 SW przy życiu.
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === BULK_ALARM_NAME) {
@@ -2233,6 +2502,8 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     acceptCheckTick({ force: false }).catch((e) =>
       console.warn("[LinkedIn MSG] acceptCheckTick fail:", e && e.message)
     );
+  } else if (alarm.name === CAMPAIGN_ALARM_NAME) {
+    // #74: keep-alive dla campaign worker — no-op, alarm budzi SW co 24s.
   }
 });
 
@@ -3271,6 +3542,86 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return await profileDbEnqueueForConnect(message.slugs || []);
         case "importConnections":
           return await importConnectionsFlow(message.maxPages);
+
+        // ── Campaign (#74) ────────────────────────────────────
+        case "campaignScrapeConnections": {
+          const db = await getProfileDb();
+          const contacts = Object.values(db.profiles || {})
+            .filter((p) => p && p.slug)
+            .map((p) => {
+              const fullName = (p.name || "").trim();
+              const firstName = fullName.split(" ")[0] || fullName;
+              return {
+                contact_id: p.slug,
+                first_name: firstName,
+                headline: p.headline || "",
+                profile_url: p.profileUrl || `https://www.linkedin.com/in/${p.slug}/`,
+                location: p.location || null,
+                company: p.company || null,
+              };
+            })
+            .filter((c) => c.first_name);
+          return { success: true, contacts };
+        }
+        case "getCampaigns":
+          return { success: true, campaigns: await getCampaigns() };
+        case "getCampaignWorkerState":
+          return { success: true, worker: await getCampaignWorkerState() };
+        case "createCampaign": {
+          const list = await getCampaigns();
+          const camp = {
+            id: "camp-" + Date.now(),
+            name: message.name || "Kampania",
+            createdAt: Date.now(),
+            steps: message.steps || [],
+            config: message.config || {},
+            contacts: message.contacts || [],
+          };
+          list.push(camp);
+          await saveCampaigns(list);
+          return { success: true, campaign: camp };
+        }
+        case "updateCampaign": {
+          const list2 = await getCampaigns();
+          const idx = list2.findIndex((c) => c.id === message.campaign.id);
+          if (idx < 0) return { success: false, error: "not_found" };
+          list2[idx] = message.campaign;
+          await saveCampaigns(list2);
+          return { success: true };
+        }
+        case "deleteCampaign": {
+          const filtered = (await getCampaigns()).filter((c) => c.id !== message.id);
+          await saveCampaigns(filtered);
+          return { success: true };
+        }
+        case "campaignWorkerStart":
+          return await startCampaignWorker(message.campaignId);
+        case "campaignWorkerStop":
+          return await stopCampaignWorker();
+        case "campaignMarkReplied": {
+          const camp2 = await getCampaignById(message.campaignId);
+          if (!camp2) return { success: false, error: "not_found" };
+          const ci = camp2.contacts.findIndex((c) => c.slug === message.slug);
+          if (ci < 0) return { success: false, error: "contact_not_found" };
+          camp2.contacts[ci].repliedAt = Date.now();
+          camp2.contacts[ci].status = "replied";
+          await updateCampaignInList(camp2);
+          return { success: true };
+        }
+        case "campaignDryRun": {
+          const camp3 = await getCampaignById(message.campaignId);
+          if (!camp3) return { success: false, error: "not_found" };
+          const preview = (camp3.contacts || []).slice(0, 3).map((contact) => {
+            const step = (camp3.steps || [])[0] || {};
+            return {
+              slug: contact.slug,
+              firstName: contact.firstName,
+              message: buildCampaignMessage(step.template || "", contact.firstName),
+              stepNum: step.stepNum || 1,
+            };
+          });
+          return { success: true, preview };
+        }
         case "backupNow":
           return await doAutoBackup(true);
         case "getBackupStatus": {

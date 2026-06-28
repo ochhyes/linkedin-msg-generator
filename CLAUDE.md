@@ -195,12 +195,12 @@ Uruchom testy automatyczne (pytest backend + jsdom extension). Wykonaj kroki man
 # CURRENT STATE
 
 ```
-Sprint:        2.1 — #72 (Ponów błędy + detekcja limitu LI) KOD GOTOWY, niezacommitowany, czeka na smoke Marcina. Otwarte: #53 (contact-info), #56B (reply-tracker, BLOCKED na dump /messaging/).
-Phase:         Tester→Commit. #72 v2.1.0: testy zielone (test_bulk_retry 33/0, baseline bez regresji). Czeka: (a) smoke Marcina + powód błędu inline → wklei czy to weekly_limit, (b) decyzja commit/push, (c) publikacja na Dysk OVB. UWAGA: konto Marcina hituje commercial-use limit LI — lawina „błąd" to limit konta, nie kod (stąd #72: auto-pauza + Ponów błędy).
-Active task:   #72 — czeka na smoke + OK do commitu/publikacji.
-Repo state:    master; #72 NIEZACOMMITOWANY (content/background/popup*/manifest 2.1.0 + test_bulk_retry.js). Outreach-2.0.1.zip opublikowany; 2.1.0 jeszcze nie budowany.
+Sprint:        2.2 — #74 READY FOR TEST. Otwarte: #72 v2.1.0 niezacommitowany (czeka smoke Marcina), #53 (contact-info), #56B (BLOCKED).
+Phase:         Tester — smoke #74 (Marcin). Jeśli PASS → Commit.
+Active task:   #74 — kampania sekwencyjna (v2.2.0 ZAIMPLEMENTOWANE).
+Repo state:    worktree nostalgic-ptolemy-7edc10; #72 NIEZACOMMITOWANY na master.
 Last commit:   ca211ee — feat: ikona 2.0 (#71 v2.0.1)
-Updated:       2026-06-16
+Updated:       2026-06-28
 ```
 
 **Pending operacyjne (Marcin):** (1) Ogłoszenie 2.0 zespołowi — Dysk ma już 2.0.1, każdy robi tylko Reload (dane zostają). (2) `git push` — lokalny `master` przed origin. (3) VPS: `API_KEYS=DreamComeTrue!` w prod `.env` → `cd deploy && docker compose up -d --build`.
@@ -211,13 +211,30 @@ Updated:       2026-06-16
 
 ## TODO (priorytet od góry)
 
-1. **#53** — Scraper contact-info (Sprint #10, P1) — patrz IN PROGRESS.
-2. **#56B** — Auto reply-tracker (Sprint #11, P0) — BLOCKED na dump `/messaging/`, patrz BLOCKED.
+1. **#74** — Kampania sekwencyjna (Meet Alfred flow) — P0, patrz IN PROGRESS + PROGRESS.md 2026-06-28.
+2. **#53** — Scraper contact-info (Sprint #10, P1) — patrz IN PROGRESS.
+3. **#56B** — Auto reply-tracker (Sprint #11, P0) — BLOCKED na dump `/messaging/`, patrz BLOCKED.
 3. **#22 reszta** — master-select zrobiony (v1.14.6); zostaje: DOM dump paginacji → fix selektorów `bulkAutoExtract` → checkboxy "2nd-only"/"unselect Pending" → "Stop after N pages". Częściowo zablokowane (potrzeba dumpu).
 4. **#10** — `selectors.json` + auto-fallback chain + dedup Voyager parsera (test_e2e ↔ content.js). Dług techniczny. Duży refaktor.
 5. **#6** — self-test scraper widget w popup (settings → diagnostyka). Mały.
 
 ## IN PROGRESS
+
+- **#74** (Sprint #12, P0) — **Kampania sekwencyjna: auto-wysyłka + follow-upy (Meet Alfred flow)**. Worker w `background.js` (jak bulkConnect) otwiera hidden tab `linkedin.com/messaging/thread/new/?recipients=<slug>`, wpisuje wiadomość z szablonu `[Imię]`, klika Wyślij, zamyka tab. Jitter 45-120s, cap 20/dzień, godziny 9-18. Mutex z bulkConnect (jedno albo drugie). State per kontakt per kampania w `chrome.storage.local`. Multi-step: N kroków + delay w dniach między nimi (definiowane przez użytkownika). Dry-run gate przed startem. Pełne decyzje: PROGRESS.md 2026-06-28.
+
+  **Acceptance criteria:**
+  - [x] Import kontaktów z profileDb / Connections.csv → lista kampanii
+  - [x] Dry-run: preview szablonu dla 3 kontaktów, kampania NIE startuje bez OK
+  - [x] Worker wysyła wiadomości przez LinkedIn DOM (messaging compose URL), jitter, cap, godziny
+  - [x] Mutex: Start kampanii przy aktywnym bulkConnect → toast błąd (i odwrotnie)
+  - [x] State w storage: `campaigns[].contacts[].steps.{N}.{status, sentAt}` — idempotentne
+  - [x] Follow-upy: krok N wysyła się po N dniach od kroku N-1 jeśli `status ≠ replied`
+  - [x] Przycisk "Oznacz jako odpowiedź" w dashboardzie → zatrzymuje dalsze kroki kontaktu
+  - [x] Circuit breaker: 3 consecutive failures → auto-pauza, powód inline
+  - [x] `manifest.json` bump → 2.2.0; `test_campaign_worker.js` 12 asercji PASS
+  - [ ] Smoke (Marcin): 2 kontakty, krok 1 → wyślij → sprawdź w LI messaging → krok 2 po N dniach (lub force-trigger) → reply detection ręczne → stop
+
+  **Pliki:** `extension/background.js`, `extension/tools/campaign.js`, `extension/dashboard.html/js/css`, `extension/manifest.json`. Backend: opcjonalnie dla logowania.
 
 - **#53** (Sprint #10, P1) — **Scraper contact info + About z `/in/<slug>/overlay/contact-info/`**. Worker analogiczny do `bulkConnect`, tickujący po slugach z `profileDb` filtrowanych "brak/stale contactInfo". Otwiera overlay w karcie w tle, parse modal, zapis `contactInfo + about`, jitter, loop. Ember-only na MVP (SDUI variant nie zaobserwowany — telemetria `contact_info_modal_not_found` wystrzeli gdy LinkedIn przerolluje). DOM/mapowanie headerów PL/EN → patrz "Contact-info overlay" w DOM facts. Pełna decompozycja (8 kroków, ryzyka): `git show` ostatniego PM-a #53 / PROGRESS.md.
 

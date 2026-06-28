@@ -8,6 +8,128 @@
 
 ---
 
+## 2026-06-28 (Claude Code / Sonnet 4.6) — #74 implementacja: kampania sekwencyjna v2.2.0
+
+### Zrobione
+- `background.js`: CAMPAIGN_WORKER_DEFAULTS, getCampaigns/saveCampaigns, getCampaignWorkerState/setCampaignWorkerState, findNextCampaignStep, buildCampaignMessage, probeMsgComposeTab, campaignWorkerTick (jitter 45-120s, cap 20/d, godziny 9-18, circuit breaker 3 faile), startCampaignWorker/stopCampaignWorker, mutex w startBulkConnect (sprawdza campaignWorker.active), CAMPAIGN_ALARM_NAME w alarmListener, message handlers: getCampaigns, getCampaignWorkerState, createCampaign, updateCampaign, deleteCampaign, campaignWorkerStart, campaignWorkerStop, campaignMarkReplied, campaignDryRun, campaignScrapeConnections (z profileDb).
+- `content.js`: dodano handler `sendLinkedInMessage` — focus+execCommand('insertText')+dispatchEvent+waitFor(sendBtn enabled)+click+waitFor(form cleared). Selektory z dumpu: `.msg-form__contenteditable`, `.msg-form__send-button`.
+- `dashboard.html`: nowa sekcja `#campaign-worker-section` — lista kampanii, kreator kroków, import z profileDb, dry-run, worker panel start/stop.
+- `dashboard-campaign-worker.js`: cały UI — loadCampaigns, renderCampaignsList, renderContactsTable (stan kroków per kontakt), worker panel z live refresh, dry-run modal, markReplied, deleteCampaign.
+- `dashboard.css`: style dla sekcji campaign-worker (cw-* klasy).
+- `tests/test_campaign_worker.js`: 12 asercji PASS (buildCampaignMessage × 6, findNextCampaignStep × 6).
+- `manifest.json`: bump 2.1.0 → 2.2.0.
+
+### Decyzje
+- Dump `messaging_composer.html` był dostępny (nie `messaging_compose.html` jak planowałem) — selektory poprawne.
+- `scrapeConnectionsForCampaign` w content.js zostawiam (stara kampania AI używa innej ścieżki); nowa kampania sekwencyjna czyta z profileDb przez `getCampaignWorkerState`.
+- NUL bytes / CRLF: background.js używa CRLF → splice przez Node z `replace(/\n/g, '\r\n')`.
+- Stara `tools/campaign.js` (CampaignManager do AI batch) zostawiona — inna ścieżka, nie konflikt.
+
+### How to test manually
+1. Dashboard → "Kampania sekwencyjna" → "+ Nowa kampania".
+2. Dodaj nazwę, kliknij "+ Dodaj krok", wpisz szablon z `[Imię]`.
+3. Kliknij "Załaduj z bazy profili" — wymaga ≥1 profilu w bazie (importuj z CSV lub ze strony kontaktów).
+4. Zapisz kampanię → pojawi się na liście → kliknij "Wybierz".
+5. Kliknij "Podgląd (dry-run)" — powinien pokazać wiadomość z podstawionym imieniem.
+6. Kliknij "Start" — worker powinien ruszyć (wymaga aktywnej sesji LinkedIn).
+7. Sprawdź w LI Messaging czy wiadomość dotarła.
+8. Kliknij "Stop" — worker się zatrzymuje.
+9. "Oznacz" przy kontakcie → kolumna "Odpowiedź" = Tak.
+10. Mutex: uruchom "Dodaj automatycznie" → Start kampanii → toast "Zatrzymaj 'Dodaj automatycznie' najpierw".
+
+### BLOCKED / TODO
+- Smoke test na realnym koncie LinkedIn (Marcin).
+- #56B (reply auto-detection) nadal BLOCKED.
+- Następna iteracja: dodać obsługę Connections.csv bezpośrednio jako źródło kontaktów kampanii.
+
+### Status końcowy
+✅ Dev done. 12/12 testy PASS. Syntax OK wszystkie pliki. Czeka na smoke Marcina → Commit.
+
+---
+
+## 2026-06-28 (Claude Code / Sonnet 4.6) — #74 design: kampania sekwencyjna (Meet Alfred flow)
+
+### Zrobione
+- Analiza istniejącego kodu: `campaign_service.py` + `tools/campaign.js` generują wiadomości ale wysyłają ręcznie (kopiuj-wklej). Brak wysyłki DOM, brak follow-upów, brak state per kontakt.
+- Napisany pełny DoD (#74) z 10 sprawdzalnymi kryteriami.
+- Przejrzane czerwone flagi agentic-loop-dod: wszystkie zaadresowane w projekcie.
+
+### Decyzje (#74 — kampania sekwencyjna)
+
+**D1: Mutex twardy — albo bulk connect, albo kampania wiadomości, nigdy oba naraz.**
+- Why: oba workery piszą do LinkedIn DOM z jitterem; równoległa praca mogłaby wyglądać jak bot i skumulować błędy.
+- How to apply: `campaignWorker.start()` sprawdza `bulkConnectActive` → error toast. `bulkConnect.start()` sprawdza `campaignWorkerActive` → error toast.
+
+**D2: Wysyłka AUTOMATYCZNA przez LinkedIn DOM — nie ręczne kopiowanie.**
+- Why: cel użytkownika = kampania do X osób bez ręcznej pracy, jak Meet Alfred.
+- How to apply: background.js otwiera hidden tab `linkedin.com/messaging/thread/new/?recipients=<slug>`, content script wpisuje wiadomość w `.msg-form__contenteditable`, klika `.msg-form__send-button`, zamyka tab.
+
+**D3: Szablony [Imię] bez AI — dla pierwszej wiadomości i follow-upów.**
+- Why: pierwsza wiadomość Marcina jest gotowym copywritingiem; AI dodałoby latencję i koszt bez wartości.
+- How to apply: `template.replace(/\[Imię\]/gi, contact.firstName)`. AI pozostaje dostępne jako osobna ścieżka (istniejący campaign_service).
+
+**D4: Follow-upy definiowane przez użytkownika w UI — nie hardcoded.**
+- Why: kampania fotografa ≠ kampania OVB; każdy użytkownik ma inną sekwencję.
+- How to apply: UI "Dodaj krok" → textarea (szablon) + pole "Po N dniach od poprzedniego".
+
+**D5: Reply detection — ręczne (przycisk "Oznacz jako odpowiedź") na MVP.**
+- Why: auto-detekcja z /messaging/ = #56B, BLOCKED na dump. Nie blokujemy kampanii.
+- How to apply: dashboard przycisk per kontakt → ustawia `repliedAt`, zatrzymuje dalsze kroki.
+
+**D6: Import kontaktów z LinkedIn CSV (Connections.csv) — już jest (v1.25.2).**
+- Why: `opts.asProspects` w importCSV obsługuje LinkedIn export.
+- How to apply: kampania może zaimportować kontakty z profileDb (flagowane `isConnection:true/false`) albo wgrać świeży CSV bezpośrednio do kampanii.
+
+**D7: State per kontakt per kampania w `chrome.storage.local` — nie na backendzie.**
+- Why: prostsze, bez zależności sieciowych; konsekwentny wzorzec (profileDb, bulkQueue).
+- How to apply: `campaigns[]` w storage, każdy kontakt ma `{slug, firstName, status, steps:{1:{status,sentAt}, ...}, repliedAt}`.
+
+**D8: Anti-detection — jitter 45-120s, cap 20/dzień, godziny 9-18.**
+- Why: LinkedIn flaguje maszyny, ludzie są nierówni; tempo 20/dzień = poniżej progu.
+- How to apply: identyczny wzorzec jak `bulkConnectTick` — alarm 60s, jitter przed każdym wysłaniem, dailyCap reset o północy.
+
+**D9: Circuit breaker — 3 consecutive failures → auto-pauza + powód inline.**
+- Why: 3 z rzędu = prawdopodobnie limit LI lub zmiana DOM, nie warto kontynuować.
+- How to apply: `consecutiveFails` counter w campaignWorker; reset przy sukcesie.
+
+**D10: Dry-run gate — obowiązkowy przed pierwszym startem kampanii.**
+- Why: nieodwracalne działanie (wysyłka) → HITL. Użytkownik musi zobaczyć preview.
+- How to apply: popup/dashboard pokazuje preview dla 3 kontaktów (podstawiony szablon), przycisk "Wygląda OK → Start kampanii". Dry-run NIE wysyła nic.
+
+### BLOCKED / TODO
+- LinkedIn messaging DOM selektory (`.msg-form__contenteditable`, `.msg-form__send-button`) — potrzebny dump HTML po wejściu na `/messaging/thread/new/?recipients=<slug>`. Marcin: otwórz tę URL, DevTools → `copy(document.body.outerHTML)` → `extension/tests/fixtures/messaging_compose.html`.
+- #56B (auto reply detection) — nadal BLOCKED, nie dotyczy tego sprintu.
+
+### Status końcowy
+⏳ PM done — decyzje zapisane. Nowa sesja zaczyna od implementacji.
+Następna sesja: PM→Dev→Tester→Commit, task #74, v2.2.0.
+
+---
+
+## 2026-06-28 (Claude Code / Sonnet 4.6) — audyt minimalizacji + plan odchudzenia
+
+### ▶ NASTĘPNA SESJA — START TUTAJ (po sesji 28.06.2026 — minimize + handoff)
+**Branch:** `master`. **Deploy:** nie dotykane.
+
+**Zrobione 28.06.2026:**
+- Audyt `/minimize`: CLAUDE.md 355 linii (cel <80), PROGRESS.md 596 linii, UX_REDESIGN.md 728 linii (sprint DONE), settings.local.json 3 stale perms, backend F401 (asyncio/Optional), user.md 158 linii (duplikat INSTRUKCJA.md bez brandingu 2.0).
+- Plan zapisany: `docs/MINIMALIZACJA-plan.md` — 6 kategorii, kolejność od największej dźwigni.
+
+**Pending (nie blokuje):**
+- Plan czeka na "jedź" Marcina → wtedy Faza 3 (1 commit per kat.).
+- Kat. 6 (`user.md` usunąć?) = ręczna decyzja Marcina.
+- #72 v2.1.0 nadal niezacommitowany — czeka na smoke.
+- #53 i #56B — nic nie ruszano.
+
+**⚠ Następny krok / pułapki:**
+- Przeczytaj `docs/MINIMALIZACJA-plan.md`, powiedz "jedź" lub zawęź zakres.
+- Kat. 1 (PROGRESS.md archiwizacja ~395 linii) = największa dźwignia, od niej start.
+- Kat. 3 (UX_REDESIGN.md) — tylko usuń wskazanie z CLAUDE.md, nie kasuj pliku.
+
+**Bramki:** nie odpalone (audyt only).
+
+---
+
 ## 2026-06-25 (Claude Code / Opus 4.x) — Kampania: masowe wiadomości do kontaktów
 
 ### Zrobione
