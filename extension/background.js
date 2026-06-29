@@ -2487,6 +2487,46 @@ function isAccountLimitError(error) {
   return error === "redirected_off_profile" || error === "account_limit";
 }
 
+// T3: deterministyczny checker AI output — wiadomosc vs. fakty z profilu.
+// Zwraca { passed, violations[] }. Grader deterministyczny (nie LLM-sedzia).
+function checkHallucinations(message, facts) {
+  const violations = [];
+  const msg = (message || "");
+
+  // 1. Zakaz formy "ty" (rejestr Pan/Pani obowiazkowy)
+  if (/\bTw[oó]j\b|\bTw[oó]je\b|\bTw[oó]ja\b|\bTwoi[ck]h\b|\bTwoim\b|\bMasz\b|\bjest[eę][sś]\s+otwarty\b/i.test(msg)) {
+    violations.push("ty_form");
+  }
+
+  // 2. Zakazane powitania (wg DEFAULT_SYSTEM_PROMPT)
+  if (/^(Cze[sś][cć]|Hej|Hey|Witam|Szanown[ay]|Dzie[nń] dobry)/im.test(msg)) {
+    violations.push("forbidden_greeting");
+  }
+
+  // 3. Wolacz imienia: "Panie Jan," / "Pani Anna," — zakaz wg systemu
+  const firstName = facts && (facts.firstName || facts.first_name);
+  if (firstName && firstName.length > 1) {
+    const vocRe = new RegExp("(Panie|Pani)\\s+" + firstName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*[,!]", "i");
+    if (vocRe.test(msg)) violations.push("vocative");
+  }
+
+  // 4. Halucynacja relacji — zakaz twierdzen o wspolnych znajomych / wczesniejszych kontaktach
+  const falseRelPats = [
+    /wsp[oó]ln[ay]ch\s+kontakt[oó]w/i,
+    /wsp[oó]lny\s+kontakt/i,
+    /rozmawiali[sś]my/i,
+    /mi[lł]o\s+by[lł]o.{0,20}pozna[cć]/i,
+    /dzi[eę]ki\s+za\s+(po[lł][aą]czenie|nawi[aą]zanie)/i,
+    /przy\s+okazji\s+naszej\s+rozmow/i,
+    /jak\s+(wspomnia[lł]em|mówi[lł]em|pisa[lł]em)/i,
+  ];
+  for (const re of falseRelPats) {
+    if (re.test(msg)) { violations.push("false_relation"); break; }
+  }
+
+  return { passed: violations.length === 0, violations };
+}
+
 // Zapisuje wpis logu kroku do chrome.storage.local (max 500 wpisow, FIFO).
 async function appendToCampaignLog(entry) {
   const MAX_LOG = 500;
@@ -2579,22 +2619,46 @@ async function campaignWorkerTick() {
   // Krok AI bez gotowej wiadomosci -> wygeneruj teraz (1 call/tick, respektuje jitter/cap).
   let msgText = null;
   let response = null;
+  let msgFromAi = false;
   if (campaignStepNeedsAi(contact, stepDef)) {
     const gen = await generateCampaignMessages(campaign, [contact], stepDef);
     if (gen.throttled) {
       // Dzienny limit AI po stronie backendu — czysta pauza (nie liczy sie do faili).
-      await setCampaignWorkerState({ active: false, errorMsg: gen.error || "Dzienny limit AI wyczerpany. Wznów jutro.", nextTickAt: null });
+      await setCampaignWorkerState({ active: false, errorMsg: gen.error || "Dzienny limit AI wyczerpany. Wznow jutro.", nextTickAt: null });
       await chrome.alarms.clear(CAMPAIGN_ALARM_NAME);
       return;
     }
     const m = gen.success && gen.messages && gen.messages[0];
     if (m && m.status !== "error" && m.message) {
       msgText = m.message;
+      msgFromAi = true;
     } else {
       response = { success: false, error: "ai_generate_fail: " + (gen.error || (m && m.error) || "unknown") };
     }
   } else {
     msgText = resolveCampaignMessage(contact, stepDef);
+  }
+
+  // T3: anti-hallucination gate — deterministyczny check AI output przed wyslaniem.
+  // Wykryto naruszenie: regeneruj raz, jesli nadal fail -> fallback do szablonu lub skip.
+  if (msgText != null && msgFromAi) {
+    const hcheck = checkHallucinations(msgText, contact);
+    if (!hcheck.passed) {
+      const gen2 = await generateCampaignMessages(campaign, [contact], stepDef);
+      const m2 = gen2.success && gen2.messages && gen2.messages[0];
+      const msg2 = (m2 && m2.status !== "error" && m2.message) ? m2.message : null;
+      if (msg2 && checkHallucinations(msg2, contact).passed) {
+        msgText = msg2;
+      } else {
+        const fallback = buildCampaignMessage((stepDef && stepDef.template) || "", contact);
+        if (fallback && fallback.trim()) {
+          msgText = fallback;
+        } else {
+          msgText = null;
+          response = { success: false, error: "hallucination_check_fail" };
+        }
+      }
+    }
   }
 
   if (response == null && msgText != null) {
