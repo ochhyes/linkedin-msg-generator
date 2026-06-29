@@ -200,8 +200,8 @@ Uruchom testy automatyczne (pytest backend + jsdom extension). Wykonaj kroki man
 Sprint:        Wysyłka-DoD (nowy, /agentic-loop-dod) — niezawodna wysyłka DM. T0 (diagnoza+fixture) ZROBIONE; T1-T5 → nowa sesja. Plan: docs/SPRINT-wysylka-DoD.md. Domknięte obok: kampania v2.4.3 (wyszukiwarka+nazwisko+headline+enrichment).
 Phase:         PM→Developer (nowa sesja). Wejście: T2 (naprawa wysyłki) albo T1 (odsprzęgnięcie enrichment↔wysyłka).
 Active task:   Sprint Wysyłka-DoD T2 — naprawa wysyłki: URL recipient=<member-URN> (NIE recipients=slug) + zamknij modale + brama 1° + weryfikuj dostawę. Fixture: extension/tests/fixtures/messaging_composer_sdui.html.
-Repo state:    v2.4.3 (wyszukiwarka+enrichment) + sprint docs ZMERGOWANE do master (ff). master == worktree. origin/master = 88d7015 — NIE pushowane (push: decyzja Marcina). manifest 2.4.3.
-Last commit:   d44961d — docs: plan sprintu wysylki (DoD) + root-cause DM + fixture (na nim chore: sync CURRENT STATE)
+Repo state:    v2.4.3 (wyszukiwarka+enrichment) + sprint docs ZMERGOWANE do master i PUSHNIĘTE na origin (ff). master == worktree == origin/master. manifest 2.4.3.
+Last commit:   d44961d — docs: plan sprintu wysylki (DoD) + root-cause DM + fixture (na nim chore sync CURRENT STATE)
 Updated:       2026-06-28
 ```
 
