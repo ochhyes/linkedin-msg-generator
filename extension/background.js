@@ -2224,6 +2224,8 @@ async function stopBulkConnect() {
 
 const CAMPAIGN_ALARM_NAME = "campaignKeepAlive";
 const CAMPAIGN_MSG_TIMEOUT_MS = 25000;
+const ENRICHMENT_ALARM_NAME = "campaignEnrichment";
+const ENRICHMENT_DAILY_CAP = 50;
 
 const CAMPAIGN_WORKER_DEFAULTS = {
   active: false,
@@ -2299,8 +2301,8 @@ function campaignStepNeedsAi(contact, step) {
   return !(stored.message && String(stored.message).trim());
 }
 
-// Wzbogaca kontakt kampanii: sprawdza profileDb, jesli brakuje headline — scrape.
-// Zapisuje do profileDb po scrapie (cache dla przyszlych generacji).
+// T1: enrichCampaignContact czyta TYLKO z profileDb (zero scrapowania).
+// Scrapowanie robi enrichmentWorkerTick z wyprzedzeniem (osobny alarm).
 async function enrichCampaignContact(contact) {
   if (contact.headline && contact.headline.trim()) return contact;
   const db = await getProfileDb();
@@ -2313,19 +2315,6 @@ async function enrichCampaignContact(contact) {
       location: contact.location || dbp.location || "",
     };
   }
-  try {
-    const resp = await probeProfileTab(contact.slug, "scrapeProfile");
-    if (resp && resp.success && resp.profile) {
-      const p = resp.profile;
-      upsertProfilesToDb([{ slug: contact.slug, ...p }], "profile_scrape").catch(() => {});
-      return {
-        ...contact,
-        headline: p.headline || "",
-        company: contact.company || p.company || "",
-        location: contact.location || p.location || "",
-      };
-    }
-  } catch (_) {}
   return contact;
 }
 
@@ -2779,6 +2768,136 @@ async function stopCampaignWorker() {
   return { success: true };
 }
 
+
+// ── Enrichment worker (T1) ─────────────────────────────────────────────
+// Osobny, wolny worker: wzbogaca kontakty kampanii o headline z profileDb
+// PRZED wyslaniem. Tick wysylki nie scrappuje juz profili (enrichCampaignContact
+// = tylko odczyt DB). Mutex: enrichment nie dziala rownoleg z bulk/campaign.
+
+const ENRICHMENT_WORKER_DEFAULTS = {
+  active: false,
+  enrichedToday: 0,
+  lastResetDate: "",
+  nextTickAt: null,
+  lastTickAt: null,
+  errorMsg: null,
+};
+
+async function getEnrichmentWorkerState() {
+  const d = await chrome.storage.local.get("enrichmentWorker");
+  return { ...ENRICHMENT_WORKER_DEFAULTS, ...(d.enrichmentWorker || {}) };
+}
+
+async function setEnrichmentWorkerState(patch) {
+  const cur = await getEnrichmentWorkerState();
+  const next = { ...cur, ...patch };
+  await chrome.storage.local.set({ enrichmentWorker: next });
+  return next;
+}
+
+// Zwraca nastepny slug do wzbogacenia (z kampanii, brak headline w profileDb).
+async function findSlugForEnrichment() {
+  const campaigns = await getCampaigns();
+  const db = await getProfileDb();
+  const profiles = db.profiles || {};
+  for (const campaign of campaigns) {
+    for (const contact of (campaign.contacts || [])) {
+      if (!contact.slug) continue;
+      const dbp = profiles[contact.slug];
+      if (dbp && (dbp.headline || dbp.enrichStatus === "unavailable")) continue;
+      if (!contact.headline || !contact.headline.trim()) return contact.slug;
+    }
+  }
+  return null;
+}
+
+async function enrichmentWorkerTick() {
+  const state = await getEnrichmentWorkerState();
+  if (!state.active) return;
+
+  // Reset licznika przy nowym dniu.
+  const today = todayDateString();
+  let enrichedToday = state.enrichedToday;
+  if (state.lastResetDate !== today) {
+    await setEnrichmentWorkerState({ enrichedToday: 0, lastResetDate: today });
+    enrichedToday = 0;
+  }
+
+  // Cap dzienny.
+  if (enrichedToday >= ENRICHMENT_DAILY_CAP) {
+    await setEnrichmentWorkerState({ active: false, errorMsg: "Limit wzbogacania (" + ENRICHMENT_DAILY_CAP + "/dzien). Resetuje o polnocy.", nextTickAt: null });
+    await chrome.alarms.clear(ENRICHMENT_ALARM_NAME);
+    return;
+  }
+
+  // Mutex: nie scrapuj gdy bulk lub kampania jest aktywna.
+  const [bulk, cw] = await Promise.all([getBulkState(), getCampaignWorkerState()]);
+  if (bulk.active || cw.active) {
+    const delay = 60000;
+    await setEnrichmentWorkerState({ nextTickAt: Date.now() + delay });
+    setTimeout(enrichmentWorkerTick, delay);
+    return;
+  }
+
+  // Godziny pracy 9-18.
+  if (!inWorkingHours({ workingHoursStart: 9, workingHoursEnd: 18 })) {
+    await setEnrichmentWorkerState({ active: false, errorMsg: "Poza godzinami (9-18). Wznow recznie.", nextTickAt: null });
+    await chrome.alarms.clear(ENRICHMENT_ALARM_NAME);
+    return;
+  }
+
+  // Znajdz nastepny kontakt do wzbogacenia.
+  const slug = await findSlugForEnrichment();
+  if (!slug) {
+    await setEnrichmentWorkerState({ active: false, errorMsg: null, nextTickAt: null });
+    await chrome.alarms.clear(ENRICHMENT_ALARM_NAME);
+    return;
+  }
+
+  // Scrapuj profil i zapisz do profileDb.
+  const nowMs = Date.now();
+  try {
+    const resp = await Promise.race([
+      probeProfileTab(slug, "scrapeProfile"),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("enrichment_tab_timeout")), 30000)),
+    ]);
+    if (resp && resp.success && resp.profile) {
+      upsertProfilesToDb([{ slug, ...resp.profile }], "enrichment_worker").catch(() => {});
+      await setEnrichmentWorkerState({ enrichedToday: enrichedToday + 1, lastTickAt: nowMs });
+    } else if (resp && isAccountLimitError(resp.error)) {
+      await setEnrichmentWorkerState({ active: false, errorMsg: "Limit konta LinkedIn — wzbogacanie wstrzymane.", nextTickAt: null });
+      await chrome.alarms.clear(ENRICHMENT_ALARM_NAME);
+      return;
+    } else {
+      // Profil prywatny / niedostepny — marker zeby nie ponawiac.
+      upsertProfilesToDb([{ slug, enrichStatus: "unavailable" }], "enrichment_worker").catch(() => {});
+      await setEnrichmentWorkerState({ lastTickAt: nowMs });
+    }
+  } catch (_) {
+    await setEnrichmentWorkerState({ lastTickAt: nowMs });
+  }
+
+  // Nastepny tick — jitter 45-90s.
+  const delay = (45 + Math.random() * 45) * 1000;
+  await setEnrichmentWorkerState({ nextTickAt: Date.now() + delay });
+  setTimeout(enrichmentWorkerTick, delay);
+}
+
+async function startEnrichmentWorker() {
+  const slug = await findSlugForEnrichment();
+  if (!slug) return { success: false, error: "nothing_to_enrich" };
+  await setEnrichmentWorkerState({ active: true, errorMsg: null });
+  await chrome.alarms.create(ENRICHMENT_ALARM_NAME, { periodInMinutes: 0.4 });
+  setTimeout(enrichmentWorkerTick, 0);
+  return { success: true };
+}
+
+async function stopEnrichmentWorker() {
+  await setEnrichmentWorkerState({ active: false, errorMsg: null, nextTickAt: null });
+  await chrome.alarms.clear(ENRICHMENT_ALARM_NAME);
+  return { success: true };
+}
+
 // Dummy listener — sam fakt registracji + alarm trzyma MV3 SW przy życiu.
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === BULK_ALARM_NAME) {
@@ -2798,6 +2917,8 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     );
   } else if (alarm.name === CAMPAIGN_ALARM_NAME) {
     // #74: keep-alive dla campaign worker — no-op, alarm budzi SW co 24s.
+  } else if (alarm.name === ENRICHMENT_ALARM_NAME) {
+    // T1: keep-alive dla enrichment worker — no-op, alarm budzi SW co 24s.
   }
 });
 
@@ -3895,6 +4016,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return await startCampaignWorker(message.campaignId);
         case "campaignWorkerStop":
           return await stopCampaignWorker();
+        case "enrichmentWorkerStart":
+          return await startEnrichmentWorker();
+        case "enrichmentWorkerStop":
+          return await stopEnrichmentWorker();
+        case "getEnrichmentWorkerState":
+          return { success: true, worker: await getEnrichmentWorkerState() };
         case "campaignWorkerApprove": {
           const cws = await getCampaignWorkerState();
           if (!cws.active) return { success: false, error: "worker_not_active" };
