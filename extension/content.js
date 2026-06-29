@@ -2439,24 +2439,46 @@
         }
       })();
       return true;
+    } else if (message.action === "getComposeUrl") {
+      // T2: Pobiera URL composera (z memberURN) z przycisku Message na stronie profilu.
+      (async () => {
+        try {
+          const result = await getComposeUrl();
+          if (isContextValid()) sendResponse(result);
+        } catch (err) {
+          if (isContextValid()) sendResponse({ success: false, error: (err && err.message) || String(err) });
+        }
+      })();
+      return true;
     }
   });
 
-  // #74: Wpisuje tekst w LinkedIn compose form i klika Wyslij.
+  // T2: Wpisuje tekst w LinkedIn compose form i klika Wyslij. Zamyka modale przed wpisaniem.
   async function sendLinkedInMessage(text) {
     if (!text || !text.trim()) return { success: false, error: "empty_message" };
-    // Czekaj az form sie wyrenderuje (SPA moze potrzebowac chwili po load).
+    // Zamknij modale (Premium upsell, cookie) klawiszem Escape.
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    await new Promise((r) => setTimeout(r, 400));
+    // Czekaj az form sie wyrenderuje.
     const editable = await waitFor(
       () => document.querySelector(".msg-form__contenteditable"),
       10000
     );
-    if (!editable) return { success: false, error: "compose_form_not_found" };
-    // Focus i wpisz tekst przez execCommand (dziala cross-framework Ember/React).
+    if (!editable) {
+      if (document.querySelector('[data-test-modal]')) return { success: false, error: "premium_wall_modal" };
+      return { success: false, error: "compose_form_not_found" };
+    }
+    // Wstaw tekst: execCommand insertText odpala beforeinput w Draft.js.
     editable.focus();
     document.execCommand("selectAll", false, null);
     document.execCommand("insertText", false, text);
-    // Fallback: jesli execCommand nie odpal eventu — dispatchuj InputEvent.
-    editable.dispatchEvent(new InputEvent("input", { bubbles: true, data: text }));
+    // Fallback paste gdy execCommand nie zadziala (editable nadal pusty).
+    if (!(editable.textContent || "").trim()) {
+      const dt = new DataTransfer();
+      dt.setData("text/plain", text);
+      editable.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: dt }));
+      await new Promise((r) => setTimeout(r, 100));
+    }
     // Czekaj az przycisk Wyslij zostanie odblokowany.
     const sendEnabled = await waitFor(
       () => {
@@ -2468,7 +2490,7 @@
     if (!sendEnabled) return { success: false, error: "send_button_still_disabled" };
     const sendBtn = document.querySelector(".msg-form__send-button");
     sendBtn.click();
-    // Czekaj az form sie wyczyci (potwierdzenie ze wiadomosc poszla).
+    // Czekaj az form sie wyczyci (potwierdzenie wyslania).
     await waitFor(
       () => {
         const el = document.querySelector(".msg-form__contenteditable");
@@ -2476,7 +2498,30 @@
       },
       8000
     );
-    return { success: true };
+    // Weryfikuj dostarczenie: nasz tekst w ostatnim bablu watku.
+    const preview = text.slice(0, 40);
+    const delivered = await waitFor(() => {
+      const bubbles = document.querySelectorAll(".msg-s-event-listitem__message-bubble");
+      if (!bubbles.length) return null;
+      const last = bubbles[bubbles.length - 1];
+      return last.textContent.includes(preview) ? true : null;
+    }, 5000);
+    return { success: true, delivered: !!delivered };
+  }
+
+  // T2: Pobiera URL composera z przycisku Message na stronie profilu (/in/<slug>/).
+  async function getComposeUrl() {
+    if (!window.location.pathname.startsWith("/in/")) {
+      return { success: false, error: "redirected_off_profile" };
+    }
+    const msgLink = await waitFor(
+      () => document.querySelector('a[href*="/messaging/compose"]'),
+      10000
+    );
+    if (!msgLink) return { success: false, error: "not_1st_degree" };
+    const href = msgLink.getAttribute("href");
+    const composeUrl = href.startsWith("http") ? href : "https://www.linkedin.com" + href;
+    return { success: true, composeUrl };
   }
 
   // ── Campaign: scrape connections (reuses battle-tested extractConnectionsList + scroll) ──────────

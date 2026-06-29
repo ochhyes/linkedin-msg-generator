@@ -2414,27 +2414,54 @@ function findNextCampaignStep(campaign, nowMs) {
  * wywoluje sendLinkedInMessage, zamyka tab. Wzorzec jak probeProfileTab.
  */
 async function probeMsgComposeTab(slug, msgText) {
-  const url = `https://www.linkedin.com/messaging/thread/new/?recipients=${encodeURIComponent(slug)}`;
+  // T2: Profile-first flow: /in/<slug>/ -> pobierz memberURN z przycisku Message
+  // -> nawiguj do /messaging/compose/?recipient=URN. Stare recipients=slug NIE dzialalo.
+  const profileUrl = `https://www.linkedin.com/in/${encodeURIComponent(slug)}/`;
   let tab = null;
   try {
-    tab = await chrome.tabs.create({ url, active: false });
-    await waitForTabComplete(tab.id, 10000);
-    // Dodatkowy delay na hydration SPA (messaging page to Ember SPA).
+    // Krok 1: Otworz strone profilu i pobierz URL composera (zawiera memberURN).
+    tab = await chrome.tabs.create({ url: profileUrl, active: false });
+    await waitForTabComplete(tab.id, 12000);
     await new Promise((r) => setTimeout(r, 2000));
+
+    let composeUrl = null;
+    {
+      const deadline2 = Date.now() + 12000;
+      while (Date.now() < deadline2) {
+        try { await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content.js"] }); } catch (_) {}
+        try {
+          const r = await Promise.race([
+            chrome.tabs.sendMessage(tab.id, { action: "getComposeUrl" }),
+            new Promise((_, rej) => setTimeout(() => rej(new Error("get_compose_url_timeout")), 5000)),
+          ]);
+          if (r && r.composeUrl) { composeUrl = r.composeUrl; break; }
+          if (r && (r.error === "not_1st_degree" || r.error === "redirected_off_profile")) {
+            return { success: false, error: r.error };
+          }
+          await new Promise((re) => setTimeout(re, 800));
+        } catch (_) {
+          await new Promise((re) => setTimeout(re, 500));
+        }
+      }
+      if (!composeUrl) return { success: false, error: "compose_url_not_found" };
+    }
+
+    // Krok 2: Nawiguj do composera z memberURN i wyslij wiadomosc.
+    await chrome.tabs.update(tab.id, { url: composeUrl });
+    await waitForTabComplete(tab.id, 12000);
+    await new Promise((r) => setTimeout(r, 2000));
+
     let lastErr = null;
     const deadline = Date.now() + CAMPAIGN_MSG_TIMEOUT_MS;
     while (Date.now() < deadline) {
-      try {
-        await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content.js"] });
-      } catch (_) {}
+      try { await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content.js"] }); } catch (_) {}
       try {
         const resp = await Promise.race([
           chrome.tabs.sendMessage(tab.id, { action: "sendLinkedInMessage", text: msgText }),
-          new Promise((_, rej) => setTimeout(() => rej(new Error("msg_send_timeout")), 12000)),
+          new Promise((_, rej) => setTimeout(() => rej(new Error("msg_send_timeout")), 15000)),
         ]);
-        if (resp && resp.success) return { success: true };
+        if (resp && resp.success) return resp;
         if (resp && resp.error === "compose_form_not_found") {
-          // Czekaj chwile i sprobuj ponownie — SPA moze jeszcze renderowac.
           await new Promise((r) => setTimeout(r, 1500));
           lastErr = resp.error;
           continue;

@@ -349,6 +349,138 @@ console.log("\n▸ Skip path — bezpośrednio z draft → skipped");
   assertEqual(queue[0].messageDraft, "draft", "Draft preserved (history)");
 }
 
+// ── T2: getComposeUrl DOM tests ──────────────────────────────────────────
+
+// Re-impl getComposeUrl z content.js (standalone, bez chrome.*).
+function getComposeUrlSync(doc, pathname) {
+  if (!pathname.startsWith("/in/")) return { success: false, error: "redirected_off_profile" };
+  const msgLink = doc.querySelector('a[href*="/messaging/compose"]');
+  if (!msgLink) return { success: false, error: "not_1st_degree" };
+  const href = msgLink.getAttribute("href");
+  const composeUrl = href.startsWith("http") ? href : "https://www.linkedin.com" + href;
+  return { success: true, composeUrl };
+}
+
+console.log("\n▸ getComposeUrl — 1st degree: zwraca composeUrl z memberURN");
+{
+  const dom = new JSDOM(`<!doctype html><html><body>
+    <main>
+      <a href="/messaging/compose/?recipient=ACoAADpyzncB0D95E9&amp;screenContext=NON_SELF_PROFILE_VIEW">
+        Message Jan
+      </a>
+    </main>
+  </body></html>`);
+  const r = getComposeUrlSync(dom.window.document, "/in/jan-kowalski/");
+  assert(r.success, "getComposeUrl 1st degree success");
+  assert(r.composeUrl && r.composeUrl.includes("/messaging/compose"), "composeUrl contains /messaging/compose");
+  assert(r.composeUrl && r.composeUrl.includes("ACoAADpyzncB0D95E9"), "composeUrl contains memberURN");
+  assert(r.composeUrl && r.composeUrl.startsWith("https://www.linkedin.com"), "composeUrl absolute URL");
+}
+
+console.log("\n▸ getComposeUrl — brak przycisku Message (nie-kontakt 1st)");
+{
+  const dom = new JSDOM(`<!doctype html><html><body>
+    <main><button aria-label="Connect with Jan">Connect</button></main>
+  </body></html>`);
+  const r = getComposeUrlSync(dom.window.document, "/in/jan-kowalski/");
+  assert(!r.success, "getComposeUrl no Message btn fails");
+  assertEqual(r.error, "not_1st_degree", "error = not_1st_degree");
+}
+
+console.log("\n▸ getComposeUrl — redirect off profile (account limit)");
+{
+  const dom = new JSDOM(`<!doctype html><html><body><div>Redirected</div></body></html>`);
+  const r = getComposeUrlSync(dom.window.document, "/mynetwork/");
+  assert(!r.success, "getComposeUrl redirect fails");
+  assertEqual(r.error, "redirected_off_profile", "error = redirected_off_profile");
+}
+
+console.log("\n▸ getComposeUrl — absolutny href juz w linku");
+{
+  const dom = new JSDOM(`<!doctype html><html><body>
+    <a href="https://www.linkedin.com/messaging/compose/?recipient=ACoAABC123">Message</a>
+  </body></html>`);
+  const r = getComposeUrlSync(dom.window.document, "/in/abc/");
+  assert(r.success, "absolute href accepted");
+  assertEqual(r.composeUrl, "https://www.linkedin.com/messaging/compose/?recipient=ACoAABC123", "absolute href preserved");
+}
+
+// ── T2: sendLinkedInMessage DOM behavior tests ────────────────────────────
+
+// Re-impl sendLinkedInMessage logic (bez chrome.*, bez execCommand, bez setTimeout — sync stubs).
+function checkSendMsgDom(doc) {
+  const editable = doc.querySelector(".msg-form__contenteditable");
+  if (!editable) {
+    if (doc.querySelector('[data-test-modal]')) return { success: false, error: "premium_wall_modal" };
+    return { success: false, error: "compose_form_not_found" };
+  }
+  const sendBtn = doc.querySelector(".msg-form__send-button");
+  if (!sendBtn || sendBtn.disabled) return { success: false, error: "send_button_still_disabled" };
+  return { success: true };
+}
+
+console.log("\n▸ sendLinkedInMessage DOM — compose form present, send enabled");
+{
+  const dom = new JSDOM(`<!doctype html><html><body>
+    <div class="msg-form__contenteditable" contenteditable="true">Hello</div>
+    <button class="msg-form__send-button artdeco-button">Send</button>
+  </body></html>`);
+  const r = checkSendMsgDom(dom.window.document);
+  assert(r.success, "compose form + enabled send btn = success");
+}
+
+console.log("\n▸ sendLinkedInMessage DOM — brak compose form");
+{
+  const dom = new JSDOM(`<!doctype html><html><body><p>No form</p></body></html>`);
+  const r = checkSendMsgDom(dom.window.document);
+  assertEqual(r.error, "compose_form_not_found", "missing form = compose_form_not_found");
+}
+
+console.log("\n▸ sendLinkedInMessage DOM — Premium wall modal");
+{
+  const dom = new JSDOM(`<!doctype html><html><body>
+    <div data-test-modal="true"><h2>Premium</h2></div>
+  </body></html>`);
+  const r = checkSendMsgDom(dom.window.document);
+  assertEqual(r.error, "premium_wall_modal", "modal present = premium_wall_modal");
+}
+
+console.log("\n▸ sendLinkedInMessage DOM — send button disabled");
+{
+  const dom = new JSDOM(`<!doctype html><html><body>
+    <div class="msg-form__contenteditable" contenteditable="true"></div>
+    <button class="msg-form__send-button artdeco-button" disabled>Send</button>
+  </body></html>`);
+  const r = checkSendMsgDom(dom.window.document);
+  assertEqual(r.error, "send_button_still_disabled", "disabled btn = send_button_still_disabled");
+}
+
+// ── T2: delivery verification DOM test ───────────────────────────────────
+
+function checkDelivery(doc, sentText) {
+  const bubbles = doc.querySelectorAll(".msg-s-event-listitem__message-bubble");
+  if (!bubbles.length) return false;
+  const last = bubbles[bubbles.length - 1];
+  const preview = sentText.slice(0, 40);
+  return last.textContent.includes(preview);
+}
+
+console.log("\n▸ delivery verification — tekst w ostatnim bablu");
+{
+  const dom = new JSDOM(`<!doctype html><html><body>
+    <div class="msg-s-event-listitem__message-bubble">Stara wiadomosc</div>
+    <div class="msg-s-event-listitem__message-bubble">Hello, to jest moja wiadomosc!</div>
+  </body></html>`);
+  assert(checkDelivery(dom.window.document, "Hello, to jest moja wiadomosc!"), "last bubble matches sent text");
+  assert(!checkDelivery(dom.window.document, "Inny tekst niewyslany"), "non-matching text = not delivered");
+}
+
+console.log("\n▸ delivery verification — brak babli = nie dostarczone");
+{
+  const dom = new JSDOM(`<!doctype html><html><body><p>Empty thread</p></body></html>`);
+  assert(!checkDelivery(dom.window.document, "anything"), "no bubbles = not delivered");
+}
+
 // ── Summary ──────────────────────────────────
 console.log("\n=== test_message_pipeline.js ===");
 console.log(`Passed: ${passed}`);
