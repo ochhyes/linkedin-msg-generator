@@ -8,6 +8,35 @@
 
 ---
 
+## 2026-06-29 (Claude Code / Sonnet 4.6) — T2 Sprint Wysyłka: naprawa probeMsgComposeTab (profile-first + URN + modale + delivery check) v2.5.0
+
+> Implementacja T2 z planu sprintu `docs/SPRINT-wysylka-DoD.md`. Cztery bugi z T0 naprawione.
+
+### Zrobione
+- **v2.5.0 (5fe64c3):** naprawa wysyłki DM — komplet T2:
+  - `probeMsgComposeTab` przebudowane: teraz naviguje do `/in/<slug>/`, pobiera URL composera przez `getComposeUrl()` (wyciąga `recipient=memberURN` z przycisku Message), następnie nawiguje do `/messaging/compose/?recipient=URN`. Stary `recipients=slug` wyrzucony.
+  - `getComposeUrl()` — nowa funkcja content.js: sprawdza pathname `/in/`, szuka `a[href*="/messaging/compose"]`, zwraca absolutny URL. Zwraca `not_1st_degree` gdy brak linku, `redirected_off_profile` gdy poza profilem.
+  - `sendLinkedInMessage` — dodane: Escape przed wpisaniem (zamyka modale), DataTransfer paste fallback gdy execCommand pusty, `delivered` flag (sprawdza ostatni `.msg-s-event-listitem__message-bubble`), `premium_wall_modal` detekcja.
+  - Nowe testy: `test_message_pipeline.js` 51→71 asercji (getComposeUrl 4 scenariusze, sendLinkedInMessage DOM 4 scenariusze, delivery 2 scenariusze).
+
+### Decyzje
+- **getComposeUrl szuka `a[href*="/messaging/compose"]`, bo** hashowane klasy + dynamiczny `componentkey` wykluczają selektor po klasie/id; `href` jest stabilny (z fixture + T0). Jeśli false positive, doda się `&recipient=ACoAA` check.
+- **Escape do zamykania modali, bo** X modala jest bez `aria-label` → selektor niestabilny. Escape to standardowy mechanizm zamknięcia modalów.
+- **execCommand + DataTransfer fallback, bo** T0 mówi selektory/wstawianie "najpewniej OK"; nie zmieniamy działającego, tylko dodajemy fallback i usuwamy błędny `InputEvent('input')` (Draft.js nasłuchuje `beforeinput`, nie `input`).
+
+### Lessons learned
+- `InputEvent('input')` jako fallback był błędny — Draft.js nasłuchuje `beforeinput`. Usunięte.
+- Node splice niezawodny dla bloków >50 linii; Edit dla krótkich bez polskich JS-stringów.
+
+### BLOCKED / TODO
+- T1 (odsprzęgnięcie enrichment↔wysyłka), T3 (anty-halucynacja), T4 (stop/idempotencja/log), T5 (ręczny domyślny+warm-up) — do następnych sesji.
+- **Smoke (Marcin):** załaduj v2.5.0 → kampania auto → 1 kontakt 1° → sprawdź czy wiadomość dotarła w LI messaging.
+
+### Status końcowy
+Kod T2 gotowy. Testy 71/0. Pre-commit hook przeszedł. Brak smoke na żywym koncie (wymagana akcja Marcina).
+
+---
+
 ## 2026-06-28 (Claude Code / Sonnet 4.6 → Opus 4.8) — wyszukiwarka kampanii v2.4.3 + nowy sprint „Niezawodna wysyłka" (root-cause DM przez Claude in Chrome)
 
 > Dwie rzeczy: (a) drobny feature do tabeli kontaktów kampanii; (b) brainstorm → /agentic-loop-dod → diagnoza na żywo (Claude in Chrome) DLACZEGO wysyłka DM nigdy nie działała → plan sprintu. Implementacja → nowa sesja (decyzja Marcina).

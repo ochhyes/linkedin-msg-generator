@@ -197,15 +197,15 @@ Uruchom testy automatyczne (pytest backend + jsdom extension). Wykonaj kroki man
 # CURRENT STATE
 
 ```
-Sprint:        Wysyłka-DoD (nowy, /agentic-loop-dod) — niezawodna wysyłka DM. T0 (diagnoza+fixture) ZROBIONE; T1-T5 → nowa sesja. Plan: docs/SPRINT-wysylka-DoD.md. Domknięte obok: kampania v2.4.3 (wyszukiwarka+nazwisko+headline+enrichment).
-Phase:         PM→Developer (nowa sesja). Wejście: T2 (naprawa wysyłki) albo T1 (odsprzęgnięcie enrichment↔wysyłka).
-Active task:   Sprint Wysyłka-DoD T2 — naprawa wysyłki: URL recipient=<member-URN> (NIE recipients=slug) + zamknij modale + brama 1° + weryfikuj dostawę. Fixture: extension/tests/fixtures/messaging_composer_sdui.html.
-Repo state:    v2.4.3 (wyszukiwarka+enrichment) + sprint docs ZMERGOWANE do master i PUSHNIĘTE na origin (ff). master == worktree == origin/master. manifest 2.4.3.
-Last commit:   d44961d — docs: plan sprintu wysylki (DoD) + root-cause DM + fixture (na nim chore sync CURRENT STATE)
-Updated:       2026-06-28
+Sprint:        Wysyłka-DoD — T2 ZROBIONE (v2.5.0, 5fe64c3). T1/T3/T4/T5 → kolejne sesje.
+Phase:         PM (nowa sesja). Dalej: T4 (stop/idempotencja/log) lub T1 (odsprzęgnięcie enrichment).
+Active task:   Smoke T2 (Marcin na żywym koncie LI: kampania auto → 1 kontakt 1° → wiadomość w LI messaging).
+Repo state:    v2.5.0 na worktree (NIE na master — worktree branch). Merge do master po smoke.
+Last commit:   5fe64c3 — feat: naprawa wysylki DM — profile-first flow + modal + delivery check (T2 v2.5.0)
+Updated:       2026-06-29
 ```
 
-**Pending operacyjne (Marcin):** (1) **Implementacja wysyłki w nowej sesji** — od T2 (lub T1), pełny plan + DoD w `docs/SPRINT-wysylka-DoD.md`. (2) **Deploy backendu na VPS** (blokuje AI w kampanii — prod nie ma `/api/campaign/*` → 404): `git pull` → `cd deploy && docker compose up -d --build`; `API_KEYS=DreamComeTrue!` w prod `.env`; weryfikacja `curl 127.0.0.1:8321/api/campaign/throttle` = 401 (nie 404). (3) Smoke #75 na realnym koncie. (4) Merge worktree→master gdy wysyłka gotowa + `node build.js` (release `outreach/`).
+**Pending operacyjne (Marcin):** (1) **Smoke T2** — załaduj v2.5.0 w Chrome (Reload), kampania auto, 1 kontakt 1°, sprawdź czy wiadomość dotarła w LI messaging. (2) **Deploy backendu na VPS** (blokuje AI w kampanii — prod nie ma `/api/campaign/*` → 404): `git pull` → `cd deploy && docker compose up -d --build`; `API_KEYS=DreamComeTrue!` w prod `.env`. (3) Smoke #75 na realnym koncie. (4) Merge worktree→master gdy wysyłka smoke PASS + `node build.js`.
 
 ---
 
@@ -224,7 +224,7 @@ Updated:       2026-06-28
 ## IN PROGRESS
 
 - **Sprint Wysyłka-DoD** (nowy, P0) — **niezawodna wysyłka DM wg /agentic-loop-dod**. Pełny plan, DoD per zadanie, bezpieczniki i wyniki T0: `docs/SPRINT-wysylka-DoD.md`. Skrót root-cause: send nigdy nie działał bo `recipients=<slug>` nie ustawia odbiorcy (poprawnie `recipient=<member-URN>`) + modale zasłaniają + brama 1° + zero weryfikacji dostawy. Composer = Classic Ember, selektory OK. **T0 ✅** (root-cause + fixture `messaging_composer_sdui.html`).
-  **TODO (nowa sesja):** T1 odsprzęgnij enrichment↔wysyłka (osobny worker, mutex) · T2 naprawa wysyłki (URL recipient=URN + zamknij modale + brama 1° + weryfikuj dostawę + **realny test DOM** — dziś ZERO) · T3 bramka anty-halucynacja (deterministyczna, osobno od generacji) · T4 stop/idempotencja(campaignId,slug,stepNum)/log · T5 ręczny domyślny + warm-up. Sekwencja T0→T2→T4→T5, równolegle T1‖T3.
+  **TODO:** T1 odsprzęgnij enrichment↔wysyłka (osobny worker, mutex) · **T2 ✅ 5fe64c3** (profile-first, URN, modale, delivery) · T3 bramka anty-halucynacja · T4 stop/idempotencja(campaignId,slug,stepNum)/log · T5 ręczny domyślny + warm-up. Sekwencja: T4→T5 (po smoke T2), równolegle T1‖T3.
 
 - **#75** (Sprint 2.3, P0) — **JEDEN system kampanii (scalenie #74 + „informuj kontakty")** — ZAIMPLEMENTOWANE, czeka smoke Marcina. Jedna sekcja „Kampania" w dashboardzie: kontakty z Connections.csv ALBO bazy profili; krok = szablon `[Imię]` ALBO AI (brief cel/produkt/autor → `/api/campaign/generate`); wysyłka **auto** (worker DOM, jitter/cap/godziny) ALBO **ręczna** (generuj→kopiuj/eksport→„Oznacz wysłane"); follow-upy + stop-przy-odpowiedzi w obu trybach. Usunięte: `dashboard-campaign.js` + `tools/campaign.js`. Backend: `campaign_goal`/`author_note`/`location`/`company` (stary backend ignoruje → degradacja łagodna). Commity: b086fd7 (hotfix klucza), 6a1811d (scalenie), 0634367 (self-review). Decyzje: PROGRESS.md 2026-06-28.
 
@@ -258,6 +258,7 @@ Updated:       2026-06-28
 
 > 1 linia per release (sha, opis, bump). Pełne treści: `git show <sha>` + `PROGRESS.md`.
 
+- **v2.5.0** (5fe64c3) — feat: naprawa wysyłki DM T2 — profile-first flow (profile→getComposeUrl→memberURN→compose), Escape modale, DataTransfer paste fallback, delivery check ostatni bąbel, brama not_1st_degree; testy 51→71 (Sprint Wysyłka-DoD)
 - **v2.4.3** (cec776a) — feat: wyszukiwarka w tabeli kontaktów kampanii (filtr DOM nazwisko/stanowisko/firma, bez reloadu) + pełne imię+nazwisko+headline w kolumnie Kontakt; `campaignScrapeConnections` zwraca `last_name`; limit 50→500. +enrichment kontaktu przed AI (profileDb→scrape gdy brak headline, 1831e35) [v2.4.0-2.4.2 = git log]
 - **v2.3.2** (7219325) — feat: personalizacja szablonu kampanii z Connections.csv — tokeny [Nazwisko]/[Firma]/[Stanowisko] obok [Imię]; merge master + push origin (29 commitów backlogu) (#75)
 - **v2.3.1** (0634367) — fix: czysta pauza przy dziennym limicie AI (429, nie circuit-breaker) + dedup kontaktów z CSV (#75)
