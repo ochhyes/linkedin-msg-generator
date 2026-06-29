@@ -197,15 +197,15 @@ Uruchom testy automatyczne (pytest backend + jsdom extension). Wykonaj kroki man
 # CURRENT STATE
 
 ```
-Sprint:        Wysyłka-DoD — T2 ZROBIONE (v2.5.0, 5fe64c3). T1/T3/T4/T5 → kolejne sesje.
-Phase:         PM (nowa sesja). Dalej: T4 (stop/idempotencja/log) lub T1 (odsprzęgnięcie enrichment).
-Active task:   Smoke T2 (Marcin na żywym koncie LI: kampania auto → 1 kontakt 1° → wiadomość w LI messaging).
-Repo state:    v2.5.0 na worktree (NIE na master — worktree branch). Merge do master po smoke.
-Last commit:   5fe64c3 — feat: naprawa wysylki DM — profile-first flow + modal + delivery check (T2 v2.5.0)
+Sprint:        Wysyłka-DoD — T2 ZROBIONE + SMOKE PASS (v2.5.0, c62ca86). Merge do master + build.js.
+Phase:         PM (nowa sesja). Dalej: merge worktree→master, potem T4 lub T1.
+Active task:   Merge worktree do master + node build.js (release outreach/).
+Repo state:    v2.5.0 na worktree branch (NIE na master). WYMAGA MERGE.
+Last commit:   c62ca86 — fix: kliknij pierwsza sugestie w pickerze odbiorcy (smoke PASS)
 Updated:       2026-06-29
 ```
 
-**Pending operacyjne (Marcin):** (1) **Smoke T2** — załaduj v2.5.0 w Chrome (Reload), kampania auto, 1 kontakt 1°, sprawdź czy wiadomość dotarła w LI messaging. (2) **Deploy backendu na VPS** (blokuje AI w kampanii — prod nie ma `/api/campaign/*` → 404): `git pull` → `cd deploy && docker compose up -d --build`; `API_KEYS=DreamComeTrue!` w prod `.env`. (3) Smoke #75 na realnym koncie. (4) Merge worktree→master gdy wysyłka smoke PASS + `node build.js`.
+**Pending operacyjne (Marcin):** (1) **Merge worktree→master** + `node build.js` (release `outreach/`). (2) **Deploy backendu na VPS** (blokuje AI w kampanii): `git pull` → `cd deploy && docker compose up -d --build`; `API_KEYS=DreamComeTrue!` w prod `.env`. (3) Następny task: T4 (stop/idempotencja/log) lub T1 (odsprzęgnięcie enrichment).
 
 ---
 
@@ -258,7 +258,7 @@ Updated:       2026-06-29
 
 > 1 linia per release (sha, opis, bump). Pełne treści: `git show <sha>` + `PROGRESS.md`.
 
-- **v2.5.0** (5fe64c3) — feat: naprawa wysyłki DM T2 — profile-first flow (profile→getComposeUrl→memberURN→compose), Escape modale, DataTransfer paste fallback, delivery check ostatni bąbel, brama not_1st_degree; testy 51→71 (Sprint Wysyłka-DoD)
+- **v2.5.0** (c62ca86) — feat: naprawa wysyłki DM T2 — profile-first flow (profile→getComposeUrl→memberURN→compose), klik sugestii w pickerze odbiorcy, Escape modale, spacja Draft.js, delivery check; testy 51→71; **SMOKE PASS** (Sprint Wysyłka-DoD)
 - **v2.4.3** (cec776a) — feat: wyszukiwarka w tabeli kontaktów kampanii (filtr DOM nazwisko/stanowisko/firma, bez reloadu) + pełne imię+nazwisko+headline w kolumnie Kontakt; `campaignScrapeConnections` zwraca `last_name`; limit 50→500. +enrichment kontaktu przed AI (profileDb→scrape gdy brak headline, 1831e35) [v2.4.0-2.4.2 = git log]
 - **v2.3.2** (7219325) — feat: personalizacja szablonu kampanii z Connections.csv — tokeny [Nazwisko]/[Firma]/[Stanowisko] obok [Imię]; merge master + push origin (29 commitów backlogu) (#75)
 - **v2.3.1** (0634367) — fix: czysta pauza przy dziennym limicie AI (429, nie circuit-breaker) + dedup kontaktów z CSV (#75)
