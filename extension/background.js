@@ -2234,6 +2234,8 @@ const CAMPAIGN_WORKER_DEFAULTS = {
   consecutiveFails: 0,
   sentToday: 0,
   lastResetDate: "",
+  awaitingHITL: false,
+  hitlPreview: null,
 };
 
 async function getCampaignWorkerState() {
@@ -2480,6 +2482,21 @@ async function probeMsgComposeTab(slug, msgText) {
   }
 }
 
+// Bledy konta LinkedIn — natychmiastowy stop workera, nie liczy do breaker'a.
+function isAccountLimitError(error) {
+  return error === "redirected_off_profile" || error === "account_limit";
+}
+
+// Zapisuje wpis logu kroku do chrome.storage.local (max 500 wpisow, FIFO).
+async function appendToCampaignLog(entry) {
+  const MAX_LOG = 500;
+  const d = await chrome.storage.local.get("campaignStepLog");
+  const log = Array.isArray(d.campaignStepLog) ? d.campaignStepLog : [];
+  log.push(entry);
+  if (log.length > MAX_LOG) log.splice(0, log.length - MAX_LOG);
+  await chrome.storage.local.set({ campaignStepLog: log });
+}
+
 async function resetCampaignDailyIfNeeded() {
   const state = await getCampaignWorkerState();
   const today = todayDateString();
@@ -2492,6 +2509,9 @@ async function campaignWorkerTick() {
   await resetCampaignDailyIfNeeded();
   const worker = await getCampaignWorkerState();
   if (!worker.active) return;
+
+  // T4: HITL gate — tick czeka na zatwierdzenie czlowieka (campaignWorkerApprove).
+  if (worker.awaitingHITL) return;
 
   if (!inWorkingHours({ workingHoursStart: 9, workingHoursEnd: 18 })) {
     await setCampaignWorkerState({
@@ -2535,6 +2555,19 @@ async function campaignWorkerTick() {
   const stepDef = campaign.steps.find((s) => s.stepNum === next.stepNum);
   const stepKey = String(next.stepNum);
 
+  // T4: Idempotencja — re-read przed wysylka (ochrona przed double-send po crash workera).
+  {
+    const freshCamp = await getCampaignById(campaign.id);
+    const freshC = freshCamp && (freshCamp.contacts || [])[next.contactIdx];
+    const freshSt = freshC && ((freshC.steps || {})[stepKey] || {});
+    if (freshSt && freshSt.status === "sent") {
+      const skipDelay = (cfg.delayMin || 45) * 1000;
+      await setCampaignWorkerState({ nextTickAt: Date.now() + skipDelay });
+      setTimeout(campaignWorkerTick, skipDelay);
+      return;
+    }
+  }
+
   // Krok AI bez gotowej wiadomosci -> wygeneruj teraz (1 call/tick, respektuje jitter/cap).
   let msgText = null;
   let response = null;
@@ -2567,6 +2600,18 @@ async function campaignWorkerTick() {
     }
   }
 
+  // T4: bledy konta LinkedIn — natychmiastowy stop, nie liczy do breaker'a.
+  if (response && !response.success && isAccountLimitError(response.error)) {
+    await setCampaignWorkerState({
+      active: false,
+      consecutiveFails: 0,
+      errorMsg: "Limit konta LinkedIn — kampania wstrzymana. Sprawdz LinkedIn i wznow recznie.",
+      nextTickAt: null,
+    });
+    await chrome.alarms.clear(CAMPAIGN_ALARM_NAME);
+    return;
+  }
+
   const nowMs = Date.now();
   const updated = JSON.parse(JSON.stringify(campaign)); // deep copy
   const uc = updated.contacts[next.contactIdx];
@@ -2592,6 +2637,19 @@ async function campaignWorkerTick() {
   }
 
   await updateCampaignInList(updated);
+
+  // T4: log kroku — kto/co/kiedy/wynik (odtwarzalnosc).
+  await appendToCampaignLog({
+    ts: nowMs,
+    campaignId: campaign.id,
+    campaignName: campaign.name || "",
+    slug: contact.slug,
+    firstName: contact.firstName || "",
+    stepNum: next.stepNum,
+    result: (response && response.success) ? "sent" : "failed",
+    error: (response && !response.success) ? (response.error || "unknown") : null,
+    msgSnippet: msgText ? msgText.slice(0, 100) : null,
+  });
 
   if (consecutiveFails >= FAIL_STREAK) {
     await setCampaignWorkerState({
@@ -2619,17 +2677,28 @@ async function startCampaignWorker(campaignId) {
   if ((campaign.config || {}).sendMode === "manual") return { success: false, error: "manual_mode" };
   const next = findNextCampaignStep(campaign, Date.now());
   if (!next) return { success: false, error: "no_pending_steps" };
+
+  // T4: HITL — preview pierwszego kroku dla zatwierdzenia przez czlowieka.
+  const previewC = campaign.contacts[next.contactIdx];
+  const previewS = campaign.steps.find((s) => s.stepNum === next.stepNum);
+  const previewMsg = (previewC && previewS) ? resolveCampaignMessage(previewC, previewS) : "";
   await setCampaignWorkerState({
     active: true,
     activeCampaignId: campaignId,
     errorMsg: null,
     consecutiveFails: 0,
-    nextTickAt: Date.now() + 500,
+    nextTickAt: null,
     lastTickAt: null,
+    awaitingHITL: true,
+    hitlPreview: previewC ? {
+      slug: previewC.slug,
+      firstName: previewC.firstName || previewC.slug,
+      stepNum: next.stepNum,
+      message: previewMsg.slice(0, 200),
+    } : null,
   });
   await chrome.alarms.create(CAMPAIGN_ALARM_NAME, { periodInMinutes: 0.4 });
-  campaignWorkerTick();
-  return { success: true };
+  return { success: true, awaitingHITL: true };
 }
 
 async function stopCampaignWorker() {
@@ -3754,6 +3823,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return await startCampaignWorker(message.campaignId);
         case "campaignWorkerStop":
           return await stopCampaignWorker();
+        case "campaignWorkerApprove": {
+          const cws = await getCampaignWorkerState();
+          if (!cws.active) return { success: false, error: "worker_not_active" };
+          await setCampaignWorkerState({ awaitingHITL: false, hitlPreview: null });
+          campaignWorkerTick();
+          return { success: true };
+        }
+        case "getCampaignStepLog": {
+          const logData = await chrome.storage.local.get("campaignStepLog");
+          return { success: true, log: logData.campaignStepLog || [] };
+        }
         case "campaignMarkReplied": {
           const camp2 = await getCampaignById(message.campaignId);
           if (!camp2) return { success: false, error: "not_found" };

@@ -36,6 +36,10 @@
   const genCountWrap = document.getElementById("cw-gen-count-wrap");
   const btnStart = document.getElementById("cw-btn-start");
   const btnStop = document.getElementById("cw-btn-stop");
+  const hitlPanel = document.getElementById("cw-hitl-panel");
+  const hitlMsg = document.getElementById("cw-hitl-msg");
+  const btnApprove = document.getElementById("cw-btn-approve");
+  const btnApproveCancel = document.getElementById("cw-btn-approve-cancel");
   const dryRunResult = document.getElementById("cw-dryrun-result");
   const manualResult = document.getElementById("cw-manual-result");
   const errorMsg = document.getElementById("cw-error-msg");
@@ -261,7 +265,19 @@
     }
 
     // Tryb auto (Generuj zostaje widoczny — mozesz przegladac i wysylac recznie takze tu).
-    if (worker.active && worker.activeCampaignId === activeCampaignId) {
+    if (worker.active && worker.awaitingHITL && worker.activeCampaignId === activeCampaignId) {
+      // T4: HITL — czeka na zatwierdzenie czlowieka.
+      const p = worker.hitlPreview || {};
+      workerBadge.textContent = "Czeka na zgodę";
+      workerBadge.className = "count-badge count-badge--warn";
+      workerLine.textContent = "";
+      hitlMsg.textContent = "Pierwsza wiadomosc: " + (p.firstName || p.slug || "-") + " - krok " + (p.stepNum || 1) + (p.message ? " - " + p.message.slice(0, 80) + (p.message.length > 80 ? "..." : "") : "");
+      hitlPanel.classList.remove("hidden");
+      btnStart.classList.add("hidden");
+      btnStop.classList.add("hidden");
+      errorMsg.classList.add("hidden");
+    } else if (worker.active && worker.activeCampaignId === activeCampaignId) {
+      hitlPanel.classList.add("hidden");
       workerBadge.textContent = "Aktywna";
       workerBadge.className = "count-badge count-badge--active";
       workerLine.textContent = `Wysłano dziś: ${worker.sentToday || 0}. Następny: ${worker.nextTickAt ? formatDate(worker.nextTickAt) : "—"}`;
@@ -269,6 +285,7 @@
       btnStop.classList.remove("hidden");
       errorMsg.classList.add("hidden");
     } else {
+      hitlPanel.classList.add("hidden");
       workerBadge.textContent = "Zatrzymana";
       workerBadge.className = "count-badge";
       workerLine.textContent = worker.activeCampaignId !== activeCampaignId && worker.active
@@ -330,6 +347,18 @@
         no_pending_steps: "Brak kroków do wysłania (wszystkie wysłane lub za wcześnie na follow-up).",
       };
       showError(errMap[resp.error] || humanizeError(resp.error) || "Nie udało się uruchomić.");
+      return;
+    }
+    await refreshWorkerPanel();
+    scheduleRefresh();
+  }
+
+  async function approveWorker() {
+    btnApprove.disabled = true;
+    const resp = await msg("campaignWorkerApprove");
+    btnApprove.disabled = false;
+    if (!resp.success) {
+      showError("Nie udało się zatwierdzić: " + (resp.error || "błąd"));
       return;
     }
     await refreshWorkerPanel();
@@ -830,6 +859,11 @@
   btnGenerate.addEventListener("click", generateManual);
   btnStart.addEventListener("click", startWorker);
   btnStop.addEventListener("click", stopWorker);
+  btnApprove.addEventListener("click", approveWorker);
+  btnApproveCancel.addEventListener("click", async () => {
+    await msg("campaignWorkerStop");
+    await refreshWorkerPanel();
+  });
 
   // ── Init ──────────────────────────────────────────────────────────────
   // Domyslnie 1 krok (szablon) zeby formularz nie byl pusty.

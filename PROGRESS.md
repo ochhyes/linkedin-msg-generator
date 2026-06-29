@@ -8,6 +8,39 @@
 
 ---
 
+## 2026-06-29 (Claude Code / Sonnet 4.6) — T4 Sprint Wysyłka: HITL gate, account-limit stop, idempotencja, log krokow (v2.6.0)
+
+> Implementacja T4 z planu sprintu `docs/SPRINT-wysylka-DoD.md`.
+
+### Zrobione
+- **v2.6.0:** T4 — formalizacja DoD + bezpieczniki petli wysylki:
+  - `awaitingHITL: true/false` + `hitlPreview` w `CAMPAIGN_WORKER_DEFAULTS` i `startCampaignWorker` — kazde uruchomienie auto-workera wymaga zatwierdzenia przez czlowieka przed pierwsza wysylka.
+  - `campaignWorkerTick`: early return gdy `awaitingHITL` (nie wysyla bez zgody); action `campaignWorkerApprove` odblokuje i uruchamia tick.
+  - `isAccountLimitError`: `redirected_off_profile`/`account_limit` — natychmiastowy stop workera BEZ liczenia do breaker'a (rozroznienie: limit konta vs. transient blad).
+  - Idempotencja pre-send: re-read kampanii tuz przed `probeMsgComposeTab` — jesli krok juz `sent` (crash+restart), skip bez double-send.
+  - `appendToCampaignLog`: per-tick wpis do `campaignStepLog` w storage (max 500, FIFO). Pola: ts, campaignId, campaignName, slug, firstName, stepNum, result, error, msgSnippet.
+  - Action `getCampaignStepLog` do odczytu logu z dashboardu.
+  - Dashboard: panel HITL (`cw-hitl-panel`) z badge "Czeka na zgode" (orange), wiadomoscia podgladu, przyciskami Zatwierdz/Anuluj.
+  - `test_campaign_t4.js`: 34 asercje pokrywajace wszystkie nowe bezpieczniki.
+
+### Decyzje
+- **HITL przy kazdym starcie workera (nie tylko raz), bo** auto-wysylka to nieodwracalny efekt uboczny — uzytkownik powinien swiadomie zaakceptowac pierwsza wiadomosc za kazdym razem, gdy uruchamia worker po pauzie.
+- **`redirected_off_profile` = stop bez fail-breaker, bo** jest to sygnal konta LinkedIn (przekierowanie przy limicie/banach), nie blad sieciowy. Liczyc do breaker'a bylby mylacy — uzytkownik widzialby "3 bledy z rzedu" zamiast "limit konta".
+- **`not_1st_degree` NIE jest account-limit** — to biznesowy skip-kontaktu (brak dostpu do composera), nie problem konta. Zostaje jako zwykly fail.
+- **Pre-send re-read zamiast lock, bo** MV3 SW jest single-threaded (brak rownoleglych tickow); re-read chroni przed crash+restart-double-send bez overengineering.
+
+### Lessons learned
+- Polskie znaki (`—`, `„"`, `·`) w template literals powoduja SyntaxError przez node `--check` mimo ze sa poprawnym UTF-8 — to bug w interakcji Edit tool + node check (zgodnie z regula z CLAUDE.md). Naprawione Node splice.
+
+### BLOCKED / TODO
+- T1 (odsprzegniecie enrichment), T3 (anty-halucynacja), T5 (reczny domyslny+warm-up) — kolejne sesje.
+- Dashboard nie wyswietla jeszcze `campaignStepLog` — log zapisywany do storage, mozna odczytac przez `getCampaignStepLog` action; UI do logu opcjonalne w T5/backlogu.
+
+### Status koncowy
+v2.6.0, testy 34/0 (T4) + 71/0 (T2) + 27/0 (campaign_worker) + caly suite zielony. Pre-commit hook przeszedl.
+
+---
+
 ## 2026-06-29 (Claude Code / Sonnet 4.6) — T2 Sprint Wysyłka: naprawa probeMsgComposeTab (profile-first + URN + modale + delivery check) v2.5.0
 
 > Implementacja T2 z planu sprintu `docs/SPRINT-wysylka-DoD.md`. Cztery bugi z T0 naprawione.
