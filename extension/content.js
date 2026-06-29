@@ -2459,7 +2459,24 @@
     // Zamknij modale (Premium upsell, cookie) klawiszem Escape.
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
     await new Promise((r) => setTimeout(r, 400));
-    // Czekaj az form sie wyrenderuje.
+    // Jesli compose dialog pokazuje picker odbiorcy (TO: z polem "Wpisz nazwisko"),
+    // kliknij pierwsza sugestie — LinkedIn pre-highlightuje wlasciwa osobe dzieki
+    // recipient=URN w URL, ale wymaga klikniecia zeby potwierdzic wybor.
+    const recipientPicker = await waitFor(
+      () => document.querySelector('[placeholder*="nazwisk"], [placeholder*="Type a name"]'),
+      2000
+    );
+    if (recipientPicker) {
+      const firstSuggestion = await waitFor(
+        () => document.querySelector('[role="option"]') ||
+              document.querySelector('.msg-connections-typeahead__result'),
+        5000
+      );
+      if (!firstSuggestion) return { success: false, error: "recipient_no_suggestions" };
+      firstSuggestion.click();
+      await new Promise((r) => setTimeout(r, 800));
+    }
+    // Czekaj az form sie wyrenderuje (po wyborze odbiorcy lub od razu w watku).
     const editable = await waitFor(
       () => document.querySelector(".msg-form__contenteditable"),
       10000
