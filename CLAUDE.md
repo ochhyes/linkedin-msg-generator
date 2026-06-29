@@ -197,15 +197,15 @@ Uruchom testy automatyczne (pytest backend + jsdom extension). Wykonaj kroki man
 # CURRENT STATE
 
 ```
-Sprint:        Wysylka-DoD — T4 ZROBIONE (v2.6.0). Dalej: T5 lub T1 lub merge do master.
-Phase:         Commit (po tej sesji). Dalej PM: wybrac T5 (reczny domyslny+warm-up) lub T1 (odsprzegniecie enrichment).
-Active task:   brak (T4 done, commitujemy).
-Repo state:    v2.6.0 na worktree branch (NIE na master). WYMAGA MERGE.
-Last commit:   (ten commit)
+Sprint:        Wysylka-DoD — KOMPLETNY (T0-T5 done, v2.8.0).
+Phase:         PM — Sprint zamkniety. Nastepny: merge worktree→master, deploy VPS, nowy sprint.
+Active task:   brak.
+Repo state:    v2.8.0 na worktree branch. WYMAGA MERGE do master.
+Last commit:   ba0d507 (T1 enrichment decoupling v2.8.0)
 Updated:       2026-06-29
 ```
 
-**Pending operacyjne (Marcin):** (1) **Merge worktree→master** + `node build.js` (release `outreach/`). (2) **Deploy backendu na VPS** (blokuje AI w kampanii): `git pull` → `cd deploy && docker compose up -d --build`; `API_KEYS=DreamComeTrue!` w prod `.env`. (3) Nastepny task: T5 (reczny domyslny+warm-up) lub T1 (odsprzegniecie enrichment).
+**Pending operacyjne (Marcin):** (1) **Merge worktree→master** + `node build.js` (release `outreach/`). (2) **Deploy backendu na VPS**: `git pull` → `cd deploy && docker compose up -d --build`; `API_KEYS=DreamComeTrue!` w prod `.env`. (3) **Smoke T5** (nowa kampania domyslnie reczna) + **Smoke T1** (enrichment worker — Start w dashboardzie → profil wzbogacony w profileDb). (4) Nastepny sprint: #75 (smoke v2.3.1) lub #53 (scraper contact-info).
 
 ---
 
@@ -223,8 +223,7 @@ Updated:       2026-06-29
 
 ## IN PROGRESS
 
-- **Sprint Wysyłka-DoD** (nowy, P0) — **niezawodna wysyłka DM wg /agentic-loop-dod**. Pełny plan, DoD per zadanie, bezpieczniki i wyniki T0: `docs/SPRINT-wysylka-DoD.md`. Skrót root-cause: send nigdy nie działał bo `recipients=<slug>` nie ustawia odbiorcy (poprawnie `recipient=<member-URN>`) + modale zasłaniają + brama 1° + zero weryfikacji dostawy. Composer = Classic Ember, selektory OK. **T0 ✅** (root-cause + fixture `messaging_composer_sdui.html`).
-  **TODO:** T1 odsprzęgnij enrichment↔wysyłka (osobny worker, mutex) · **T2 ✅ 5fe64c3** (profile-first, URN, modale, delivery) · T3 bramka anty-halucynacja · **T4 ✅** (HITL gate, account-limit stop, idempotencja pre-send, campaignStepLog) · T5 ręczny domyślny + warm-up. Sekwencja: T5 nastepny, rownoleglee T1‖T3.
+- **Sprint Wysyłka-DoD — DONE (v2.8.0).** T0✅ T1✅ T2✅ T3✅ T4✅ T5✅. Szczegoly: `docs/SPRINT-wysylka-DoD.md` + DONE w tym pliku.
 
 - **#75** (Sprint 2.3, P0) — **JEDEN system kampanii (scalenie #74 + „informuj kontakty")** — ZAIMPLEMENTOWANE, czeka smoke Marcina. Jedna sekcja „Kampania" w dashboardzie: kontakty z Connections.csv ALBO bazy profili; krok = szablon `[Imię]` ALBO AI (brief cel/produkt/autor → `/api/campaign/generate`); wysyłka **auto** (worker DOM, jitter/cap/godziny) ALBO **ręczna** (generuj→kopiuj/eksport→„Oznacz wysłane"); follow-upy + stop-przy-odpowiedzi w obu trybach. Usunięte: `dashboard-campaign.js` + `tools/campaign.js`. Backend: `campaign_goal`/`author_note`/`location`/`company` (stary backend ignoruje → degradacja łagodna). Commity: b086fd7 (hotfix klucza), 6a1811d (scalenie), 0634367 (self-review). Decyzje: PROGRESS.md 2026-06-28.
 
@@ -258,6 +257,9 @@ Updated:       2026-06-29
 
 > 1 linia per release (sha, opis, bump). Pełne treści: `git show <sha>` + `PROGRESS.md`.
 
+- **v2.8.0** (ba0d507) — feat: T1 odsprzegniecie enrichment od wysylki — enrichCampaignContact=DB-only, nowy enrichmentWorkerTick (alarm, cap 50/d, mutex, unavailable marker); testy 31/0 (Sprint Wysylka-DoD)
+- **v2.7.1** (fa09b56) — fix: T3 bramka anty-halucynacja — checkHallucinations (ty-form, powitanie, wolacz, false-relation); regenerate raz, fallback do szablonu; testy 34/0 (Sprint Wysylka-DoD)
+- **v2.7.0** (0b4811d) — feat: T5 reczny domyslny + warm-up ramp — nowa kampania=manual, auto=opt-in+confirm, warmup liniowy startCap→targetCap/daysToRamp; testy +7 (Sprint Wysylka-DoD)
 - **v2.6.0** (1c5ff4d) — feat: T4 bezpieczniki petli wysylki — HITL gate (zatwierdzenie przed 1. wysylka), account-limit stop (redirected_off_profile), idempotencja pre-send, campaignStepLog; testy +34 (Sprint Wysylka-DoD)
 - **v2.5.0** (c62ca86) — feat: naprawa wysyłki DM T2 — profile-first flow (profile→getComposeUrl→memberURN→compose), klik sugestii w pickerze odbiorcy, Escape modale, spacja Draft.js, delivery check; testy 51→71; **SMOKE PASS** (Sprint Wysyłka-DoD)
 - **v2.4.3** (cec776a) — feat: wyszukiwarka w tabeli kontaktów kampanii (filtr DOM nazwisko/stanowisko/firma, bez reloadu) + pełne imię+nazwisko+headline w kolumnie Kontakt; `campaignScrapeConnections` zwraca `last_name`; limit 50→500. +enrichment kontaktu przed AI (profileDb→scrape gdy brak headline, 1831e35) [v2.4.0-2.4.2 = git log]

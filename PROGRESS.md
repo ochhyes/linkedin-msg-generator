@@ -8,6 +8,66 @@
 
 ---
 
+## 2026-06-29 (Claude Code / Sonnet 4.6) — Sprint Wysylka-DoD DONE: T5+T3+T1 (v2.7.0-2.8.0)
+
+> Caly sprint /agentic-loop-dod. Tryb: PM->Dev->Tester->Commit w jednej sesji (Marcin: "rob caly sprint").
+
+### Zrobione
+
+- **v2.7.0 (0b4811d) T5 — Reczny domyslny + warm-up:**
+  - Nowa kampania domyslnie `sendMode=manual` (radio przełączony w dashboard.html).
+  - Tryb auto = opt-in z confirm() przed startem workera (explicit consent przed DOM-automation).
+  - Warmup ramp: liniowy wzrost dailyCap od `startCap` do `targetCap` przez `daysToRamp` dni. Konfigurowalny w formularzu (pokazuje sie tylko przy trybie auto). Zapisywany w `config.warmup`.
+  - Testy: 7 nowych w test_campaign_t4.js (ramp dzien 0/7/14/po, disabled, null) — 41/0.
+
+- **v2.7.1 (fa09b56) T3 — Bramka anty-halucynacja:**
+  - `checkHallucinations(message, facts)` — deterministyczny grader (nie LLM-sedzia). Checks:
+    1. Ty-formy: `Twoj/Twoje/Twoja/Twoich/Twoim/Masz/jestes otwarty` (regex z wariantami PL/ASCII).
+    2. Zakazane powitania: `Czesc/Hej/Hey/Witam/Szanowna/Dzien dobry` na poczatku.
+    3. Wolacz: `Panie Jan,` / `Pani Anna,` — zakaz wg systemu.
+    4. Halucynacja relacji: `wspolnych kontaktow`, `rozmawialismy`, `dzieki za polaczenie`, `przy okazji naszej rozmowy`, `jak wspomnialem`.
+  - W campaignWorkerTick: AI output przechodzi gate; fail -> regeneruj raz; nadal fail -> fallback do szablonu lub `hallucination_check_fail`.
+  - Testy: test_campaign_t3.js, 34/0 (clean, ty-formy, powitania, wolacz, false-relation, wielokrotne, regenerate/fallback scenarios).
+
+- **v2.8.0 (ba0d507) T1 — Odsprzegniecie enrichment od wysylki:**
+  - `enrichCampaignContact`: usunieto probeProfileTab — tylko odczyt profileDb.
+  - Nowy `enrichmentWorkerTick` z wlasnym alarmem `campaignEnrichment`:
+    - `findSlugForEnrichment`: skanuje kampanie, pomija wzbogacone/unavailable.
+    - Mutex: `bulk.active || cw.active` -> tick pauzuje (scheduluje nastepny za 60s).
+    - Cap 50 profili/dzien, godziny 9-18.
+    - Stop przy account_limit (redirected_off_profile).
+    - Marker `enrichStatus=unavailable` dla prywatnych — bez retry.
+    - Jitter 45-90s miedzy tickami.
+  - Handlery: `enrichmentWorkerStart/Stop/getState`.
+  - Testy: test_campaign_t1.js, 31/0 (grep DoD "tick wysylki bez scrape" + mutex + cap + findSlug + handlery).
+  - Caly suite: 133/0 (T1+T3+T4+worker).
+
+### Decyzje
+
+- **Warmup domyslnie wylaczony** — checkbox opt-in w UI, bo stale konta nie potrzebuja rampy.
+- **T3 regex z ASCII-fallback** (`jest[eę][sś]`, `rozmawiali[sś]my`) — AI produkuje PL chars, ale test fixture moze uzyc ASCII. Lepiej lapac oba.
+- **enrichCampaignContact nie scrappuje** — nawet w batch generation (campaignGenerateBatch). Jesli enrichment nie zdazyl, AI dostaje mniej danych. Lepsze niz synchroniczna blokada send-ticka na scrape.
+- **Enrichment pauzuje (nie zatrzymuje sie) przy mutex** — schedules next tick za 60s, alarm pozostaje. Nie wymaga recznego restartu.
+
+### Lessons learned
+
+- Node splice niezawodny dla blokow >50 linii; Edit sprawdza sie dla krotkich (<50) bez PL chars w JS-stringach.
+- `jest[eę][sś]\s+otwarty` zamiast `jesteś otwarty` — bardziej odporne na warianty ASCII/PL w testach.
+- Sprint DoD z trzema rownoleglymi zadaniami (T1‖T3‖T5) wykonany sekwencyjnie T5->T3->T1 — T5 najkrotszy, T3 niezalezny, T1 najdluzszy; 3 commity.
+
+### BLOCKED / TODO
+
+- Smoke T5 (nowa kampania domyslnie reczna) — wymaga akcji Marcina w przegladarce.
+- Smoke T1 (enrichment worker start) — wymaga akcji Marcina.
+- Merge worktree->master + node build.js + deploy VPS.
+- Nastepny sprint: #75 smoke (READY FOR TEST) lub #53 scraper contact-info.
+
+### Status koncowy
+
+Sprint Wysylka-DoD DONE. v2.8.0 na worktree branch. 133 testow, 0 FAIL. Wymaga merge + deploy VPS.
+
+---
+
 ## 2026-06-29 (Claude Code / Sonnet 4.6) — T4 Sprint Wysyłka: HITL gate, account-limit stop, idempotencja, log krokow (v2.6.0)
 
 > Implementacja T4 z planu sprintu `docs/SPRINT-wysylka-DoD.md`.
