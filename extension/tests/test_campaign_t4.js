@@ -181,6 +181,39 @@ const campMultiSent = {
 };
 assert(findContactNextStep(campMultiSent, campMultiSent.contacts[0], NOW) === null, "oba kroki wyslane — null (kompletna sekwencja)");
 
+// ── Tests: T5 warmup ramp ─────────────────────────────────────────────
+
+console.log("\n=== T5 — warmup ramp effectiveDailyCap ===");
+
+function computeEffectiveDailyCap(cfg, createdAt, nowMs) {
+  let dailyCap = cfg.dailyCap || 25;
+  const warmupCfg = cfg.warmup;
+  if (warmupCfg && warmupCfg.enabled && createdAt && warmupCfg.daysToRamp > 0) {
+    const daysSinceStart = Math.floor((nowMs - createdAt) / (24 * 60 * 60 * 1000));
+    const startCap = warmupCfg.startCap || 5;
+    const targetCap = warmupCfg.targetCap || dailyCap;
+    const ramped = startCap + Math.floor((daysSinceStart / warmupCfg.daysToRamp) * (targetCap - startCap));
+    dailyCap = Math.max(startCap, Math.min(targetCap, ramped));
+  }
+  return dailyCap;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const NOW_W = Date.now();
+const warmupCfg = { enabled: true, startCap: 5, targetCap: 25, daysToRamp: 14 };
+const cfgWithWarmup = { dailyCap: 25, warmup: warmupCfg };
+const cfgNoWarmup = { dailyCap: 25 };
+
+assert(computeEffectiveDailyCap(cfgWithWarmup, NOW_W, NOW_W) === 5, "warmup dzien 0 = startCap 5");
+assert(computeEffectiveDailyCap(cfgWithWarmup, NOW_W - 7 * DAY_MS, NOW_W) === 15, "warmup dzien 7/14 = 15 (polowa rampy)");
+assert(computeEffectiveDailyCap(cfgWithWarmup, NOW_W - 14 * DAY_MS, NOW_W) === 25, "warmup dzien 14 = targetCap 25");
+assert(computeEffectiveDailyCap(cfgWithWarmup, NOW_W - 30 * DAY_MS, NOW_W) === 25, "warmup po daysToRamp = max targetCap 25");
+assert(computeEffectiveDailyCap(cfgNoWarmup, NOW_W, NOW_W) === 25, "bez warmup = dailyCap 25");
+const cfgWarmupDisabled = { dailyCap: 25, warmup: { enabled: false, startCap: 5, targetCap: 25, daysToRamp: 14 } };
+assert(computeEffectiveDailyCap(cfgWarmupDisabled, NOW_W, NOW_W) === 25, "warmup disabled = dailyCap 25");
+const cfgWarmupNull = { dailyCap: 20, warmup: null };
+assert(computeEffectiveDailyCap(cfgWarmupNull, NOW_W, NOW_W) === 20, "warmup null = dailyCap z config");
+
 // ── Podsumowanie ───────────────────────────────────────────────────────
 console.log(`\n=== Wyniki: ${pass} PASS / ${fail} FAIL ===\n`);
 if (fail > 0) process.exit(1);

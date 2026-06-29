@@ -43,6 +43,12 @@
   const dryRunResult = document.getElementById("cw-dryrun-result");
   const manualResult = document.getElementById("cw-manual-result");
   const errorMsg = document.getElementById("cw-error-msg");
+  const warmupSection = document.getElementById("cw-warmup");
+  const warmupEnabledEl = document.getElementById("cw-warmup-enabled");
+  const warmupParamsEl = document.getElementById("cw-warmup-params");
+  const warmupStartEl = document.getElementById("cw-warmup-start");
+  const warmupTargetEl = document.getElementById("cw-warmup-target");
+  const warmupDaysEl = document.getElementById("cw-warmup-days");
 
   // ── State ──────────────────────────────────────────────────────────────
   let pendingContacts = []; // bufor kontaktow do nowej kampanii
@@ -83,7 +89,17 @@
 
   function getSendMode() {
     const checked = document.querySelector('input[name="cw-sendmode"]:checked');
-    return checked ? checked.value : "auto";
+    return checked ? checked.value : "manual";
+  }
+
+  function getWarmupConfig() {
+    if (!warmupEnabledEl || !warmupEnabledEl.checked) return null;
+    return {
+      enabled: true,
+      startCap: parseInt((warmupStartEl && warmupStartEl.value) || "5", 10) || 5,
+      targetCap: parseInt((warmupTargetEl && warmupTargetEl.value) || "25", 10) || 25,
+      daysToRamp: parseInt((warmupDaysEl && warmupDaysEl.value) || "14", 10) || 14,
+    };
   }
 
   function getCampaignSendMode(campaign) {
@@ -336,6 +352,7 @@
   // ── Tryb auto: Start/Stop ──────────────────────────────────────────────
   async function startWorker() {
     if (!activeCampaignId) return;
+    if (!confirm("Auto-wysylka wysyla wiadomosci bez nadzoru dla kazdego kontaktu. Przed pierwsza wysylka zatwierdza HITL.\n\nKontynuowac?")) return;
     btnStart.disabled = true;
     const resp = await msg("campaignWorkerStart", { campaignId: activeCampaignId });
     btnStart.disabled = false;
@@ -803,6 +820,7 @@
       return;
     }
     const sendMode = getSendMode();
+    const warmupCfg = getWarmupConfig();
     const hasAi = pendingSteps.some((s) => s.mode === "ai");
     const brief = hasAi ? {
       campaignGoal: goalEl.value || "info",
@@ -817,7 +835,15 @@
       brief,
       steps: pendingSteps,
       contacts: pendingContacts,
-      config: { dailyCap: 25, delayMin: 45, delayMax: 120, workingHoursStart: 9, workingHoursEnd: 18, sendMode },
+      config: {
+        dailyCap: warmupCfg ? warmupCfg.targetCap : 25,
+        delayMin: 45,
+        delayMax: 120,
+        workingHoursStart: 9,
+        workingHoursEnd: 18,
+        sendMode,
+        warmup: warmupCfg || null,
+      },
     });
     btnSave.disabled = false;
     if (!resp.success) {
@@ -854,7 +880,13 @@
   btnSave.addEventListener("click", saveCampaign);
   nameInput.addEventListener("input", checkSaveEnabled);
   [productEl, authorEl].forEach((el) => { if (el) el.addEventListener("input", checkSaveEnabled); });
-  document.querySelectorAll('input[name="cw-sendmode"]').forEach((r) => r.addEventListener("change", () => {}));
+  document.querySelectorAll('input[name="cw-sendmode"]').forEach((r) => r.addEventListener("change", () => {
+    const isAuto = getSendMode() === "auto";
+    if (warmupSection) warmupSection.classList.toggle("hidden", !isAuto);
+  }));
+  if (warmupEnabledEl) warmupEnabledEl.addEventListener("change", () => {
+    if (warmupParamsEl) warmupParamsEl.classList.toggle("hidden", !warmupEnabledEl.checked);
+  });
   btnDryRun.addEventListener("click", runDryRun);
   btnGenerate.addEventListener("click", generateManual);
   btnStart.addEventListener("click", startWorker);

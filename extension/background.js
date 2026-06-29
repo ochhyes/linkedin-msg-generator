@@ -2533,7 +2533,15 @@ async function campaignWorkerTick() {
   }
 
   const cfg = campaign.config || {};
-  const dailyCap = cfg.dailyCap || 25;
+  let dailyCap = cfg.dailyCap || 25;
+  const warmupCfg = cfg.warmup;
+  if (warmupCfg && warmupCfg.enabled && campaign.createdAt && warmupCfg.daysToRamp > 0) {
+    const daysSinceStart = Math.floor((Date.now() - campaign.createdAt) / (24 * 60 * 60 * 1000));
+    const startCap = warmupCfg.startCap || 5;
+    const targetCap = warmupCfg.targetCap || dailyCap;
+    const ramped = startCap + Math.floor((daysSinceStart / warmupCfg.daysToRamp) * (targetCap - startCap));
+    dailyCap = Math.max(startCap, Math.min(targetCap, ramped));
+  }
   if (worker.sentToday >= dailyCap) {
     await setCampaignWorkerState({
       active: false,

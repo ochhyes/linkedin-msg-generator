@@ -118,9 +118,18 @@
 
             <fieldset class="cw-sendmode">
               <legend>Sposób wysyłki</legend>
-              <label><input type="radio" name="cw-sendmode" value="auto" checked /> <strong>Automatyczna</strong> <span class="muted">— rozszerzenie wysyła samo przez LinkedIn (jitter, limit dzienny, godziny 9-18)</span></label>
-              <label><input type="radio" name="cw-sendmode" value="manual" /> <strong>Ręczna</strong> <span class="muted">— generuj treści, kopiuj i wysyłaj samodzielnie (bezpieczniejsze dla konta)</span></label>
+              <label><input type="radio" name="cw-sendmode" value="manual" checked /> <strong>Ręczna (domyślna)</strong> <span class="muted">— generuj treści, kopiuj i wysyłaj samodzielnie (bezpieczniejsze dla konta)</span></label>
+              <label><input type="radio" name="cw-sendmode" value="auto" /> <strong>Automatyczna</strong> <span class="muted">— rozszerzenie wysyła samo przez LinkedIn (jitter, limit dzienny, godziny 9-18)</span></label>
             </fieldset>
+            <div id="cw-warmup" class="cw-warmup hidden">
+              <label class="cw-warmup-toggle"><input type="checkbox" id="cw-warmup-enabled" /> <strong>Tryb warm-up</strong> <span class="muted">— stopniowy wzrost limitu dziennego (zalecane dla nowych kont)</span></label>
+              <div id="cw-warmup-params" class="hidden">
+                <span class="muted">Od</span> <input type="number" id="cw-warmup-start" value="5" min="1" max="25" class="cw-warmup-num" />
+                <span class="muted">do</span> <input type="number" id="cw-warmup-target" value="25" min="5" max="50" class="cw-warmup-num" />
+                <span class="muted">wiad./dzień w ciągu</span> <input type="number" id="cw-warmup-days" value="14" min="7" max="60" class="cw-warmup-num" />
+                <span class="muted">dni</span>
+              </div>
+            </div>
 
             <div id="cw-brief" class="cw-brief hidden">
               <p class="cw-brief__intro muted">Brief dla AI — kliknij gotowy szablon albo wypełnij ręcznie. Używany przez kroki w trybie „AI".</p>
