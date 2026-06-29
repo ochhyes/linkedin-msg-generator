@@ -2479,6 +2479,10 @@
       editable.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: dt }));
       await new Promise((r) => setTimeout(r, 100));
     }
+    // Spacja wyzwala Draft.js do aktualizacji stanu wewnetrznego (odblokowuje Wyslij).
+    // Draft.js trackuje "czy jest tresc" przez wlasne zdarzenia, nie przez textContent.
+    await new Promise((r) => setTimeout(r, 50));
+    document.execCommand("insertText", false, " ");
     // Czekaj az przycisk Wyslij zostanie odblokowany.
     const sendEnabled = await waitFor(
       () => {
